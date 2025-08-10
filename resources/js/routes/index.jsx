@@ -5,6 +5,7 @@ import Login from "../pages/Login";
 import DashboardLayout from "../layouts/ DashboardLayout.jsx";
 import ProtectedRoute from "../components/ProtectedRoute.jsx";
 import Profile from "../pages/Profile.jsx";
+import Suppliers from "../pages/Suppliers.jsx";
 
 function DashboardHome() {
   return <h1 className="text-2xl font-bold">Welcome to the Dashboard</h1>;
@@ -34,6 +35,16 @@ export default function AppRoutes() {
       <ProtectedRoute>
         <DashboardLayout>
           <Profile />
+        </DashboardLayout>
+      </ProtectedRoute>
+    }
+  />
+  <Route
+    path="/suppliers"
+    element={
+      <ProtectedRoute>
+        <DashboardLayout>
+          <Suppliers />
         </DashboardLayout>
       </ProtectedRoute>
     }
