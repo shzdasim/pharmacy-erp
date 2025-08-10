@@ -1,6 +1,6 @@
-import React from 'react';
-import { createRoot } from 'react-dom/client';
-import App from './components/App';
+import React from "react";
+import { createRoot } from "react-dom/client";
+import AppRoutes from "./routes";
 
-const root = createRoot(document.getElementById('app'));
-root.render(<App />);
+const root = createRoot(document.getElementById("app"));
+root.render(<AppRoutes />);
