@@ -1,6 +1,13 @@
 import React from "react";
-import { createRoot } from "react-dom/client";
-import AppRoutes from "./routes";
+import ReactDOM from "react-dom/client";
+import { BrowserRouter } from "react-router-dom";
+import { AuthProvider } from "./context/AuthContext.jsx";
+import Routing from "./routes/index.jsx";
 
-const root = createRoot(document.getElementById("app"));
-root.render(<AppRoutes />);
+ReactDOM.createRoot(document.getElementById("app")).render(
+  <BrowserRouter>
+    <AuthProvider>
+      <Routing />
+    </AuthProvider>
+  </BrowserRouter>
+);

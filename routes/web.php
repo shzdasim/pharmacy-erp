@@ -2,6 +2,8 @@
 
 use Illuminate\Support\Facades\Route;
 
-Route::get('/', function () {
-    return view('welcome');
-});
+// Your API or Laravel-specific routes go here first
+
+// React catch-all route
+Route::view('/{path?}', 'index')
+    ->where('path', '.*');

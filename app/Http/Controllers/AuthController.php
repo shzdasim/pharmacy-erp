@@ -51,4 +51,25 @@ class AuthController extends Controller
 
         return $user->load('roles');
     }
+    public function updateProfile(Request $request)
+{
+    $user = $request->user();
+
+    $data = $request->validate([
+        'name' => 'required|string|max:255',
+        'email' => 'required|email|unique:users,email,' . $user->id,
+        'password' => 'nullable|confirmed|min:6',
+    ]);
+
+    if (!empty($data['password'])) {
+        $data['password'] = bcrypt($data['password']);
+    } else {
+        unset($data['password']);
+    }
+
+    $user->update($data);
+
+    return response()->json($user);
+}
+
 }
