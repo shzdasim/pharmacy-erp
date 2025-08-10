@@ -7,6 +7,8 @@ import ProtectedRoute from "../components/ProtectedRoute.jsx";
 import Profile from "../pages/Profile.jsx";
 import Suppliers from "../pages/Suppliers.jsx";
 import Customers from "../pages/Customers.jsx";
+import Categories from "../pages/Categories.jsx";
+import Brands from "../pages/Brands.jsx";
 
 function DashboardHome() {
   return <h1 className="text-2xl font-bold">Welcome to the Dashboard</h1>;
@@ -56,6 +58,28 @@ export default function AppRoutes() {
       <ProtectedRoute>
         <DashboardLayout>
           <Customers />
+        </DashboardLayout>
+      </ProtectedRoute>
+    }
+  />
+
+  <Route
+    path="/categories"
+    element={
+      <ProtectedRoute>
+        <DashboardLayout>
+          <Categories />
+        </DashboardLayout>
+      </ProtectedRoute>
+    }
+  />
+
+  <Route
+    path="/brands"
+    element={
+      <ProtectedRoute>
+        <DashboardLayout>
+          <Brands />
         </DashboardLayout>
       </ProtectedRoute>
     }
