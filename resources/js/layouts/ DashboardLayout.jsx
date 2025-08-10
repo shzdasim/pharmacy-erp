@@ -12,6 +12,8 @@ export default function DashboardLayout({ children }) {
       "/dashboard": "Dashboard",
       "/profile": "Profile",
       "/suppliers": "Suppliers",
+      "/products": "Products",
+      "/customers": "Customers",
     };
 
     const currentPath = location.pathname;

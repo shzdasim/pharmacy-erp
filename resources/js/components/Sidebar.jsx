@@ -14,6 +14,7 @@ export default function Sidebar() {
   const menu = [
     { name: "Dashboard", path: "/dashboard", icon: <HomeIcon className="w-6 h-6" /> },
     { name: "Suppliers", path: "/suppliers", icon: <ClipboardDocumentListIcon className="w-6 h-6" /> },
+    { name: "Customers", path: "/customers", icon: <ClipboardDocumentListIcon className="w-6 h-6" /> },
   ];
 
   return (
