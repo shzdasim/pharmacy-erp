@@ -6,8 +6,8 @@ use App\Http\Controllers\AuthController;
 use App\Http\Controllers\BrandController;
 use App\Http\Controllers\CategoryController;
 use App\Http\Controllers\CustomerController;
+use App\Http\Controllers\ProductController;
 use App\Http\Controllers\SupplierController;
-use Illuminate\Routing\RouteGroup;
 
 Route::post('/login', [AuthController::class, 'login']);
 Route::middleware(['auth:sanctum'])->get('/user', [AuthController::class, 'user']);
@@ -16,3 +16,6 @@ Route::apiResource('suppliers', SupplierController::class);
 Route::apiResource('customers', CustomerController::class);
 Route::apiResource('categories', CategoryController::class);
 Route::apiResource('brands', BrandController::class);
+Route::get('products/new-code', [ProductController::class, 'generateNewCode']);
+Route::apiResource('products', ProductController::class);
+

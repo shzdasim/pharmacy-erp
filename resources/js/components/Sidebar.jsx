@@ -31,6 +31,7 @@ export default function Sidebar() {
         { name: "Customers", path: "/customers", icon: <UsersIcon className="w-6 h-6" /> },
         { name: "Categories", path: "/categories", icon: <TagIcon className="w-6 h-6" /> },
         { name: "Brands", path: "/brands", icon: <CubeIcon className="w-6 h-6" /> },
+        { name: "Products", path: "/products", icon: <CubeIcon className="w-6 h-6" /> },
       ],
     },
   ];
