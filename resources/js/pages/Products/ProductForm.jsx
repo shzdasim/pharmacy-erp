@@ -3,6 +3,17 @@ import axios from "axios";
 import Select from "react-select";
 import toast from "react-hot-toast";
 
+// FilePond imports
+import { FilePond, registerPlugin } from 'react-filepond';
+import FilePondPluginImagePreview from 'filepond-plugin-image-preview';
+import FilePondPluginFileValidateType from 'filepond-plugin-file-validate-type';
+
+// Import styles
+import 'filepond/dist/filepond.min.css';
+import 'filepond-plugin-image-preview/dist/filepond-plugin-image-preview.css';
+
+registerPlugin(FilePondPluginImagePreview, FilePondPluginFileValidateType);
+
 export default function ProductForm({ initialData = null, onSubmitSuccess }) {
   const isEdit = !!initialData;
 
@@ -14,6 +25,7 @@ export default function ProductForm({ initialData = null, onSubmitSuccess }) {
   const [categories, setCategories] = useState([]);
   const [brands, setBrands] = useState([]);
   const [suppliers, setSuppliers] = useState([]);
+  const [files, setFiles] = useState([]);
 
   const fetchDropdowns = async () => {
     const [catRes, brandRes, supRes] = await Promise.all([
@@ -35,19 +47,33 @@ export default function ProductForm({ initialData = null, onSubmitSuccess }) {
     }));
   };
 
-  useEffect(() => {
-    fetchDropdowns();
-    if (!isEdit) {
-      fetchNewCodes();
-    }
-  }, []);
+useEffect(() => {
+  fetchDropdowns();
+  if (!isEdit) {
+    fetchNewCodes();
+  } else if (initialData?.image) {
+    const imageUrl = `${window.location.origin}/storage/${initialData.image}`;
+
+    setFiles([
+      {
+        // Give FilePond a name and a URL
+        source: imageUrl,
+        options: {
+          type: "local",
+          file: {
+            name: initialData.image.split("/").pop() || "product.jpg", // Extract file name
+            size: 12345, // Optional: fake size, FilePond needs it sometimes
+            type: "image/jpeg", // or image/png
+          },
+        },
+      },
+    ]);
+  }
+}, []);
+
 
   const handleChange = (e) => {
     setForm({ ...form, [e.target.name]: e.target.value });
-  };
-
-  const handleFileChange = (e) => {
-    setForm({ ...form, image: e.target.files[0] });
   };
 
   const handleSubmit = async (e) => {
@@ -60,6 +86,10 @@ export default function ProductForm({ initialData = null, onSubmitSuccess }) {
         }
       });
 
+      if (files.length > 0 && files[0].file) {
+        formData.append("image", files[0].file);
+      }
+
       if (isEdit) {
         await axios.post(`/api/products/${initialData.id}?_method=PUT`, formData, {
           headers: { "Content-Type": "multipart/form-data" },
@@ -70,8 +100,9 @@ export default function ProductForm({ initialData = null, onSubmitSuccess }) {
           headers: { "Content-Type": "multipart/form-data" },
         });
         toast.success("Product added!");
-        setForm({ narcotic: "no" }); 
-        fetchNewCodes(); 
+        setForm({ narcotic: "no" });
+        setFiles([]);
+        fetchNewCodes();
       }
 
       if (onSubmitSuccess) onSubmitSuccess();
@@ -87,11 +118,13 @@ export default function ProductForm({ initialData = null, onSubmitSuccess }) {
       <div className="grid grid-cols-1">
         <div>
           <label className="block font-medium">Image</label>
-          <input
-            type="file"
-            name="image"
-            onChange={handleFileChange}
-            className="border w-full px-2 py-1 rounded"
+          <FilePond
+            files={files}
+            onupdatefiles={setFiles}
+            allowMultiple={false}
+            acceptedFileTypes={["image/*"]}
+            labelIdle='Drag & Drop your image or <span class="filepond--label-action">Browse</span>'
+            credits={false}
           />
         </div>
       </div>
@@ -219,12 +252,12 @@ export default function ProductForm({ initialData = null, onSubmitSuccess }) {
         <input type="number" name="margin" disabled value={form.margin || ""} onChange={handleChange} placeholder="Margin %" className="border w-full px-2 py-1 rounded bg-gray-100" />
         <input type="number" name="max_discount" value={form.max_discount || ""} onChange={handleChange} placeholder="Max Discount" className="border px-2 py-1 rounded" />
       </div>
-        <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-3 gap-4">
         <label className="flex items-center space-x-2">
           <input type="checkbox" name="narcotic" checked={form.narcotic === "yes"} onChange={(e) => setForm({ ...form, narcotic: e.target.checked ? "yes" : "no" })} className="h-4 w-4" />
           <span>Narcotic</span>
         </label>
-        </div>
+      </div>
 
       {/* Save Button */}
       <div>
