@@ -54,20 +54,14 @@ useEffect(() => {
   } else if (initialData?.image) {
     const imageUrl = `${window.location.origin}/storage/${initialData.image}`;
 
-    setFiles([
-      {
-        // Give FilePond a name and a URL
-        source: imageUrl,
-        options: {
-          type: "local",
-          file: {
-            name: initialData.image.split("/").pop() || "product.jpg", // Extract file name
-            size: 12345, // Optional: fake size, FilePond needs it sometimes
-            type: "image/jpeg", // or image/png
-          },
-        },
-      },
-    ]);
+setFiles([
+  {
+    source: imageUrl,
+    options: {
+      type: "remote",
+    },
+  },
+]);
   }
 }, []);
 
@@ -116,18 +110,19 @@ useEffect(() => {
     <form onSubmit={handleSubmit} className="space-y-6">
       {/* Row 1: Image */}
       <div className="grid grid-cols-1">
-        <div>
-          <label className="block font-medium">Image</label>
-          <FilePond
-            files={files}
-            onupdatefiles={setFiles}
-            allowMultiple={false}
-            acceptedFileTypes={["image/*"]}
-            labelIdle='Drag & Drop your image or <span class="filepond--label-action">Browse</span>'
-            credits={false}
-          />
-        </div>
-      </div>
+  <div>
+    <label className="block font-medium">Image</label>
+    <FilePond
+      files={files}
+      onupdatefiles={setFiles}
+      allowMultiple={false}
+      acceptedFileTypes={["image/*"]}
+      labelIdle='Drag & Drop your image or <span class="filepond--label-action">Browse</span>'
+      credits={false}
+    />
+  </div>
+</div>
+
 
       {/* Row 2: Product Code, Barcode, Rack */}
       <div className="grid grid-cols-3 gap-4">
