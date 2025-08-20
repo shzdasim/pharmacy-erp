@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import axios from "axios";
 import Select from "react-select";
 import toast from "react-hot-toast";
-
+import { Link } from "react-router-dom";
 // FilePond imports
 import { FilePond, registerPlugin } from 'react-filepond';
 import FilePondPluginImagePreview from 'filepond-plugin-image-preview';
@@ -70,41 +70,50 @@ setFiles([
     setForm({ ...form, [e.target.name]: e.target.value });
   };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    try {
-      const formData = new FormData();
-      Object.keys(form).forEach((key) => {
-        if (form[key] !== undefined && form[key] !== null) {
-          formData.append(key, form[key]);
-        }
-      });
-
-      if (files.length > 0 && files[0].file) {
-        formData.append("image", files[0].file);
+const handleSubmit = async (e) => {
+  e.preventDefault();
+  try {
+    const formData = new FormData();
+    Object.keys(form).forEach((key) => {
+      if (form[key] !== undefined && form[key] !== null) {
+        formData.append(key, form[key]);
       }
+    });
 
-      if (isEdit) {
-        await axios.post(`/api/products/${initialData.id}?_method=PUT`, formData, {
-          headers: { "Content-Type": "multipart/form-data" },
-        });
-        toast.success("Product updated!");
-      } else {
-        await axios.post("/api/products", formData, {
-          headers: { "Content-Type": "multipart/form-data" },
-        });
-        toast.success("Product added!");
-        setForm({ narcotic: "no" });
-        setFiles([]);
-        fetchNewCodes();
-      }
-
-      if (onSubmitSuccess) onSubmitSuccess();
-    } catch (error) {
-      console.error("❌ Laravel Validation Errors:", error.response?.data?.errors);
-      toast.error("Failed! Check console for details.");
+    if (files.length > 0 && files[0].file) {
+      formData.append("image", files[0].file);
     }
-  };
+
+    if (isEdit) {
+      await axios.post(`/api/products/${initialData.id}?_method=PUT`, formData, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+      toast.success("✅ Product updated!");
+    } else {
+      await axios.post("/api/products", formData, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+      toast.success("✅ Product added!");
+      setForm({ narcotic: "no" });
+      setFiles([]);
+      fetchNewCodes();
+    }
+
+    if (onSubmitSuccess) onSubmitSuccess();
+  } catch (error) {
+    if (error.response?.status === 422) {
+      // Laravel validation errors
+      const errors = error.response.data.errors;
+      Object.values(errors).forEach((messages) => {
+        messages.forEach((msg) => toast.error(msg));
+      });
+    } else {
+      // Other errors
+      toast.error("❌ Something went wrong. Please try again.");
+    }
+  }
+};
+
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
@@ -255,9 +264,22 @@ setFiles([
       </div>
 
       {/* Save Button */}
-      <div>
-        <button className="bg-blue-600 text-white px-4 py-2 rounded">Save Product</button>
-      </div>
+<div className="flex items-stretch gap-2">
+  <button
+    type="submit"
+    className="bg-blue-600 text-white px-4 py-2 rounded"
+  >
+    Save Product
+  </button>
+
+  <Link
+    to="/products"
+    className="bg-gray-500 text-white px-4 py-2 rounded flex items-center justify-center"
+  >
+    Back to Products
+  </Link>
+</div>
+
     </form>
   );
 }
