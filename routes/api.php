@@ -3,6 +3,7 @@
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\AuthController;
+use App\Http\Controllers\BatchController;
 use App\Http\Controllers\BrandController;
 use App\Http\Controllers\CategoryController;
 use App\Http\Controllers\CustomerController;
@@ -18,4 +19,4 @@ Route::apiResource('categories', CategoryController::class);
 Route::apiResource('brands', BrandController::class);
 Route::get('products/new-code', [ProductController::class, 'generateNewCode']);
 Route::apiResource('products', ProductController::class);
-
+Route::get('products/{product}/batches', [BatchController::class, 'index']);
