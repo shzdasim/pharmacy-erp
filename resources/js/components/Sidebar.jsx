@@ -2,14 +2,14 @@ import React, { useState, useRef, useEffect } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
   HomeIcon,
-  ClipboardDocumentListIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
-  UsersIcon,
+  BuildingStorefrontIcon,
+  UserGroupIcon,
+  Squares2X2Icon,
   TagIcon,
   CubeIcon,
-  ChevronDownIcon,
-  ChevronUpIcon,
+  DocumentTextIcon,
 } from "@heroicons/react/24/outline";
 
 export default function Sidebar() {
@@ -17,67 +17,46 @@ export default function Sidebar() {
   const { pathname } = useLocation();
   const navigate = useNavigate();
 
-  // State to toggle submenu "Item Creation"
-  const [itemCreationOpen, setItemCreationOpen] = useState(true);
-
-  // Menu structure with children
+  // Menu items
   const menu = [
     { name: "Dashboard", path: "/dashboard", icon: <HomeIcon className="w-6 h-6" /> },
-    {
-      name: "Item Creation",
-      icon: <ClipboardDocumentListIcon className="w-6 h-6" />,
-      children: [
-        { name: "Suppliers", path: "/suppliers", icon: <UsersIcon className="w-6 h-6" /> },
-        { name: "Customers", path: "/customers", icon: <UsersIcon className="w-6 h-6" /> },
-        { name: "Categories", path: "/categories", icon: <TagIcon className="w-6 h-6" /> },
-        { name: "Brands", path: "/brands", icon: <CubeIcon className="w-6 h-6" /> },
-        { name: "Products", path: "/products", icon: <CubeIcon className="w-6 h-6" /> },
-      ],
-    },
+    { name: "Suppliers", path: "/suppliers", icon: <BuildingStorefrontIcon className="w-6 h-6" /> },
+    { name: "Customers", path: "/customers", icon: <UserGroupIcon className="w-6 h-6" /> },
+    { name: "Categories", path: "/categories", icon: <Squares2X2Icon className="w-6 h-6" /> },
+    { name: "Brands", path: "/brands", icon: <TagIcon className="w-6 h-6" /> },
+    { name: "Products", path: "/products", icon: <CubeIcon className="w-6 h-6" /> },
+    { name: "Purchase Invoice", path: "/purchase-invoices", icon: <DocumentTextIcon className="w-6 h-6" /> },
   ];
-
-  // Flatten menu for keyboard nav (parent + children)
-  const flatMenu = [];
-  menu.forEach((item) => {
-    flatMenu.push({ ...item, isChild: false });
-    if (item.children && itemCreationOpen) {
-      item.children.forEach((child) =>
-        flatMenu.push({ ...child, isChild: true, parentName: item.name })
-      );
-    }
-  });
 
   // Refs for keyboard focus
   const itemRefs = useRef([]);
-
-  // Track focused index for keyboard nav
   const [focusedIndex, setFocusedIndex] = useState(-1);
 
-  // On pathname change, set focused index to current path item
+  // On pathname change, set focused index
   useEffect(() => {
-    const idx = flatMenu.findIndex((item) => item.path === pathname);
+    const idx = menu.findIndex((item) => item.path === pathname);
     setFocusedIndex(idx);
-  }, [pathname, itemCreationOpen]); // re-check when submenu toggles
+  }, [pathname]);
 
-  // Focus current focused element on change
+  // Focus element on index change
   useEffect(() => {
     if (focusedIndex >= 0 && itemRefs.current[focusedIndex]) {
       itemRefs.current[focusedIndex].focus();
     }
   }, [focusedIndex]);
 
-  // Keyboard navigation (up/down/home/end/enter/space)
+  // Keyboard navigation
   function handleKeyDown(e) {
-    if (flatMenu.length === 0) return;
+    if (menu.length === 0) return;
 
     switch (e.key) {
       case "ArrowDown":
         e.preventDefault();
-        setFocusedIndex((prev) => (prev + 1) % flatMenu.length);
+        setFocusedIndex((prev) => (prev + 1) % menu.length);
         break;
       case "ArrowUp":
         e.preventDefault();
-        setFocusedIndex((prev) => (prev <= 0 ? flatMenu.length - 1 : prev - 1));
+        setFocusedIndex((prev) => (prev <= 0 ? menu.length - 1 : prev - 1));
         break;
       case "Home":
         e.preventDefault();
@@ -85,21 +64,14 @@ export default function Sidebar() {
         break;
       case "End":
         e.preventDefault();
-        setFocusedIndex(flatMenu.length - 1);
+        setFocusedIndex(menu.length - 1);
         break;
       case "Enter":
       case " ":
         e.preventDefault();
         if (focusedIndex >= 0) {
-          const item = flatMenu[focusedIndex];
-          if (item.children) {
-            // toggle submenu on parent enter
-            if (item.name === "Item Creation") {
-              setItemCreationOpen((v) => !v);
-            }
-          } else if (item.path) {
-            navigate(item.path);
-          }
+          const item = menu[focusedIndex];
+          if (item.path) navigate(item.path);
         }
         break;
       default:
@@ -113,6 +85,7 @@ export default function Sidebar() {
         collapsed ? "w-20" : "w-64"
       }`}
     >
+      {/* Header */}
       <div className="flex items-center justify-between p-4 border-b">
         {!collapsed && <span className="text-xl font-bold">Pharmacy ERP</span>}
         <button
@@ -128,113 +101,36 @@ export default function Sidebar() {
         </button>
       </div>
 
+      {/* Navigation */}
       <nav
         className="mt-4"
         role="list"
-        tabIndex={0} // focusable container
+        tabIndex={0}
         aria-label="Main navigation"
         onKeyDown={handleKeyDown}
       >
         {menu.map((item, index) => {
-          const isActiveParent = pathname.startsWith(item.path);
-          const isFocusedParent = focusedIndex >= 0 && flatMenu[focusedIndex].name === item.name && !flatMenu[focusedIndex].isChild;
+          const isActive = pathname === item.path;
+          const isFocused = focusedIndex === index;
 
-          if (item.children) {
-            return (
-              <div key={item.name}>
-                <button
-                  ref={(el) => {
-                    const idx = flatMenu.findIndex((i) => i.name === item.name && !i.isChild);
-                    itemRefs.current[idx] = el;
-                  }}
-                  onClick={() => setItemCreationOpen((v) => !v)}
-                  className={`flex items-center justify-between w-full p-2 mx-2 mt-2 rounded-lg focus:outline-none ${
-                    isActiveParent
-                      ? "bg-blue-100 text-blue-600"
-                      : "hover:bg-gray-100 text-gray-900"
-                  } ${
-                    isFocusedParent && !isActiveParent
-                      ? "bg-gray-200 text-gray-900"
-                      : ""
-                  }`}
-                  tabIndex={isFocusedParent ? 0 : -1}
-                  aria-expanded={itemCreationOpen}
-                  aria-controls="item-creation-submenu"
-                >
-                  <span className="flex items-center space-x-3">
-                    {item.icon}
-                    {!collapsed && <span>{item.name}</span>}
-                  </span>
-                  {!collapsed &&
-                    (itemCreationOpen ? (
-                      <ChevronUpIcon className="w-5 h-5" />
-                    ) : (
-                      <ChevronDownIcon className="w-5 h-5" />
-                    ))}
-                </button>
-
-                {itemCreationOpen && !collapsed && (
-                  <div id="item-creation-submenu" role="list" className="ml-8">
-                    {item.children.map((child) => {
-                      const idx = flatMenu.findIndex(
-                        (i) => i.name === child.name && i.isChild
-                      );
-                      const isActiveChild = pathname === child.path;
-                      const isFocusedChild = focusedIndex === idx;
-
-                      return (
-                        <Link
-                          key={child.path}
-                          to={child.path}
-                          ref={(el) => (itemRefs.current[idx] = el)}
-                          className={`flex items-center p-2 mt-1 rounded-lg focus:outline-none ${
-                            isActiveChild
-                              ? "bg-blue-100 text-blue-600"
-                              : "hover:bg-gray-100 text-gray-900"
-                          } ${
-                            isFocusedChild && !isActiveChild
-                              ? "bg-gray-200 text-gray-900"
-                              : ""
-                          }`}
-                          tabIndex={isFocusedChild ? 0 : -1}
-                          onFocus={() => setFocusedIndex(idx)}
-                          aria-current={isActiveChild ? "page" : undefined}
-                        >
-                          {child.icon}
-                          <span className="ml-3">{child.name}</span>
-                        </Link>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            );
-          } else {
-            // single item (like Dashboard)
-            const isActive = pathname === item.path;
-            const isFocused = focusedIndex === index;
-
-            return (
-              <Link
-                key={item.path}
-                to={item.path}
-                ref={(el) => (itemRefs.current[index] = el)}
-                className={`flex items-center p-2 mx-2 mt-2 rounded-lg focus:outline-none ${
-                  isActive
-                    ? "bg-blue-100 text-blue-600"
-                    : "hover:bg-gray-100 text-gray-900"
-                } ${
-                  isFocused && !isActive ? "bg-gray-200 text-gray-900" : ""
-                }`}
-                tabIndex={isFocused ? 0 : -1}
-                onFocus={() => setFocusedIndex(index)}
-                aria-current={isActive ? "page" : undefined}
-              >
-                {item.icon}
-                {!collapsed && <span className="ml-3">{item.name}</span>}
-              </Link>
-            );
-          }
+          return (
+            <Link
+              key={item.path}
+              to={item.path}
+              ref={(el) => (itemRefs.current[index] = el)}
+              className={`flex items-center p-2 mx-2 mt-2 rounded-lg focus:outline-none ${
+                isActive
+                  ? "bg-blue-100 text-blue-600"
+                  : "hover:bg-gray-100 text-gray-900"
+              } ${isFocused && !isActive ? "bg-gray-200 text-gray-900" : ""}`}
+              tabIndex={isFocused ? 0 : -1}
+              onFocus={() => setFocusedIndex(index)}
+              aria-current={isActive ? "page" : undefined}
+            >
+              {item.icon}
+              {!collapsed && <span className="ml-3">{item.name}</span>}
+            </Link>
+          );
         })}
       </nav>
     </div>

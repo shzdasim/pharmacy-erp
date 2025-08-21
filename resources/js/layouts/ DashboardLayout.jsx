@@ -29,7 +29,7 @@ export default function DashboardLayout({ children }) {
       <div className="flex-1 flex flex-col">
          <Toaster position="top-right" reverseOrder={false} />
         <Topbar />
-        <main className="p-6 flex-1 overflow-y-auto">{children}</main>
+        <main className=" flex-1 overflow-y-auto">{children}</main>
       </div>
     </div>
   );

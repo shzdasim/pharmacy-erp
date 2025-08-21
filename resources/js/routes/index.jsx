@@ -12,6 +12,9 @@ import Brands from "../pages/Brands.jsx";
 import ProductsIndex from "../pages/Products/index.jsx";
 import CreateProduct from "../pages/Products/Create.jsx";
 import EditProduct from "../pages/Products/Edit.jsx";
+import PurchaseInvoicesIndex from "../pages/PurchaseInvoice/index.jsx";
+import CreatePurchaseInvoice from "../pages/PurchaseInvoice/Create.jsx";
+import EditPurchaseInvoice from "../pages/PurchaseInvoice/Edit.jsx";
 
 function DashboardHome() {
   return <h1 className="text-2xl font-bold">Welcome to the Dashboard</h1>;
@@ -119,6 +122,38 @@ export default function AppRoutes() {
     </ProtectedRoute>
   }
 />
+      {/* Purchase Invoices */}
+      <Route
+        path="/purchase-invoices"
+        element={
+          <ProtectedRoute>
+            <DashboardLayout>
+              <PurchaseInvoicesIndex />
+            </DashboardLayout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/purchase-invoices/create"
+        element={
+          <ProtectedRoute>
+            <DashboardLayout>
+              <CreatePurchaseInvoice />
+            </DashboardLayout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/purchase-invoices/:id/edit"
+        element={
+          <ProtectedRoute>
+            <DashboardLayout>
+              <EditPurchaseInvoice />
+            </DashboardLayout>
+          </ProtectedRoute>
+        }
+      />
+
 
 </Routes>
   );
