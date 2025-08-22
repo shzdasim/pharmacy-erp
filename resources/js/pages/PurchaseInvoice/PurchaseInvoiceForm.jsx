@@ -8,7 +8,7 @@ export default function PurchaseInvoiceForm({ invoiceId, onSuccess }) {
   const [form, setForm] = useState({
     supplier_id: "",
     posted_number: "",
-    posted_date: "",
+    posted_date: new Date().toISOString().split("T")[0],
     remarks: "",
     invoice_number: "",
     invoice_amount: "",
@@ -121,21 +121,58 @@ function handleItemChange(index, field, value) {
     setForm({ ...form, items: newItems });
   };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    try {
-      if (invoiceId) {
-        await axios.put(`/api/purchase-invoices/${invoiceId}`, form);
-        toast.success("Invoice updated successfully");
-      } else {
-        await axios.post("/api/purchase-invoices", form);
-        toast.success("Invoice created successfully");
-      }
-      onSuccess();
-    } catch (err) {
-      toast.error("Failed to save invoice");
+const handleSubmit = async (e) => {
+  e.preventDefault();
+
+  // 1. Prevent duplicate items (same product + batch)
+  const seen = new Map();
+  for (let item of form.items) {
+    const key = `${item.product_id}-${item.batch}`;
+    if (seen.has(key)) {
+      const product = products.find((p) => p.id === item.product_id);
+      const productName = product ? product.name : item.product_id;
+      toast.error(
+        `Duplicate product found: ${productName} (Batch: ${item.batch})`
+      );
+      return;
     }
-  };
+    seen.set(key, true);
+  }
+
+  // 2. Prevent negative margin
+  const negativeMarginItem = form.items.find((item) => Number(item.margin) < 0);
+  if (negativeMarginItem) {
+    const product = products.find((p) => p.id === negativeMarginItem.product_id);
+    const productName = product ? product.name : negativeMarginItem.product_id;
+    toast.error(
+      `Margin cannot be negative for Product ${productName}`
+    );
+    return;
+  }
+
+  // 3. Validate invoice amount vs total amount
+  const invoiceAmount = Number(form.invoice_amount || 0);
+  const totalAmount = Number(form.total_amount || 0);
+  if (Math.abs(invoiceAmount - totalAmount) > 5) {
+    toast.error(
+      `Invoice amount (${invoiceAmount}) must be equal to total amount (${totalAmount}), difference > 5`
+    );
+    return;
+  }
+
+  try {
+    if (invoiceId) {
+      await axios.put(`/api/purchase-invoices/${invoiceId}`, form);
+      toast.success("Invoice updated successfully");
+    } else {
+      await axios.post("/api/purchase-invoices", form);
+      toast.success("Invoice created successfully");
+    }
+    onSuccess();
+  } catch (err) {
+    toast.error("Failed to save invoice");
+  }
+};
 
   return (
     <form onSubmit={handleSubmit} className="flex flex-col" style={{minHeight: "74vh", maxHeight: "80vh" }}>
@@ -452,7 +489,7 @@ function handleItemChange(index, field, value) {
           </td>
 
           {/* Quantity */}
-          
+          <td className="border" style={{ display: 'none' }}>
             <input
               type="number"
               readOnly
@@ -462,7 +499,7 @@ function handleItemChange(index, field, value) {
               className="border bg-gray-100 w-full h-6 text-[11px] px-1 appearance-none [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
             />
         
-
+            </td>
           {/* Add */}
           <td className="border">
             <button
