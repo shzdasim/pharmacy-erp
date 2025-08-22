@@ -240,13 +240,13 @@ function handleItemChange(index, field, value) {
     <thead className="sticky top-0 bg-gray-100 z-10">
       <tr>
         <th rowSpan={2} className="border w-6">#</th>
-        <th rowSpan={2} colSpan={3} className="border w-[300px]">Product</th>
+        <th rowSpan={2} colSpan={1} className="border w-[80px]">Product</th>
         <th colSpan={3} className="border">Pack Size / Batch / Expiry</th>
-        <th colSpan={2} className="border">Qty (Pack / Unit)</th>
+        <th colSpan={3} className="border">Qty (Pack / Unit)</th>
         <th colSpan={2} className="border">Purchase Price (P / U)</th>
-        <th colSpan={3} className="border">Disc % / Bonus (P / U)</th>
+        <th colSpan={2} className="border">Disc % / Bonus (P / U)</th>
         <th colSpan={2} className="border">Sale Price (P / U)</th>
-        <th colSpan={3} className="border">Margin % / Avg / Qty</th>
+        <th colSpan={2} className="border">Margin % / Avg </th>
         <th rowSpan={2} className="border w-6">+</th>
       </tr>
 
@@ -255,22 +255,21 @@ function handleItemChange(index, field, value) {
         <th className="border w-16">Batch</th>
         <th className="border w-20">Exp</th>
 
-        <th className="border w-12">Pack</th>
-        <th className="border w-12">Unit</th>
+        <th className="border w-12">Pack.Q</th>
+        <th className="border w-12">Unit.Q</th>
 
-        <th className="border w-14">Pack</th>
-        <th className="border w-14">Unit</th>
+        <th className="border w-14">Pack.P</th>
+        <th className="border w-14">Unit.P</th>
 
         <th className="border w-14">Disc%</th>
         <th className="border w-14">PBonus</th>
         <th className="border w-14">UBonus</th>
 
-        <th className="border w-14">Pack</th>
-        <th className="border w-14">Unit</th>
+        <th className="border w-14">Pack.S</th>
+        <th className="border w-14">Unit.S</th>
 
         <th className="border w-14">Margin%</th>
         <th className="border w-16">Avg</th>
-        <th className="border w-12">Qty</th>
       </tr>
     </thead>
 
@@ -289,7 +288,7 @@ function handleItemChange(index, field, value) {
           </td>
 
           {/* Product Search Input - colspan 3 */}
-        <td colSpan={3} className="border text-left">
+        <td colSpan={1} className="border text-left w-[200px]">
         <ProductSearchInput
             value={item.product_id}
             onChange={(val) => {
@@ -453,15 +452,16 @@ function handleItemChange(index, field, value) {
           </td>
 
           {/* Quantity */}
-          <td className="border">
+          
             <input
               type="number"
               readOnly
+              hidden
               value={item.quantity ?? ""}
               onChange={(e) => handleItemChange(i, "quantity", e.target.value)}
               className="border bg-gray-100 w-full h-6 text-[11px] px-1 appearance-none [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
             />
-          </td>
+        
 
           {/* Add */}
           <td className="border">
