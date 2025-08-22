@@ -6,6 +6,11 @@
 const n = (v) => (v === "" || v === null || v === undefined ? 0 : Number(v) || 0);
 
 /**
+ * Round safely to 2 decimals.
+ */
+const r2 = (v) => (Number.isFinite(v) ? Number(v.toFixed(2)) : 0);
+
+/**
  * Recalculate a single invoice row.
  *
  * Rules:
@@ -13,10 +18,6 @@ const n = (v) => (v === "" || v === null || v === undefined ? 0 : Number(v) || 0
  * - Bonus cost is spread over all units (paid + bonus) when computing avg cost.
  * - Margin % = (sale - cost) / sale * 100 using unit sale price and averaged unit cost.
  * - Two-way sync pack/unit fields using pack_size.
- *
- * @param {object} item           Current row state
- * @param {string|null} changedField  The field just edited by the user
- * @returns {object} updated item
  */
 export function recalcItem(item, changedField = null) {
   const packSize = n(item.pack_size);
@@ -44,7 +45,6 @@ export function recalcItem(item, changedField = null) {
     if (changedField === "pack_quantity") unitQty = packQty * packSize;
     else if (changedField === "unit_quantity") packQty = unitQty / packSize;
     else if (changedField === "pack_size") {
-      // Only infer the side that is empty to avoid stomping user intent
       if (packQty > 0 && unitQty === 0) unitQty = packQty * packSize;
       else if (unitQty > 0 && packQty === 0) packQty = unitQty / packSize;
     }
@@ -77,22 +77,16 @@ export function recalcItem(item, changedField = null) {
   // ------------------------------
   // Totals & pricing
   // ------------------------------
-  // Source of truth for paid quantity → unitQty (already synced from packQty)
   const paidUnits = unitQty; // excludes free units
-  const bonusUnits = unitBonus; // unitBonus already includes converted pack bonus
+  const bonusUnits = unitBonus; // already converted from pack_bonus
+  const totalUnits = paidUnits + bonusUnits; // UI: qty + bonus
 
-  // UI quantity requirement: unit quantity + unit bonus
-  const totalUnits = paidUnits + bonusUnits;
-
-  // Value of paid units
   const subTotal = paidUnits * unitPurchase;
   const discountAmount = (subTotal * discountPct) / 100;
   const netTotal = subTotal - discountAmount;
 
-  // Average unit cost spreads net cost over all units (paid + bonus)
   const avgPrice = totalUnits > 0 ? netTotal / totalUnits : 0;
 
-  // Margin % = (sale - cost) / sale * 100 using unit sale price
   const costForMargin = avgPrice > 0 ? avgPrice : unitPurchase;
   const margin = unitSale > 0 ? ((unitSale - costForMargin) / unitSale) * 100 : "";
 
@@ -106,13 +100,63 @@ export function recalcItem(item, changedField = null) {
     unit_sale_price: unitSale,
     pack_bonus: packBonus,
     unit_bonus: unitBonus,
-    // Quantity displayed in UI
     quantity: totalUnits,
-    // Net value after discount (item-level)
-    sub_total: netTotal,
-    // Average cost per unit after discount & bonus
-    avg_price: avgPrice,
-    // 2-decimal margin for display
-    margin: margin === "" ? "" : Number.isFinite(margin) ? Number(margin.toFixed(2)) : "",
+    sub_total: r2(netTotal),
+    avg_price: r2(avgPrice),
+    margin: margin === "" ? "" : Number.isFinite(margin) ? r2(margin) : "",
+  };
+}
+
+/**
+ * Sum all row subtotals.
+ */
+function sumRows(items = []) {
+  return items.reduce((sum, it) => sum + n(it.sub_total), 0);
+}
+
+/**
+ * Recalculate footer totals (discount, tax, total).
+ */
+export function recalcFooter(form, changedField = null) {
+  const rowsTotal = sumRows(form.items);
+
+  let discountPct = n(form.discount_percentage);
+  let discountAmt = n(form.discount_amount);
+  let taxPct = n(form.tax_percentage);
+  let taxAmt = n(form.tax_amount);
+
+  // --- Discount ---
+  if (changedField === "discount_percentage") {
+    discountAmt = (rowsTotal * discountPct) / 100;
+  } else if (changedField === "discount_amount") {
+    discountPct = rowsTotal > 0 ? (discountAmt / rowsTotal) * 100 : 0;
+  }
+
+  if (discountAmt > rowsTotal) {
+    discountAmt = rowsTotal;
+    discountPct = 100;
+  }
+
+  const afterDiscount = rowsTotal - discountAmt;
+
+  // --- Tax ---
+  if (changedField === "tax_percentage") {
+    taxAmt = (afterDiscount * taxPct) / 100;
+  } else if (changedField === "tax_amount") {
+    taxPct = afterDiscount > 0 ? (taxAmt / afterDiscount) * 100 : 0;
+  }
+
+  if (taxAmt < 0) taxAmt = 0;
+
+  const total = afterDiscount + taxAmt;
+
+  return {
+    ...form,
+    rows_total: r2(rowsTotal),
+    discount_percentage: r2(discountPct),
+    discount_amount: r2(discountAmt),
+    tax_percentage: r2(taxPct),
+    tax_amount: r2(taxAmt),
+    total_amount: r2(total),
   };
 }

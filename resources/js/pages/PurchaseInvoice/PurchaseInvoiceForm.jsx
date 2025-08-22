@@ -3,7 +3,7 @@ import axios from "axios";
 import toast from "react-hot-toast";
 import Select from "react-select";
 import ProductSearchInput from "../../components/ProductSearchInput.jsx";
-import { recalcItem } from "../../Formula/PurchaseInvoice.js";
+import { recalcItem, recalcFooter } from "../../Formula/PurchaseInvoice.js";
 export default function PurchaseInvoiceForm({ invoiceId, onSuccess }) {
   const [form, setForm] = useState({
     supplier_id: "",
@@ -76,9 +76,20 @@ export default function PurchaseInvoiceForm({ invoiceId, onSuccess }) {
 };
 
 
-  const handleChange = (e) => {
-    setForm({ ...form, [e.target.name]: e.target.value });
-  };
+const handleChange = (e) => {
+  const { name, value } = e.target;
+  let newForm = { ...form, [name]: value };
+
+  // Recalculate footer only if footer fields are being edited
+  if (
+    ["tax_percentage", "tax_amount", "discount_percentage", "discount_amount"].includes(name)
+  ) {
+    newForm = recalcFooter(newForm, name);
+  }
+
+  setForm(newForm);
+};
+
 
   const handleSelectChange = (field, value) => {
     setForm({ ...form, [field]: value?.value || "" });
@@ -90,8 +101,13 @@ function handleItemChange(index, field, value) {
     { ...newItems[index], [field]: value },
     field
   );
-  setForm({ ...form, items: newItems });
+
+  let newForm = { ...form, items: newItems };
+  newForm = recalcFooter(newForm, "items"); // recalc totals when items change
+
+  setForm(newForm);
 }
+
 
   const addItem = () => {
     setForm({
@@ -513,9 +529,10 @@ function handleItemChange(index, field, value) {
           <input
             type="number"
             name="total_amount"
+            readOnly
             value={form.total_amount}
             onChange={handleChange}
-            className="border rounded w-full p-1 h-7 text-xs"
+            className="border rounded w-full p-1 h-7 text-xs bg-gray-100"
           />
         </td>
         <td className="border p-1 text-center align-middle">
