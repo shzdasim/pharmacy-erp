@@ -84,21 +84,14 @@ export default function PurchaseInvoiceForm({ invoiceId, onSuccess }) {
     setForm({ ...form, [field]: value?.value || "" });
   };
 
-    const handleItemChange = (index, field, value) => {
-    const newItems = [...form.items];
-
-    // update field first
-    newItems[index] = {
-        ...newItems[index],
-        [field]: value,
-    };
-
-    // recalc dependent fields using formula helper
-    newItems[index] = recalcItem(newItems[index]);
-
-    setForm({ ...form, items: newItems });
-    };
-
+function handleItemChange(index, field, value) {
+  const newItems = [...form.items];
+  newItems[index] = recalcItem(
+    { ...newItems[index], [field]: value },
+    field
+  );
+  setForm({ ...form, items: newItems });
+}
 
   const addItem = () => {
     setForm({
@@ -280,27 +273,26 @@ export default function PurchaseInvoiceForm({ invoiceId, onSuccess }) {
           </td>
 
           {/* Product Search Input - colspan 3 */}
-          {/* Product Search Input - colspan 3 */}
-<td colSpan={3} className="border text-left">
-  <ProductSearchInput
-    value={item.product_id}
-    onChange={(val) => {
-      const selectedProduct = products.find((p) => p.id === val);
-      const newItems = [...form.items];
-      // Merge product defaults into row
-      newItems[i] = recalcItem(
-        {
-          ...newItems[i],
-          product_id: selectedProduct?.id || "",
-          pack_size: selectedProduct?.pack_size || "",
-        },
-        selectedProduct
-      );
-      setForm({ ...form, items: newItems });
-    }}
-    products={products}
-  />
-</td>
+        <td colSpan={3} className="border text-left">
+        <ProductSearchInput
+            value={item.product_id}
+            onChange={(val) => {
+            const selectedProduct = products.find((p) => p.id === val);
+            const newItems = [...form.items];
+            // Merge product defaults into row
+            newItems[i] = recalcItem(
+                {
+                ...newItems[i],
+                product_id: selectedProduct?.id || "",
+                pack_size: selectedProduct?.pack_size || "",
+                },
+                selectedProduct
+            );
+            setForm({ ...form, items: newItems });
+            }}
+            products={products}
+        />
+        </td>
 
 
           {/* Pack Size */}
