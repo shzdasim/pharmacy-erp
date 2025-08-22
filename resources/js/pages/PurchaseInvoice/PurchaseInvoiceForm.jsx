@@ -3,6 +3,7 @@ import axios from "axios";
 import toast from "react-hot-toast";
 import Select from "react-select";
 import ProductSearchInput from "../../components/ProductSearchInput.jsx";
+import { recalcItem } from "../../Formula/PurchaseInvoice.js";
 export default function PurchaseInvoiceForm({ invoiceId, onSuccess }) {
   const [form, setForm] = useState({
     supplier_id: "",
@@ -45,7 +46,11 @@ export default function PurchaseInvoiceForm({ invoiceId, onSuccess }) {
   useEffect(() => {
     fetchSuppliers();
     fetchProducts();
-    if (invoiceId) fetchInvoice();
+    if (invoiceId) {
+        fetchInvoice();
+    } else {
+        fetchNewCode();
+    }
   }, [invoiceId]);
 
   const fetchSuppliers = async () => {
@@ -62,6 +67,14 @@ export default function PurchaseInvoiceForm({ invoiceId, onSuccess }) {
     const res = await axios.get(`/api/purchase-invoices/${invoiceId}`);
     setForm(res.data);
   };
+  const fetchNewCode = async () => {
+  const res = await axios.get("/api/purchase-invoices/new-code");
+  setForm((prev) => ({
+    ...prev,
+    posted_number: res.data.posted_number,
+  }));
+};
+
 
   const handleChange = (e) => {
     setForm({ ...form, [e.target.name]: e.target.value });
@@ -71,11 +84,21 @@ export default function PurchaseInvoiceForm({ invoiceId, onSuccess }) {
     setForm({ ...form, [field]: value?.value || "" });
   };
 
-  const handleItemChange = (index, field, value) => {
+    const handleItemChange = (index, field, value) => {
     const newItems = [...form.items];
-    newItems[index][field] = value;
+
+    // update field first
+    newItems[index] = {
+        ...newItems[index],
+        [field]: value,
+    };
+
+    // recalc dependent fields using formula helper
+    newItems[index] = recalcItem(newItems[index]);
+
     setForm({ ...form, items: newItems });
-  };
+    };
+
 
   const addItem = () => {
     setForm({
@@ -113,17 +136,18 @@ export default function PurchaseInvoiceForm({ invoiceId, onSuccess }) {
   <table className="w-full border-collapse text-xs">
     <tbody>
       <tr>
-        <td className="border p-1 w-1/8">
+        <td className="border p-1 w-1/12">
           <label className="block text-[10px]">Posted Number</label>
           <input
             type="text"
             name="posted_number"
-            value={form.posted_number}
+            readOnly
+            value={form.posted_number || ""}
             onChange={handleChange}
-            className="border rounded w-full p-1 h-7 text-xs"
+            className=" bg-gray-100 border rounded w-full p-1 h-7 text-xs"
           />
         </td>
-        <td className="border p-1 w-1/8">
+        <td className="border p-1 w-1/6">
           <label className="block text-[10px]">Posted Date</label>
           <input
             type="date"
@@ -256,13 +280,28 @@ export default function PurchaseInvoiceForm({ invoiceId, onSuccess }) {
           </td>
 
           {/* Product Search Input - colspan 3 */}
-          <td colSpan={3} className="border text-left">
-            <ProductSearchInput
-              value={item.product_id}
-              onChange={(val) => handleItemChange(i, "product_id", val)}
-              products={products}
-            />
-          </td>
+          {/* Product Search Input - colspan 3 */}
+<td colSpan={3} className="border text-left">
+  <ProductSearchInput
+    value={item.product_id}
+    onChange={(val) => {
+      const selectedProduct = products.find((p) => p.id === val);
+      const newItems = [...form.items];
+      // Merge product defaults into row
+      newItems[i] = recalcItem(
+        {
+          ...newItems[i],
+          product_id: selectedProduct?.id || "",
+          pack_size: selectedProduct?.pack_size || "",
+        },
+        selectedProduct
+      );
+      setForm({ ...form, items: newItems });
+    }}
+    products={products}
+  />
+</td>
+
 
           {/* Pack Size */}
           <td className="border w-14">

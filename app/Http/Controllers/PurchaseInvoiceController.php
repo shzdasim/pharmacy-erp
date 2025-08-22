@@ -7,6 +7,26 @@ use Illuminate\Http\Request;
 
 class PurchaseInvoiceController extends Controller
 {
+  
+public function generateNewCode()
+{
+    $lastInvoice = PurchaseInvoice::orderBy('id', 'desc')->first();
+
+    if ($lastInvoice && $lastInvoice->posted_number && preg_match('/PRINV-(\d+)/', $lastInvoice->posted_number, $matches)) {
+        $lastCodeNum = (int) $matches[1];
+        $newCodeNum = $lastCodeNum + 1;
+    } else {
+        $newCodeNum = 1;
+    }
+
+    $formattedCode = 'PRINV-' . str_pad($newCodeNum, 4, '0', STR_PAD_LEFT);
+
+    return response()->json([
+        'posted_number' => $formattedCode,
+    ]);
+}
+
+
     public function index()
     {
         return PurchaseInvoice::with('supplier', 'items.product')->get();
