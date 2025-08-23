@@ -41,6 +41,14 @@ export default function PurchaseInvoiceForm({ invoiceId, onSuccess }) {
     ],
   });
 
+  // only allow numbers (and optionally decimals)
+const sanitizeNumberInput = (value, allowDecimal = false) => {
+  if (value === "") return ""; // allow empty
+  const regex = allowDecimal ? /^[0-9]*\.?[0-9]*$/ : /^[0-9]*$/;
+  return regex.test(value) ? value : "";
+};
+
+
   const [suppliers, setSuppliers] = useState([]);
   const [products, setProducts] = useState([]);
   const [currentField, setCurrentField] = useState('supplier');
@@ -113,36 +121,70 @@ export default function PurchaseInvoiceForm({ invoiceId, onSuccess }) {
     }));
   };
 
-  const handleChange = (e) => {
-    const { name, value } = e.target;
-    let newForm = { ...form, [name]: value };
+const handleChange = (e) => {
+  const { name, value } = e.target;
+  let newValue = value;
 
-    // Recalculate footer only if footer fields are being edited
-    if (
-      ["tax_percentage", "tax_amount", "discount_percentage", "discount_amount"].includes(name)
-    ) {
-      newForm = recalcFooter(newForm, name);
-    }
+  const numericFields = [
+    "invoice_amount",
+    "tax_percentage",
+    "tax_amount",
+    "discount_percentage",
+    "discount_amount"
+  ];
 
-    setForm(newForm);
-  };
+  if (numericFields.includes(name)) {
+    newValue = sanitizeNumberInput(value, true);
+  }
+
+  let newForm = { ...form, [name]: newValue };
+
+  if (
+    ["tax_percentage", "tax_amount", "discount_percentage", "discount_amount"].includes(name)
+  ) {
+    newForm = recalcFooter(newForm, name);
+  }
+
+  setForm(newForm);
+};
+
 
   const handleSelectChange = (field, value) => {
     setForm({ ...form, [field]: value?.value || "" });
   };
 
-  function handleItemChange(index, field, value) {
-    const newItems = [...form.items];
-    newItems[index] = recalcItem(
-      { ...newItems[index], [field]: value },
-      field
-    );
+function handleItemChange(index, field, rawValue) {
+  let value = rawValue;
 
-    let newForm = { ...form, items: newItems };
-    newForm = recalcFooter(newForm, "items"); // recalc totals when items change
+  // restrict numeric fields
+  const numericFields = [
+    "pack_quantity",
+    "unit_quantity",
+    "pack_purchase_price",
+    "unit_purchase_price",
+    "pack_sale_price",
+    "unit_sale_price",
+    "pack_bonus",
+    "unit_bonus",
+    "item_discount_percentage",
+  ];
 
-    setForm(newForm);
+  if (numericFields.includes(field)) {
+    value = sanitizeNumberInput(rawValue, true); // true if you want decimals
   }
+
+  const newItems = [...form.items];
+  newItems[index] = recalcItem(
+    { ...newItems[index], [field]: value },
+    field
+  );
+
+  let newForm = { ...form, items: newItems };
+  newForm = recalcFooter(newForm, "items");
+
+  setForm(newForm);
+}
+
 
   const addItem = () => {
     setForm((prev) => ({
@@ -479,7 +521,7 @@ export default function PurchaseInvoiceForm({ invoiceId, onSuccess }) {
                 <label className="block text-[10px]">Invoice Amount</label>
                 <input
                   ref={invoiceAmountRef}
-                  type="number"
+                  type="text"
                   name="invoice_amount"
                   value={form.invoice_amount}
                   onChange={handleChange}
@@ -611,7 +653,7 @@ export default function PurchaseInvoiceForm({ invoiceId, onSuccess }) {
                 <td className="border">
                   <input
                     ref={(el) => (packQuantityRefs.current[i] = el)}
-                    type="number"
+                    type="text"
                     value={item.pack_quantity ?? ""}
                     onChange={(e) => handleItemChange(i, "pack_quantity", e.target.value)}
                     onKeyDown={(e) => handleKeyDown(e, 'pack_quantity', i)}
@@ -622,7 +664,7 @@ export default function PurchaseInvoiceForm({ invoiceId, onSuccess }) {
                 {/* Unit Qty */}
                 <td className="border">
                   <input
-                    type="number"
+                    type="text"
                     value={item.unit_quantity ?? ""}
                     onChange={(e) => handleItemChange(i, "unit_quantity", e.target.value)}
                     className="border w-full h-6 text-[11px] px-1 appearance-none [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
@@ -633,7 +675,7 @@ export default function PurchaseInvoiceForm({ invoiceId, onSuccess }) {
                 <td className="border">
                   <input
                     ref={(el) => (packPurchasePriceRefs.current[i] = el)}
-                    type="number"
+                    type="text"
                     value={item.pack_purchase_price ?? ""}
                     onChange={(e) => handleItemChange(i, "pack_purchase_price", e.target.value)}
                     onKeyDown={(e) => handleKeyDown(e, 'pack_purchase_price', i)}
@@ -644,7 +686,7 @@ export default function PurchaseInvoiceForm({ invoiceId, onSuccess }) {
                 {/* Unit Purchase */}
                 <td className="border">
                   <input
-                    type="number"
+                    type="text"
                     value={item.unit_purchase_price ?? ""}
                     onChange={(e) => handleItemChange(i, "unit_purchase_price", e.target.value)}
                     className="border w-full h-6 text-[11px] px-1 appearance-none [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
@@ -655,7 +697,7 @@ export default function PurchaseInvoiceForm({ invoiceId, onSuccess }) {
                 <td className="border">
                   <input
                     ref={(el) => (itemDiscountRefs.current[i] = el)}
-                    type="number"
+                    type="text"
                     value={item.item_discount_percentage ?? ""}
                     onChange={(e) => handleItemChange(i, "item_discount_percentage", e.target.value)}
                     onKeyDown={(e) => handleKeyDown(e, 'item_discount', i)}
@@ -667,7 +709,7 @@ export default function PurchaseInvoiceForm({ invoiceId, onSuccess }) {
                 <td className="border">
                   <input
                     ref={(el) => (packBonusRefs.current[i] = el)}
-                    type="number"
+                    type="text"
                     value={item.pack_bonus ?? ""}
                     onChange={(e) => handleItemChange(i, "pack_bonus", e.target.value)}
                     onKeyDown={(e) => handleKeyDown(e, 'pack_bonus', i)}
@@ -678,7 +720,7 @@ export default function PurchaseInvoiceForm({ invoiceId, onSuccess }) {
                 {/* Unit Bonus */}
                 <td className="border">
                   <input
-                    type="number"
+                    type="text"
                     value={item.unit_bonus ?? ""}
                     onChange={(e) => handleItemChange(i, "unit_bonus", e.target.value)}
                     className="border w-full h-6 text-[11px] px-1 appearance-none [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
@@ -689,7 +731,7 @@ export default function PurchaseInvoiceForm({ invoiceId, onSuccess }) {
                 <td className="border">
                   <input
                     ref={(el) => (packSalePriceRefs.current[i] = el)}
-                    type="number"
+                    type="text"
                     value={item.pack_sale_price ?? ""}
                     onChange={(e) => handleItemChange(i, "pack_sale_price", e.target.value)}
                     onKeyDown={(e) => handleKeyDown(e, 'pack_sale_price', i)}
@@ -700,7 +742,7 @@ export default function PurchaseInvoiceForm({ invoiceId, onSuccess }) {
                 {/* Unit Sale */}
                 <td className="border">
                   <input
-                    type="number"
+                    type="text"
                     value={item.unit_sale_price ?? ""}
                     onChange={(e) => handleItemChange(i, "unit_sale_price", e.target.value)}
                     className="border w-full h-6 text-[11px] px-1 appearance-none [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
@@ -720,7 +762,7 @@ export default function PurchaseInvoiceForm({ invoiceId, onSuccess }) {
                 {/* Avg Price (readonly) */}
                 <td className="border">
                   <input
-                    type="text"
+                    type="number"
                     value={item.avg_price ?? ""}
                     readOnly
                     className="border w-full h-6 text-[11px] px-1 bg-gray-100"
@@ -762,7 +804,7 @@ export default function PurchaseInvoiceForm({ invoiceId, onSuccess }) {
               <td className="border p-1 w-1/6">
                 <label className="block text-[10px]">Tax %</label>
                 <input
-                  type="number"
+                  type="text"
                   name="tax_percentage"
                   value={form.tax_percentage}
                   onChange={handleChange}
@@ -772,7 +814,7 @@ export default function PurchaseInvoiceForm({ invoiceId, onSuccess }) {
               <td className="border p-1 w-1/6">
                 <label className="block text-[10px]">Tax Amount</label>
                 <input
-                  type="number"
+                  type="text"
                   name="tax_amount"
                   value={form.tax_amount}
                   onChange={handleChange}
@@ -782,7 +824,7 @@ export default function PurchaseInvoiceForm({ invoiceId, onSuccess }) {
               <td className="border p-1 w-1/6">
                 <label className="block text-[10px]">Discount %</label>
                 <input
-                  type="number"
+                  type="text"
                   name="discount_percentage"
                   value={form.discount_percentage}
                   onChange={handleChange}
@@ -792,7 +834,7 @@ export default function PurchaseInvoiceForm({ invoiceId, onSuccess }) {
               <td className="border p-1 w-1/6">
                 <label className="block text-[10px]">Discount Amount</label>
                 <input
-                  type="number"
+                  type="text"
                   name="discount_amount"
                   value={form.discount_amount}
                   onChange={handleChange}
