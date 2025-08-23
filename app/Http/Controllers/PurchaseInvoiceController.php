@@ -179,69 +179,132 @@ class PurchaseInvoiceController extends Controller
     /**
      * Private helper to process items: create invoice items, update product and batch
      */
-    private function processInvoiceItems(PurchaseInvoice $invoice, array $items)
-    {
-        foreach ($items as $item) {
-            $invoice->items()->create($item);
+private function processInvoiceItems(PurchaseInvoice $invoice, array $items)
+{
+    foreach ($items as $item) {
+        $invoice->items()->create($item);
 
-            // Update product
-            $product = Product::find($item['product_id']);
-            if ($product) {
-                $product->quantity += $item['quantity'];
-                $product->pack_purchase_price = $item['pack_purchase_price'];
-                $product->unit_purchase_price = $item['unit_purchase_price'];
-                $product->pack_sale_price = $item['pack_sale_price'];
-                $product->unit_sale_price = $item['unit_sale_price'];
-                $product->avg_price = $item['avg_price'];
-                $product->margin = $item['margin'];
-                $product->save();
+        // Update product
+        $product = Product::find($item['product_id']);
+        if ($product) {
+            // Weighted average calculation for avg_price
+            $oldQty = $product->quantity;
+            $oldAvg = $product->avg_price ?? 0;
+
+            $newQty = $item['quantity'];
+            $newAvg = $item['unit_purchase_price'];
+
+            $totalQty = $oldQty + $newQty;
+
+            if ($totalQty > 0) {
+                $weightedAvg = (($oldQty * $oldAvg) + ($newQty * $newAvg)) / $totalQty;
+            } else {
+                $weightedAvg = $newAvg;
             }
 
-            // Update batch
-            if (!empty($item['batch']) && !empty($item['expiry'])) {
-                $batch = Batch::firstOrNew([
-                    'product_id' => $item['product_id'],
-                    'batch_number' => $item['batch'],
-                    'expiry_date' => $item['expiry'],
-                ]);
+            // Update product fields
+            $product->quantity = $totalQty;
+            $product->pack_purchase_price = $item['pack_purchase_price'];
+            $product->unit_purchase_price = $item['unit_purchase_price'];
+            $product->pack_sale_price = $item['pack_sale_price'];
+            $product->unit_sale_price = $item['unit_sale_price'];
 
-                if ($batch->exists) {
-                    $batch->quantity += $item['quantity'];
-                } else {
-                    $batch->quantity = $item['quantity'];
-                }
+            // Save avg_price rounded to 2 decimals
+            $product->avg_price = round($weightedAvg, 2);
 
+            // Recalculate margin based on updated avg_price and latest sale price
+            if ($product->unit_sale_price > 0) {
+                $product->margin = round(
+                    (($product->unit_sale_price - $product->avg_price) / $product->unit_sale_price) * 100,
+                    2
+                );
+            } else {
+                $product->margin = 0;
+            }
+
+            $product->save();
+        }
+
+        // Update batch
+        if (!empty($item['batch']) && !empty($item['expiry'])) {
+            $batch = Batch::firstOrNew([
+                'product_id' => $item['product_id'],
+                'batch_number' => $item['batch'],
+                'expiry_date' => $item['expiry'],
+            ]);
+
+            if ($batch->exists) {
+                $batch->quantity += $item['quantity'];
+            } else {
+                $batch->quantity = $item['quantity'];
+            }
+
+            $batch->save();
+        }
+    }
+}
+
+
+    private function revertItem($item)
+    {
+        $product = Product::find($item->product_id);
+        if ($product) {
+            $product->quantity -= $item->quantity;
+            if ($product->quantity < 0) $product->quantity = 0;
+            $product->save();
+        }
+
+        // update batch
+        if (!empty($item->batch) && !empty($item->expiry)) {
+            $batch = Batch::where('product_id', $item->product_id)
+                ->where('batch_number', $item->batch)
+                ->where('expiry_date', $item->expiry)
+                ->first();
+
+            if ($batch) {
+                $batch->quantity -= $item->quantity;
+                if ($batch->quantity < 0) $batch->quantity = 0;
                 $batch->save();
             }
         }
     }
 
-    /**
-     * Private helper to revert product and batch quantities
-     */
-    private function revertItem($item)
+    private function recalcProductAverages(Product $product)
     {
-        // Revert product quantity
-        $product = Product::find($item->product_id);
-        if ($product) {
-            $product->quantity -= $item->quantity;
-            $product->save();
+        $items = DB::table('purchase_invoice_items')
+            ->where('product_id', $product->id)
+            ->select('quantity', 'unit_purchase_price', 'unit_sale_price')
+            ->get();
+
+        $totalQty = 0;
+        $totalCost = 0;
+
+        foreach ($items as $item) {
+            $totalQty += $item->quantity;
+            $totalCost += $item->quantity * $item->unit_purchase_price;
         }
 
-        // Revert batch quantity
-        if ($item->batch && $item->expiry) {
-            $batch = Batch::where('product_id', $item->product_id)
-                          ->where('batch_number', $item->batch)
-                          ->where('expiry_date', $item->expiry)
-                          ->first();
-            if ($batch) {
-                $batch->quantity -= $item->quantity;
-                if ($batch->quantity <= 0) {
-                    $batch->delete();
-                } else {
-                    $batch->save();
-                }
-            }
+        if ($totalQty > 0) {
+            $avgPrice = $totalCost / $totalQty;
+        } else {
+            $avgPrice = 0;
         }
+
+        $product->avg_price = round($avgPrice, 2);
+        $product->quantity = $totalQty;
+
+        // latest sale price from last invoice item
+        $lastItem = $items->last();
+        if ($lastItem) {
+            $product->unit_sale_price = round($lastItem->unit_sale_price, 2);
+            $product->margin = $avgPrice > 0
+                ? round((($product->unit_sale_price - $avgPrice) / $avgPrice) * 100, 2)
+                : 0;
+        } else {
+            $product->unit_sale_price = 0;
+            $product->margin = 0;
+        }
+
+        $product->save();
     }
 }
