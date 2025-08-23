@@ -447,58 +447,42 @@ function handleItemChange(index, field, rawValue) {
     }
   };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
+const handleSubmit = async (e) => {
+  e.preventDefault();
 
-    // 1. Prevent duplicate items (same product + batch)
-    const seen = new Map();
-    for (let item of form.items) {
-      const key = `${item.product_id}-${item.batch}`;
-      if (seen.has(key)) {
-        const product = products.find((p) => p.id === item.product_id);
-        const productName = product ? product.name : item.product_id;
-        toast.error(
-          `Duplicate product found: ${productName} (Batch: ${item.batch})`
-        );
-        return;
-      }
-      seen.set(key, true);
-    }
+  // 1. Prevent negative margin
+  const negativeMarginItem = form.items.find((item) => Number(item.margin) < 0);
+  if (negativeMarginItem) {
+    const product = products.find((p) => p.id === negativeMarginItem.product_id);
+    const productName = product ? product.name : negativeMarginItem.product_id;
+    toast.error(`Margin cannot be negative for Product ${productName}`);
+    return;
+  }
 
-    // 2. Prevent negative margin
-    const negativeMarginItem = form.items.find((item) => Number(item.margin) < 0);
-    if (negativeMarginItem) {
-      const product = products.find((p) => p.id === negativeMarginItem.product_id);
-      const productName = product ? product.name : negativeMarginItem.product_id;
-      toast.error(
-        `Margin cannot be negative for Product ${productName}`
-      );
-      return;
-    }
+  // 2. Validate invoice amount vs total amount
+  const invoiceAmount = Number(form.invoice_amount || 0);
+  const totalAmount = Number(form.total_amount || 0);
+  if (Math.abs(invoiceAmount - totalAmount) > 5) {
+    toast.error(
+      `Invoice amount (${invoiceAmount}) must be equal to total amount (${totalAmount}), difference > 5`
+    );
+    return;
+  }
 
-    // 3. Validate invoice amount vs total amount
-    const invoiceAmount = Number(form.invoice_amount || 0);
-    const totalAmount = Number(form.total_amount || 0);
-    if (Math.abs(invoiceAmount - totalAmount) > 5) {
-      toast.error(
-        `Invoice amount (${invoiceAmount}) must be equal to total amount (${totalAmount}), difference > 5`
-      );
-      return;
+  try {
+    if (invoiceId) {
+      await axios.put(`/api/purchase-invoices/${invoiceId}`, form);
+      toast.success("Invoice updated successfully");
+    } else {
+      await axios.post("/api/purchase-invoices", form);
+      toast.success("Invoice created successfully");
     }
+    onSuccess();
+  } catch (err) {
+    toast.error("Failed to save invoice");
+  }
+};
 
-    try {
-      if (invoiceId) {
-        await axios.put(`/api/purchase-invoices/${invoiceId}`, form);
-        toast.success("Invoice updated successfully");
-      } else {
-        await axios.post("/api/purchase-invoices", form);
-        toast.success("Invoice created successfully");
-      }
-      onSuccess();
-    } catch (err) {
-      toast.error("Failed to save invoice");
-    }
-  };
 
   return (
     <form className="flex flex-col" style={{minHeight: "74vh", maxHeight: "80vh" }}>
@@ -665,33 +649,62 @@ function handleItemChange(index, field, rawValue) {
                     <ProductSearchInput
                     value={item.product_id}
                     onChange={(val) => {
-                        const selectedProduct = products.find((p) => p.id === val);
-                        const newItems = [...form.items];
-                        newItems[i] = recalcItem(
+                    const selectedProduct = products.find((p) => p.id === val);
+
+                    const duplicateIndex = form.items.findIndex((it, idx) => {
+                        if (idx === i) return false;
+                        if (it.product_id !== selectedProduct?.id) return false;
+
+                        // Case 1: Other row has a batch
+                        if (it.batch && it.batch.trim() !== "") {
+                        // allow different batch, block same batch
+                        return it.batch === form.items[i]?.batch;
+                        }
+
+                        // Case 2: Other row has no batch → block duplicate outright
+                        return true;
+                    });
+
+                    if (duplicateIndex !== -1) {
+                        toast.error(
+                        form.items[duplicateIndex]?.batch
+                            ? `Product "${selectedProduct?.name}" with batch "${form.items[duplicateIndex].batch}" is already in row ${duplicateIndex + 1}`
+                            : `Product "${selectedProduct?.name}" is already in row ${duplicateIndex + 1}`
+                        );
+                        return; // ⛔ stop here
+                    }
+
+                    const newItems = [...form.items];
+                    newItems[i] = recalcItem(
                         {
-                            ...newItems[i],
-                            product_id: selectedProduct?.id || "",
-                            pack_size: selectedProduct?.pack_size || "",
-                            pack_purchase_price: selectedProduct?.pack_purchase_price ?? "",
-                            unit_purchase_price: selectedProduct?.unit_purchase_price ?? "",
-                            pack_sale_price: selectedProduct?.pack_sale_price ?? "",
-                            unit_sale_price: selectedProduct?.unit_sale_price ?? "",
-                            // 🔹 reset user-editable fields
-                            pack_quantity: "",
-                            unit_quantity: "",
-                            pack_bonus: "",
-                            unit_bonus: "",
-                            item_discount_percentage: "",
-                            margin: "",
-                            sub_total: "",
-                            avg_price: "",
-                            quantity: "",
+                        ...newItems[i],
+                        product_id: selectedProduct?.id || "",
+                        pack_size: selectedProduct?.pack_size || "",
+                        pack_purchase_price: selectedProduct?.pack_purchase_price ?? "",
+                        unit_purchase_price: selectedProduct?.unit_purchase_price ?? "",
+                        pack_sale_price: selectedProduct?.pack_sale_price ?? "",
+                        unit_sale_price: selectedProduct?.unit_sale_price ?? "",
+                        // don't overwrite batch here, keep whatever user enters
+                        batch: newItems[i].batch || "",
+                        // reset user-editable fields
+                        pack_quantity: "",
+                        unit_quantity: "",
+                        pack_bonus: "",
+                        unit_bonus: "",
+                        item_discount_percentage: "",
+                        margin: "",
+                        sub_total: "",
+                        avg_price: "",
+                        quantity: "",
                         },
                         selectedProduct
-                        );
-                        setForm({ ...form, items: newItems });
-                        navigateToNextField("product", i);
+                    );
+
+                    setForm({ ...form, items: newItems });
+                    navigateToNextField("product", i);
                     }}
+
+
                     onKeyDown={(e) => handleProductKeyDown(e, i)}
                     products={products}
                     />
@@ -710,14 +723,49 @@ function handleItemChange(index, field, rawValue) {
 
                 {/* Batch */}
                 <td className="border w-16">
-                  <input
-                    type="text"
-                    value={item.batch ?? ""}
-                    onChange={(e) => handleItemChange(i, "batch", e.target.value)}
-                    className="border w-full h-6 text-[11px] px-1"
-                  />
-                </td>
+                    <input
+                        type="text"
+                        value={item.batch ?? ""}
+                        onChange={(e) => {
+                        const newBatch = e.target.value;
 
+                        // ✅ Duplicate check
+                        const duplicateIndex = form.items.findIndex((it, idx) => {
+                            if (idx === i) return false;
+                            if (it.product_id !== item.product_id) return false;
+
+                            // If another row has batch → block only if same batch
+                            if (it.batch && it.batch.trim() !== "") {
+                            return it.batch === newBatch;
+                            }
+
+                            // If another row has no batch → block outright
+                            return !newBatch;
+                        });
+
+                        if (duplicateIndex !== -1) {
+                            toast.error(
+                            newBatch
+                                ? `Product "${
+                                    products.find((p) => p.id === item.product_id)?.name
+                                }" with batch "${newBatch}" already exists in row ${
+                                    duplicateIndex + 1
+                                }`
+                                : `Product "${
+                                    products.find((p) => p.id === item.product_id)?.name
+                                }" without batch already exists in row ${duplicateIndex + 1}`
+                            );
+                            return; // ⛔ block update
+                        }
+
+                        // If no duplicate → update
+                        const newItems = [...form.items];
+                        newItems[i] = { ...newItems[i], batch: newBatch };
+                        setForm({ ...form, items: newItems });
+                        }}
+                        className="border w-full h-6 text-[11px] px-1"
+                    />
+                    </td>
                 {/* Expiry */}
                 <td className="border w-20">
                   <input

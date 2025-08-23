@@ -193,6 +193,7 @@ class PurchaseInvoiceController extends Controller
                 $product->pack_sale_price = $item['pack_sale_price'];
                 $product->unit_sale_price = $item['unit_sale_price'];
                 $product->avg_price = $item['avg_price'];
+                $product->margin = $item['margin'];
                 $product->save();
             }
 
