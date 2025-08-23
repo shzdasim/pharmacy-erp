@@ -268,6 +268,53 @@ function handleItemChange(index, field, rawValue) {
     setTimeout(retry, 30);
   };
 
+  // Helper function to focus on the same field in a different row
+  const focusOnField = (field, rowIndex) => {
+    setTimeout(() => {
+      switch (field) {
+        case 'pack_quantity':
+          if (packQuantityRefs.current[rowIndex]) {
+            packQuantityRefs.current[rowIndex].focus();
+            setCurrentField('pack_quantity');
+            setCurrentRowIndex(rowIndex);
+          }
+          break;
+        case 'pack_purchase_price':
+          if (packPurchasePriceRefs.current[rowIndex]) {
+            packPurchasePriceRefs.current[rowIndex].focus();
+            setCurrentField('pack_purchase_price');
+            setCurrentRowIndex(rowIndex);
+          }
+          break;
+        case 'item_discount':
+          if (itemDiscountRefs.current[rowIndex]) {
+            itemDiscountRefs.current[rowIndex].focus();
+            setCurrentField('item_discount');
+            setCurrentRowIndex(rowIndex);
+          }
+          break;
+        case 'pack_bonus':
+          if (packBonusRefs.current[rowIndex]) {
+            packBonusRefs.current[rowIndex].focus();
+            setCurrentField('pack_bonus');
+            setCurrentRowIndex(rowIndex);
+          }
+          break;
+        case 'pack_sale_price':
+          if (packSalePriceRefs.current[rowIndex]) {
+            packSalePriceRefs.current[rowIndex].focus();
+            setCurrentField('pack_sale_price');
+            setCurrentRowIndex(rowIndex);
+          }
+          break;
+        default:
+          // For product field and others, use product search
+          focusProductSearch(rowIndex);
+          break;
+      }
+    }, 50);
+  };
+
   const navigateToNextField = (currentFieldName, rowIndex = 0) => {
     setTimeout(() => {
       switch (currentFieldName) {
@@ -335,24 +382,23 @@ function handleItemChange(index, field, rawValue) {
       // intercept Tab on invoice amount to move to product search
       e.preventDefault();
       navigateToNextField(field, rowIndex);
-    } else if (e.key === 'ArrowDown' && field === 'pack_sale_price') {
+    } else if (e.key === 'ArrowDown') {
       e.preventDefault();
       if (rowIndex === form.items.length - 1) {
-        addItem();
+        addItem(); // Add a new row if currently on the last row
+        setTimeout(() => {
+          // Focus on the same field in the new row
+          focusOnField(field, rowIndex + 1);
+        }, 200);
+      } else {
+        const nextRowIndex = rowIndex + 1;
+        focusOnField(field, nextRowIndex);
       }
-      setTimeout(() => {
-        const nextRowIndex = Math.min(rowIndex + 1, form.items.length);
-        focusProductSearch(nextRowIndex);
-      }, 200);
-    } else if (e.key === 'ArrowUp' && field === 'product') {
+    } else if (e.key === 'ArrowUp') {
       e.preventDefault();
       if (rowIndex > 0) {
         const prevRowIndex = rowIndex - 1;
-        if (packSalePriceRefs.current[prevRowIndex]) {
-          packSalePriceRefs.current[prevRowIndex].focus();
-          setCurrentRowIndex(prevRowIndex);
-          setCurrentField('pack_sale_price');
-        }
+        focusOnField(field, prevRowIndex);
       }
     }
   };
@@ -364,17 +410,13 @@ function handleItemChange(index, field, rawValue) {
     } else if (e.key === 'ArrowUp' && rowIndex > 0) {
       e.preventDefault();
       const prevRowIndex = rowIndex - 1;
-      if (packSalePriceRefs.current[prevRowIndex]) {
-        packSalePriceRefs.current[prevRowIndex].focus();
-        setCurrentRowIndex(prevRowIndex);
-        setCurrentField('pack_sale_price');
-      }
+      focusProductSearch(prevRowIndex);
     } else if (e.key === 'ArrowDown') {
       e.preventDefault();
       if (rowIndex === form.items.length - 1) {
-        addItem();
+        addItem(); // Add a new row if currently on the last row
         setTimeout(() => {
-          focusProductSearch(rowIndex + 1);
+          focusProductSearch(rowIndex + 1); // Focus on the new row's product search input
         }, 200);
       } else {
         focusProductSearch(rowIndex + 1);
