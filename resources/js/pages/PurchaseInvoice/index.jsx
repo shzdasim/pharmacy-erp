@@ -22,17 +22,41 @@ export default function PurchaseInvoicesIndex() {
     }
   };
 
-  const handleDelete = async (id) => {
-    if (!confirm("Are you sure you want to delete this invoice?")) return;
+const handleDelete = async (id) => {
+  // Show toast confirmation
+  const confirmed = await new Promise((resolve) => {
+    toast((t) => (
+      <div className="flex flex-col">
+        <p>Are you sure you want to delete this invoice?</p>
+        <div className="flex justify-end gap-2 mt-2">
+          <button
+            className="bg-gray-300 px-3 py-1 rounded"
+            onClick={() => { toast.dismiss(t.id); resolve(false); }}
+          >
+            Cancel
+          </button>
+          <button
+            className="bg-red-500 text-white px-3 py-1 rounded"
+            onClick={() => { toast.dismiss(t.id); resolve(true); }}
+          >
+            Delete
+          </button>
+        </div>
+      </div>
+    ));
+  });
 
-    try {
-      await axios.delete(`/api/purchase-invoices/${id}`);
-      toast.success("Invoice deleted successfully");
-      fetchInvoices();
-    } catch (err) {
-      toast.error("Failed to delete invoice");
-    }
-  };
+  if (!confirmed) return;
+
+  try {
+    await axios.delete(`/api/purchase-invoices/${id}`);
+    toast.success("Invoice deleted successfully");
+    fetchInvoices();
+  } catch (err) {
+    toast.error("Failed to delete invoice");
+  }
+};
+
 
   if (loading) return <p>Loading...</p>;
 

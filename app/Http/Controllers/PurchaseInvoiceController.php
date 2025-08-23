@@ -2,8 +2,11 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Batch;
+use App\Models\Product;
 use App\Models\PurchaseInvoice;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 class PurchaseInvoiceController extends Controller
 {
@@ -48,6 +51,7 @@ public function generateNewCode()
             'total_amount' => 'required|numeric',
             'items' => 'required|array',
             'items.*.product_id' => 'required|exists:products,id',
+            'items.*.pack_size' => 'nullable|integer',
             'items.*.batch' => 'nullable|string',
             'items.*.expiry' => 'nullable|date',
             'items.*.pack_quantity' => 'required|integer',
@@ -62,11 +66,70 @@ public function generateNewCode()
             'items.*.quantity' => 'required|integer',
         ]);
 
-        $invoice = PurchaseInvoice::create($data);
-        $invoice->items()->createMany($data['items']);
+        // Use transaction to ensure data consistency across all models
+        DB::beginTransaction();
 
-        return response()->json($invoice->load('items.product'), 201);
+        try {
+            // 1. Create the Purchase Invoice (Model 1)
+            $invoice = PurchaseInvoice::create($data);
+
+            // Process each item
+            foreach ($data['items'] as $item) {
+                // 2. Create the Purchase Invoice Item (Model 2)
+                $purchaseInvoiceItem = $invoice->items()->create($item);
+
+                // 3. Update the Product model (Model 3)
+                $product = Product::find($item['product_id']);
+                if ($product) {
+                    // Update product quantity by adding the new pack quantity
+                    $product->quantity += $item['quantity'];
+                    
+                    // Update product pricing information with the latest values from invoice
+                    $product->pack_purchase_price = $item['pack_purchase_price'];
+                    $product->unit_purchase_price = $item['unit_purchase_price'];
+                    $product->pack_sale_price = $item['pack_sale_price'];
+                    $product->unit_sale_price = $item['unit_sale_price'];
+                    $product->avg_price = $item['avg_price'];
+                    
+                    $product->save();
+                }
+
+                // 4. Update Batch model if batch and expiry are provided (Model 4)
+                if (!empty($item['batch']) && !empty($item['expiry'])) {
+                    // Find existing batch or create new one
+                    $batch = Batch::firstOrNew([
+                        'product_id' => $item['product_id'],
+                        'batch_number' => $item['batch'],
+                        'expiry_date' => $item['expiry'],
+                    ]);
+
+                    // If batch exists, increment quantity; otherwise set initial quantity
+                    if ($batch->exists) {
+                        $batch->quantity += $item['quantity'];
+                    } else {
+                        $batch->quantity = $item['quantity'];
+                    }
+
+                    $batch->save();
+                }
+            }
+
+            // Commit the transaction
+            DB::commit();
+
+            return response()->json($invoice->load('items.product', 'supplier'), 201);
+
+        } catch (\Exception $e) {
+            // Rollback the transaction on error
+            DB::rollBack();
+            
+            return response()->json([
+                'message' => 'Error creating purchase invoice',
+                'error' => $e->getMessage()
+            ], 500);
+        }
     }
+
 
     public function show(PurchaseInvoice $purchaseInvoice)
     {
@@ -98,9 +161,47 @@ public function generateNewCode()
         return response()->json($purchaseInvoice->load('items.product'));
     }
 
-    public function destroy(PurchaseInvoice $purchaseInvoice)
-    {
+public function destroy(PurchaseInvoice $purchaseInvoice)
+{
+    DB::beginTransaction();
+
+    try {
+        foreach ($purchaseInvoice->items as $item) {
+            // Decrease the product quantity
+            $product = Product::find($item->product_id);
+            if ($product) {
+                $product->quantity -= $item->quantity;
+                $product->save();
+            }
+
+            // Delete corresponding batches
+            if ($item->batch && $item->expiry) {
+                $batch = Batch::where('product_id', $item->product_id)
+                              ->where('batch_number', $item->batch)
+                              ->where('expiry_date', $item->expiry)
+                              ->first();
+                if ($batch) {
+                    $batch->delete();
+                }
+            }
+        }
+
+        // Delete invoice items
+        $purchaseInvoice->items()->delete();
+
+        // Delete the invoice itself
         $purchaseInvoice->delete();
-        return response()->json(['message' => 'Deleted successfully']);
+
+        DB::commit();
+
+        return response()->json(['message' => 'Invoice and related data deleted successfully']);
+    } catch (\Exception $e) {
+        DB::rollBack();
+        return response()->json([
+            'message' => 'Failed to delete invoice',
+            'error' => $e->getMessage()
+        ], 500);
     }
+}
+
 }
