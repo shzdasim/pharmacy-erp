@@ -672,11 +672,20 @@ function handleItemChange(index, field, rawValue) {
                             ...newItems[i],
                             product_id: selectedProduct?.id || "",
                             pack_size: selectedProduct?.pack_size || "",
-                            // ✅ seed saved values from product model
                             pack_purchase_price: selectedProduct?.pack_purchase_price ?? "",
                             unit_purchase_price: selectedProduct?.unit_purchase_price ?? "",
                             pack_sale_price: selectedProduct?.pack_sale_price ?? "",
                             unit_sale_price: selectedProduct?.unit_sale_price ?? "",
+                            // 🔹 reset user-editable fields
+                            pack_quantity: "",
+                            unit_quantity: "",
+                            pack_bonus: "",
+                            unit_bonus: "",
+                            item_discount_percentage: "",
+                            margin: "",
+                            sub_total: "",
+                            avg_price: "",
+                            quantity: "",
                         },
                         selectedProduct
                         );
@@ -686,7 +695,6 @@ function handleItemChange(index, field, rawValue) {
                     onKeyDown={(e) => handleProductKeyDown(e, i)}
                     products={products}
                     />
-
                   </div>
                 </td>
 
