@@ -42,11 +42,22 @@ export default function PurchaseInvoiceForm({ invoiceId, onSuccess }) {
   });
 
   // only allow numbers (and optionally decimals)
+// allow decimals for price/percentage fields
 const sanitizeNumberInput = (value, allowDecimal = false) => {
-  if (value === "") return ""; // allow empty
-  const regex = allowDecimal ? /^[0-9]*\.?[0-9]*$/ : /^[0-9]*$/;
-  return regex.test(value) ? value : "";
+  if (value === "") return ""; // allow empty input
+
+  if (allowDecimal) {
+    // valid: numbers with at most one decimal point
+    if (/^\d*\.?\d*$/.test(value)) {
+      return value;
+    }
+    return value.slice(0, -1); // strip invalid char
+  }
+
+  // integer-only fields
+  return value.replace(/\D/g, "");
 };
+
 
 
   const [suppliers, setSuppliers] = useState([]);
@@ -156,29 +167,41 @@ const handleChange = (e) => {
 function handleItemChange(index, field, rawValue) {
   let value = rawValue;
 
-  // restrict numeric fields
-  const numericFields = [
-    "pack_quantity",
-    "unit_quantity",
+  // fields that can have decimals
+  const allowDecimalFields = [
     "pack_purchase_price",
     "unit_purchase_price",
     "pack_sale_price",
     "unit_sale_price",
-    "pack_bonus",
-    "unit_bonus",
     "item_discount_percentage",
   ];
 
-  if (numericFields.includes(field)) {
-    value = sanitizeNumberInput(rawValue, true); // true if you want decimals
+  // integer-only fields
+  const integerFields = [
+    "pack_quantity",
+    "unit_quantity",
+    "pack_bonus",
+    "unit_bonus",
+  ];
+
+  if (allowDecimalFields.includes(field)) {
+    // allow numbers like 34, 34., 34.5, 34.56
+    if (!/^\d*\.?\d*$/.test(value)) {
+      return; // reject invalid chars
+    }
+  } else if (integerFields.includes(field)) {
+    // strip everything except digits
+    value = value.replace(/\D/g, "");
   }
 
+  // push to items
   const newItems = [...form.items];
   newItems[index] = recalcItem(
     { ...newItems[index], [field]: value },
     field
   );
 
+  // recalc totals
   let newForm = { ...form, items: newItems };
   newForm = recalcFooter(newForm, "items");
 
@@ -505,7 +528,7 @@ function handleItemChange(index, field, rawValue) {
                   className="border rounded w-full p-1 h-7 text-xs"
                 />
               </td>
-              <td className="border p-1 w-1/3" >
+              <td className="border p-1 w-1/3">
                 <label className="block text-[10px]">Supplier *</label>
                 <Select
                   ref={supplierRef}
@@ -591,7 +614,7 @@ function handleItemChange(index, field, rawValue) {
         <h2 className="text-xs font-bold mb-1">Items (↑↓ arrows to navigate rows)</h2>
 
         <table className="w-full border-collapse text-[11px]">
-          <thead className="sticky top-0 bg-gray-100 z-10">
+          <thead className="sticky top-0 bg-gray-100 z-5">
             <tr>
               <th rowSpan={2} className="border w-6">#</th>
               <th rowSpan={2} colSpan={1} className="border w-[80px]">Product</th>
@@ -640,24 +663,30 @@ function handleItemChange(index, field, rawValue) {
                 <td colSpan={1} className="border text-left w-[200px]">
                   <div ref={(el) => (productSearchRefs.current[i] = el)}>
                     <ProductSearchInput
-                      value={item.product_id}
-                      onChange={(val) => {
+                    value={item.product_id}
+                    onChange={(val) => {
                         const selectedProduct = products.find((p) => p.id === val);
                         const newItems = [...form.items];
                         newItems[i] = recalcItem(
-                          {
+                        {
                             ...newItems[i],
                             product_id: selectedProduct?.id || "",
                             pack_size: selectedProduct?.pack_size || "",
-                          },
-                          selectedProduct
+                            // ✅ seed saved values from product model
+                            pack_purchase_price: selectedProduct?.pack_purchase_price ?? "",
+                            unit_purchase_price: selectedProduct?.unit_purchase_price ?? "",
+                            pack_sale_price: selectedProduct?.pack_sale_price ?? "",
+                            unit_sale_price: selectedProduct?.unit_sale_price ?? "",
+                        },
+                        selectedProduct
                         );
                         setForm({ ...form, items: newItems });
-                        navigateToNextField('product', i);
-                      }}
-                      onKeyDown={(e) => handleProductKeyDown(e, i)}
-                      products={products}
+                        navigateToNextField("product", i);
+                    }}
+                    onKeyDown={(e) => handleProductKeyDown(e, i)}
+                    products={products}
                     />
+
                   </div>
                 </td>
 
@@ -696,7 +725,7 @@ function handleItemChange(index, field, rawValue) {
                   <input
                     ref={(el) => (packQuantityRefs.current[i] = el)}
                     type="text"
-                    value={item.pack_quantity ?? ""}
+                    value={item.pack_quantity === 0 ? "" : item.pack_quantity}
                     onChange={(e) => handleItemChange(i, "pack_quantity", e.target.value)}
                     onKeyDown={(e) => handleKeyDown(e, 'pack_quantity', i)}
                     className="border w-full h-6 text-[11px] px-1 appearance-none [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
@@ -707,7 +736,7 @@ function handleItemChange(index, field, rawValue) {
                 <td className="border">
                   <input
                     type="text"
-                    value={item.unit_quantity ?? ""}
+                    value={item.unit_quantity=== 0 ? "" : item.unit_quantity}
                     onChange={(e) => handleItemChange(i, "unit_quantity", e.target.value)}
                     className="border w-full h-6 text-[11px] px-1 appearance-none [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                   />
@@ -718,7 +747,7 @@ function handleItemChange(index, field, rawValue) {
                   <input
                     ref={(el) => (packPurchasePriceRefs.current[i] = el)}
                     type="text"
-                    value={item.pack_purchase_price ?? ""}
+                    value={item.pack_purchase_price === 0 ? "" : item.pack_purchase_price}
                     onChange={(e) => handleItemChange(i, "pack_purchase_price", e.target.value)}
                     onKeyDown={(e) => handleKeyDown(e, 'pack_purchase_price', i)}
                     className="border w-full h-6 text-[11px] px-1 appearance-none [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
@@ -752,7 +781,7 @@ function handleItemChange(index, field, rawValue) {
                   <input
                     ref={(el) => (packBonusRefs.current[i] = el)}
                     type="text"
-                    value={item.pack_bonus ?? ""}
+                   value={item.pack_bonus === 0 ? "" : item.pack_bonus}
                     onChange={(e) => handleItemChange(i, "pack_bonus", e.target.value)}
                     onKeyDown={(e) => handleKeyDown(e, 'pack_bonus', i)}
                     className="border w-full h-6 text-[11px] px-1 appearance-none [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
@@ -763,7 +792,7 @@ function handleItemChange(index, field, rawValue) {
                 <td className="border">
                   <input
                     type="text"
-                    value={item.unit_bonus ?? ""}
+                    value={item.unit_bonus === 0 ? "" : item.unit_bonus}
                     onChange={(e) => handleItemChange(i, "unit_bonus", e.target.value)}
                     className="border w-full h-6 text-[11px] px-1 appearance-none [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                   />
@@ -848,7 +877,7 @@ function handleItemChange(index, field, rawValue) {
                 <input
                   type="text"
                   name="tax_percentage"
-                  value={form.tax_percentage}
+                  value={form.tax_percentage === 0 ? "" : form.tax_percentage}
                   onChange={handleChange}
                   className="border rounded w-full p-1 h-7 text-xs"
                 />
@@ -858,7 +887,7 @@ function handleItemChange(index, field, rawValue) {
                 <input
                   type="text"
                   name="tax_amount"
-                  value={form.tax_amount}
+                  value={form.tax_amount === 0 ? "" : form.tax_amount}
                   onChange={handleChange}
                   className="border rounded w-full p-1 h-7 text-xs"
                 />
@@ -868,7 +897,7 @@ function handleItemChange(index, field, rawValue) {
                 <input
                   type="text"
                   name="discount_percentage"
-                  value={form.discount_percentage}
+                  value={form.discount_percentage === 0 ? "" : form.discount_percentage}
                   onChange={handleChange}
                   className="border rounded w-full p-1 h-7 text-xs"
                 />
@@ -878,7 +907,7 @@ function handleItemChange(index, field, rawValue) {
                 <input
                   type="text"
                   name="discount_amount"
-                  value={form.discount_amount}
+                  value={form.discount_amount === 0 ? "" : form.discount_amount} 
                   onChange={handleChange}
                   className="border rounded w-full p-1 h-7 text-xs"
                 />

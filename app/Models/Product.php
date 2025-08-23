@@ -22,6 +22,7 @@ class Product extends Model
         'unit_purchase_price',
         'unit_sale_price',
         'avg_price',
+        'margin',
         'narcotic',
         'max_discount',
         'category_id',

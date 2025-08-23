@@ -90,16 +90,27 @@ export function recalcItem(item, changedField = null) {
   const costForMargin = avgPrice > 0 ? avgPrice : unitPurchase;
   const margin = unitSale > 0 ? ((unitSale - costForMargin) / unitSale) * 100 : "";
 
+  // Helper to preserve the raw text for the field currently being edited.
+  const preserve = (fieldName, computedValue) =>
+    changedField === fieldName ? item[fieldName] : computedValue;
+
   return {
     ...item,
-    pack_quantity: packQty,
-    unit_quantity: unitQty,
-    pack_purchase_price: packPurchase,
-    unit_purchase_price: unitPurchase,
-    pack_sale_price: packSale,
-    unit_sale_price: unitSale,
-    pack_bonus: packBonus,
-    unit_bonus: unitBonus,
+
+    // Preserve raw input for the field being edited so users can type "34." etc.
+    pack_quantity: preserve("pack_quantity", packQty),
+    unit_quantity: preserve("unit_quantity", unitQty),
+
+    pack_purchase_price: preserve("pack_purchase_price", packPurchase),
+    unit_purchase_price: preserve("unit_purchase_price", unitPurchase),
+
+    pack_sale_price: preserve("pack_sale_price", packSale),
+    unit_sale_price: preserve("unit_sale_price", unitSale),
+
+    pack_bonus: preserve("pack_bonus", packBonus),
+    unit_bonus: preserve("unit_bonus", unitBonus),
+
+    // Computed/summary fields
     quantity: totalUnits,
     sub_total: r2(netTotal),
     avg_price: r2(avgPrice),
