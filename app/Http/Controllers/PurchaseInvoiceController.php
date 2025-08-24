@@ -307,4 +307,27 @@ private function processInvoiceItems(PurchaseInvoice $invoice, array $items)
 
         $product->save();
     }
+
+
+    public function checkUnique(Request $request)
+{
+    $request->validate([
+        'supplier_id' => 'required|integer',
+        'invoice_number' => 'required|string',
+        'exclude_id' => 'nullable|integer',
+    ]);
+
+    $query = \App\Models\PurchaseInvoice::where('supplier_id', $request->supplier_id)
+        ->where('invoice_number', $request->invoice_number);
+
+    if ($request->filled('exclude_id')) {
+        $query->where('id', '!=', $request->exclude_id);
+    }
+
+    $exists = $query->exists();
+
+    return response()->json([
+        'unique' => !$exists,
+    ]);
+}
 }

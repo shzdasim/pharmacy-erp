@@ -21,5 +21,7 @@ Route::apiResource('brands', BrandController::class);
 Route::get('products/new-code', [ProductController::class, 'generateNewCode']);
 Route::apiResource('products', ProductController::class);
 Route::get('products/{product}/batches', [BatchController::class, 'index']);
+Route::get('/purchase-invoices/check-unique', [PurchaseInvoiceController::class, 'checkUnique']);
 Route::get('purchase-invoices/new-code', [PurchaseInvoiceController::class, 'generateNewCode']);
 Route::apiResource('purchase-invoices', PurchaseInvoiceController::class);
+

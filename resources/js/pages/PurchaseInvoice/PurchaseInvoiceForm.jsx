@@ -470,6 +470,23 @@ const handleSubmit = async (e) => {
   }
 
   try {
+    // 3. Check for duplicate invoice number per supplier
+    const checkRes = await axios.get("/api/purchase-invoices/check-unique", {
+      params: {
+        supplier_id: form.supplier_id,
+        invoice_number: form.invoice_number,
+        exclude_id: invoiceId || null, // allow editing same invoice
+      },
+    });
+
+    if (!checkRes.data.unique) {
+      toast.error(
+        `Invoice number "${form.invoice_number}" already exists for this supplier`
+      );
+      return;
+    }
+
+    // 4. Save invoice
     if (invoiceId) {
       await axios.put(`/api/purchase-invoices/${invoiceId}`, form);
       toast.success("Invoice updated successfully");
@@ -477,6 +494,7 @@ const handleSubmit = async (e) => {
       await axios.post("/api/purchase-invoices", form);
       toast.success("Invoice created successfully");
     }
+
     onSuccess();
   } catch (err) {
     toast.error("Failed to save invoice");
