@@ -28,9 +28,15 @@ class PurchaseInvoiceController extends Controller
     }
 
     // List all invoices
-    public function index()
+    public function index(Request $request)
     {
-        return PurchaseInvoice::with('supplier', 'items.product')->get();
+        $query = PurchaseInvoice::with('supplier', 'items.product');
+        
+        if ($request->has('supplier_id')) {
+            $query->where('supplier_id', $request->supplier_id);
+        }
+        
+        return $query->get();
     }
 
     // Show single invoice

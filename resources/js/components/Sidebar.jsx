@@ -26,6 +26,7 @@ export default function Sidebar() {
     { name: "Brands", path: "/brands", icon: <TagIcon className="w-6 h-6" /> },
     { name: "Products", path: "/products", icon: <CubeIcon className="w-6 h-6" /> },
     { name: "Purchase Invoice", path: "/purchase-invoices", icon: <DocumentTextIcon className="w-6 h-6" /> },
+    { name: "Purchase Return", path: "/purchase-returns", icon: <DocumentTextIcon className="w-6 h-6" /> },
   ];
 
   // Refs for keyboard focus
