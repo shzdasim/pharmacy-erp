@@ -37,7 +37,15 @@ export default function ProductSearchInput({ value, onChange, products }) {
 
   // Keyboard navigation
   const handleKeyDown = (e) => {
-    if (!showDropdown) return;
+    if (!showDropdown) {
+      // If dropdown is not shown and Enter is pressed, trigger the onChange callback
+      if (e.key === "Enter") {
+        e.preventDefault();
+        // This will trigger the parent component's handleProductSelect
+        if (onChange) onChange(value);
+      }
+      return;
+    }
 
     if (e.key === "ArrowDown") {
       e.preventDefault();

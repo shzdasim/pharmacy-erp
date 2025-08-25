@@ -11,6 +11,7 @@ export default function PurchaseReturnForm({ returnId, initialData, onSuccess })
     batch: "",
     expiry: "",
     pack_size: 0,
+    pack_purchased_quantity: 0, // <-- new field
     return_pack_quantity: 0,
     return_unit_quantity: 0,
     pack_purchase_price: 0,
@@ -40,6 +41,7 @@ export default function PurchaseReturnForm({ returnId, initialData, onSuccess })
   const [suppliers, setSuppliers] = useState([]);
   const [products, setProducts] = useState([]);
   const [purchaseInvoices, setPurchaseInvoices] = useState([]);
+  const [batches, setBatches] = useState([]);
   const [currentField, setCurrentField] = useState('supplier');
   const [currentRowIndex, setCurrentRowIndex] = useState(0);
 
@@ -169,16 +171,19 @@ export default function PurchaseReturnForm({ returnId, initialData, onSuccess })
     try {
       const res = await axios.get(`/api/purchase-invoices/${invoiceId}`);
       const invoice = res.data;
-      
       // Extract products from invoice items
       const invoiceProducts = invoice.items.map(item => ({
         ...item.product,
         pack_purchase_price: item.pack_purchase_price,
         unit_purchase_price: item.unit_purchase_price,
-        pack_size: item.pack_size
+        pack_size: item.pack_size,
+        pack_quantity: item.pack_quantity, // <-- needed for purchased quantity
+        batch: item.batch,
+        expiry: item.expiry,
       }));
-      
       setProducts(invoiceProducts);
+      // Optionally, you could store invoice.items for easier lookup
+      // setInvoiceItems(invoice.items);
     } catch (err) {
       console.error(err);
       toast.error("Failed to load products from invoice");
@@ -241,8 +246,12 @@ export default function PurchaseReturnForm({ returnId, initialData, onSuccess })
     setForm(newForm);
   }
 
-  const handleProductSelect = (index, productId) => {
+const handleProductSelect = async (index, productId) => {
     const selected = products.find((p) => Number(p.id) === Number(productId));
+    let packPurchasedQty = 0;
+    if (selected && selected.pack_quantity !== undefined) {
+      packPurchasedQty = selected.pack_quantity;
+    }
     const newItems = [...form.items];
     newItems[index] = {
       ...newItems[index],
@@ -250,15 +259,76 @@ export default function PurchaseReturnForm({ returnId, initialData, onSuccess })
       pack_size: selected?.pack_size || 0,
       pack_purchase_price: selected?.pack_purchase_price ?? 0,
       unit_purchase_price: selected?.unit_purchase_price ?? 0,
+      pack_purchased_quantity: packPurchasedQty,
     };
     newItems[index] = recalcItem(newItems[index], "product_id");
-    const newForm = recalcFooter({ ...form, items: newItems }, "items");
-    setForm(newForm);
+    
+    // Fetch batches for the selected product
+    try {
+      const res = await axios.get(`/api/products/${selected.id}/batches`);
+      const fetchedBatches = res.data || [];
+      setBatches(fetchedBatches);
+      
+      const newForm = recalcFooter({ ...form, items: newItems }, "items");
+      setForm(newForm);
+      
+      // After setting form and batches, navigate to next field
+      setTimeout(() => {
+        if (fetchedBatches.length > 0) {
+          // If batches exist, focus will be handled by the batch dropdown
+          setCurrentField('batch');
+        } else {
+          // If no batches, go directly to return pack quantity
+          if (packQuantityRefs.current[index]) {
+            packQuantityRefs.current[index].focus();
+            setCurrentField('pack_quantity');
+            setCurrentRowIndex(index);
+          }
+        }
+      }, 100);
+    } catch (err) {
+      console.error(err);
+      toast.error("Failed to load batches");
+      
+      const newForm = recalcFooter({ ...form, items: newItems }, "items");
+      setForm(newForm);
+      
+      // On error, still navigate to return pack quantity
+      setTimeout(() => {
+        if (packQuantityRefs.current[index]) {
+          packQuantityRefs.current[index].focus();
+          setCurrentField('pack_quantity');
+          setCurrentRowIndex(index);
+        }
+      }, 100);
+    }
   };
 
   const addItem = () => {
     setForm((prev) => ({ ...prev, items: [...prev.items, Object.assign({}, defaultItem)] }));
     setCurrentRowIndex(form.items.length);
+  };
+
+  const handleBatchSelect = (index, selectedOption) => {
+    const batch = batches.find(b => b.batch_number === selectedOption.value);
+    if (batch) {
+      const newItems = [...form.items];
+      newItems[index] = {
+        ...newItems[index],
+        batch: batch.batch_number,
+        expiry: batch.expiry_date,
+      };
+      setForm((prev) => ({ ...prev, items: newItems }));
+      
+      // Move to return pack quantity field after batch selection
+      setTimeout(() => {
+        if (packQuantityRefs.current[index]) {
+          packQuantityRefs.current[index].focus();
+          setCurrentField('pack_quantity');
+          setCurrentRowIndex(index);
+        }
+      }, 50);
+    }
   };
 
   const removeItem = (index) => {
@@ -355,6 +425,22 @@ export default function PurchaseReturnForm({ returnId, initialData, onSuccess })
           focusProductSearch(0);
           break;
         case 'product':
+          // After product selection, check if we need to go to batch selection
+          const selectedProduct = products.find(p => p.id === form.items[rowIndex]?.product_id);
+          if (selectedProduct && batches.length > 0) {
+            // If product has batches, we'll handle batch selection through the dropdown
+            // The batch dropdown will automatically focus when it appears
+            setCurrentField('batch');
+          } else {
+            // If no batches, go directly to return pack quantity
+            if (packQuantityRefs.current[rowIndex]) {
+              packQuantityRefs.current[rowIndex].focus();
+              setCurrentField('pack_quantity');
+            }
+          }
+          break;
+        case 'batch':
+          // After batch selection, go to return pack quantity
           if (packQuantityRefs.current[rowIndex]) {
             packQuantityRefs.current[rowIndex].focus();
             setCurrentField('pack_quantity');
@@ -407,7 +493,7 @@ export default function PurchaseReturnForm({ returnId, initialData, onSuccess })
   const handleProductKeyDown = (e, rowIndex) => {
     if (e.key === 'Enter') {
       e.preventDefault();
-      navigateToNextField('product', rowIndex);
+      // The actual navigation will be handled by handleProductSelect after product selection
     } else if (e.key === 'ArrowUp' && rowIndex > 0) {
       e.preventDefault();
       const prevRowIndex = rowIndex - 1;
@@ -470,8 +556,9 @@ export default function PurchaseReturnForm({ returnId, initialData, onSuccess })
     }
   };
 
+  // Remove onSubmit from <form> and handle submit only via button or Alt+S
   return (
-    <form className="flex flex-col" onSubmit={handleSubmit} style={{ minHeight: "74vh", maxHeight: "80vh" }}>
+    <form className="flex flex-col" style={{ minHeight: "74vh", maxHeight: "80vh" }}>
       {/* ================= HEADER SECTION ================= */}
       <div className="sticky top-0 bg-white shadow p-2 z-10">
         <h2 className="text-sm font-bold mb-2">Purchase Return (Use Enter to navigate, Alt+S to save)</h2>
@@ -603,18 +690,18 @@ export default function PurchaseReturnForm({ returnId, initialData, onSuccess })
             <tr>
               <th rowSpan={2} className="border w-6">#</th>
               <th rowSpan={2} colSpan={1} className="border w-[80px]">Product</th>
-              <th colSpan={3} className="border">Pack Size / Batch / Expiry</th>
+              <th colSpan={4} className="border">Pack Size / Batch / Expiry / Pack Purchased Qty</th> {/* changed colSpan */}
               <th colSpan={2} className="border">Return Qty (Pack / Unit)</th>
               <th colSpan={2} className="border">Purchase Price (P / U)</th>
               <th colSpan={1} className="border">Disc %</th>
               <th rowSpan={2} className="border w-16">Sub Total</th>
               <th rowSpan={2} className="border w-6">+</th>
             </tr>
-
             <tr>
               <th className="border w-14">PSize</th>
               <th className="border w-16">Batch</th>
               <th className="border w-20">Exp</th>
+              <th className="border w-16">Pack Purchased Qty</th> {/* new header */}
               <th className="border w-12">Pack.Q</th>
               <th className="border w-12">Unit.Q</th>
               <th className="border w-14">Pack.P</th>
@@ -661,12 +748,56 @@ export default function PurchaseReturnForm({ returnId, initialData, onSuccess })
 
                 {/* Batch */}
                 <td className="border w-16">
-                  <input
-                    type="text"
-                    value={item.batch || ""}
-                    onChange={(e) => handleItemChange(i, "batch", e.target.value)}
-                    className="border w-full h-6 text-[11px] px-1"
-                  />
+                  {batches.length > 0 && item.product_id ? (
+                    <Select
+                      ref={(el) => {
+                        // Auto-focus the batch dropdown when it appears and current field is 'batch'
+                        if (el && currentField === 'batch' && currentRowIndex === i) {
+                          setTimeout(() => {
+                            if (el && el.focus) {
+                              el.focus();
+                            }
+                          }, 50);
+                        }
+                      }}
+                      options={batches.map((b) => ({ value: b.batch_number, label: b.batch_number }))}
+                      value={batches.map((b) => ({ value: b.batch_number, label: b.batch_number })).find((b) => b.value === item.batch) || null}
+                      onChange={(val) => handleBatchSelect(i, val)}
+                      isSearchable
+                      className="text-xs"
+                      styles={{
+                        control: (base) => ({
+                          ...base,
+                          minHeight: "28px",
+                          height: "28px",
+                          fontSize: "12px",
+                        }),
+                        valueContainer: (base) => ({
+                          ...base,
+                          height: "28px",
+                          padding: "0 4px",
+                        }),
+                        input: (base) => ({
+                          ...base,
+                          margin: 0,
+                          padding: 0,
+                        }),
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && item.batch) {
+                          e.preventDefault();
+                          navigateToNextField('batch', i);
+                        }
+                      }}
+                    />
+                  ) : (
+                    <input
+                      type="text"
+                      value={item.batch || ""}
+                      onChange={(e) => handleItemChange(i, "batch", e.target.value)}
+                      className="border w-full h-6 text-[11px] px-1"
+                    />
+                  )}
                 </td>
 
                 {/* Expiry */}
@@ -676,6 +807,16 @@ export default function PurchaseReturnForm({ returnId, initialData, onSuccess })
                     value={item.expiry || ""}
                     onChange={(e) => handleItemChange(i, "expiry", e.target.value)}
                     className="border w-full h-6 text-[11px] px-1"
+                  />
+                </td>
+
+                {/* Pack Purchased Qty */}
+                <td className="border w-16">
+                  <input
+                    type="number"
+                    readOnly
+                    value={item.pack_purchased_quantity || ""}
+                    className="border bg-gray-100 w-full h-6 text-[11px] px-1"
                   />
                 </td>
 
@@ -800,7 +941,8 @@ export default function PurchaseReturnForm({ returnId, initialData, onSuccess })
             <tr>
               <td colSpan={6} className="p-2 text-center">
                 <button
-                  type="submit"
+                  type="button"
+                  onClick={handleSubmit}
                   className="bg-green-600 text-white px-8 py-3 rounded text-sm hover:bg-green-700 transition duration-200"
                 >
                   {returnId ? "Update Return" : "Create Return"}
