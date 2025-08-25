@@ -46,7 +46,7 @@ export default function PurchaseReturnForm({ returnId, initialData, onSuccess })
   const [currentRowIndex, setCurrentRowIndex] = useState(0);
 
   // Focus/navigation refs
-  const supplierRef = useRef(null);
+  const supplierSelectRef = useRef(null);
   const purchaseInvoiceRef = useRef(null);
   const productSearchRefs = useRef([]);
   const packQuantityRefs = useRef([]);
@@ -70,19 +70,15 @@ export default function PurchaseReturnForm({ returnId, initialData, onSuccess })
     if (returnId) fetchReturn(returnId);
   }, [returnId]);
 
-  useEffect(() => {
-    const focusSupplierInput = () => {
-      if (supplierRef.current) {
-        const input = supplierRef.current.querySelector('input');
-        if (input) {
-          input.focus();
-          input.select();
-        }
-      }
-    };
-    
-    setTimeout(focusSupplierInput, 120);
-  }, []);
+useEffect(() => {
+  setTimeout(() => {
+    if (supplierSelectRef.current) {
+      supplierSelectRef.current.focus();
+      supplierSelectRef.current.openMenu(); // <-- opens dropdown automatically
+    }
+  }, 120);
+}, []);
+
 
   // When initialData prop changes (edit mode), populate form
   useEffect(() => {
@@ -597,85 +593,101 @@ const handleProductSelect = async (index, productId) => {
                 />
               </td>
 
-              <td className="border p-1 w-1/3">
-                <label className="block text-[10px]">Supplier *</label>
-                <div ref={supplierRef}>
-                  <Select
-                    options={suppliers.map((s) => ({ value: s.id, label: s.name }))}
-                    value={suppliers.map((s) => ({ value: s.id, label: s.name })).find((s) => s.value === form.supplier_id) || null}
-                    onChange={(val) => {
-                      handleSelectChange("supplier_id", val);
-                      navigateToNextField('supplier');
-                    }}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' && form.supplier_id) {
-                        e.preventDefault();
-                        navigateToNextField('supplier');
-                      }
-                    }}
-                    isSearchable
-                    className="text-xs"
-                    styles={{
-                      control: (base) => ({
-                        ...base,
-                        minHeight: "28px",
-                        height: "28px",
-                        fontSize: "12px",
-                      }),
-                      valueContainer: (base) => ({
-                        ...base,
-                        height: "28px",
-                        padding: "0 4px",
-                      }),
-                      input: (base) => ({
-                        ...base,
-                        margin: 0,
-                        padding: 0,
-                      }),
-                    }}
-                  />
-                </div>
-              </td>
+<td className="border p-1 w-1/3">
+  <label className="block text-[10px]">Supplier *</label>
+  <Select
+    ref={supplierSelectRef}
+    options={suppliers.map((s) => ({ value: s.id, label: s.name }))}
+    value={suppliers.map((s) => ({ value: s.id, label: s.name }))
+      .find((s) => s.value === form.supplier_id) || null}
+    onChange={(val) => {
+      handleSelectChange("supplier_id", val);
+      // Move focus to Purchase Invoice field
+      setTimeout(() => {
+        if (purchaseInvoiceRef.current) {
+          purchaseInvoiceRef.current.focus();
+          purchaseInvoiceRef.current.openMenu();
+        }
+      }, 50);
+    }}
+    onKeyDown={(e) => {
+      if (e.key === "Enter" && form.supplier_id) {
+        e.preventDefault();
+        if (purchaseInvoiceRef.current) {
+          purchaseInvoiceRef.current.focus();
+          purchaseInvoiceRef.current.openMenu();
+        }
+      }
+    }}
+    isSearchable
+    className="text-xs"
+    styles={{
+      control: (base) => ({
+        ...base,
+        minHeight: "28px",
+        height: "28px",
+        fontSize: "12px",
+      }),
+      valueContainer: (base) => ({
+        ...base,
+        height: "28px",
+        padding: "0 4px",
+      }),
+      input: (base) => ({
+        ...base,
+        margin: 0,
+        padding: 0,
+      }),
+    }}
+  />
+</td>
 
-              <td className="border p-1 w-1/3">
-                <label className="block text-[10px]">Purchase Invoice *</label>
-                <div ref={purchaseInvoiceRef}>
-                  <Select
-                    options={purchaseInvoices.map((inv) => ({ value: inv.id, label: inv.posted_number }))}
-                    value={purchaseInvoices.map((inv) => ({ value: inv.id, label: inv.posted_number })).find((inv) => inv.value === form.purchase_invoice_id) || null}
-                    onChange={(val) => {
-                      handleSelectChange("purchase_invoice_id", val);
-                      navigateToNextField('purchase_invoice');
-                    }}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' && form.purchase_invoice_id) {
-                        e.preventDefault();
-                        navigateToNextField('purchase_invoice');
-                      }
-                    }}
-                    isSearchable
-                    classNamePrefix="react-select"
-                    styles={{
-                      control: (base) => ({
-                        ...base,
-                        minHeight: "28px",
-                        height: "28px",
-                        fontSize: "12px",
-                      }),
-                      valueContainer: (base) => ({
-                        ...base,
-                        height: "28px",
-                        padding: "0 4px",
-                      }),
-                      input: (base) => ({
-                        ...base,
-                        margin: 0,
-                        padding: 0,
-                      }),
-                    }}
-                  />
-                </div>
-              </td>
+<td className="border p-1 w-1/3">
+  <label className="block text-[10px]">Purchase Invoice *</label>
+  <Select
+    ref={purchaseInvoiceRef}   
+    options={purchaseInvoices.map((inv) => ({
+      value: inv.id,
+      label: inv.posted_number,
+    }))}
+    value={
+      purchaseInvoices
+        .map((inv) => ({ value: inv.id, label: inv.posted_number }))
+        .find((inv) => inv.value === form.purchase_invoice_id) || null
+    }
+    onChange={(val) => {
+      handleSelectChange("purchase_invoice_id", val);
+      navigateToNextField("purchase_invoice");
+    }}
+    onKeyDown={(e) => {
+      if (e.key === "Enter" && form.purchase_invoice_id) {
+        e.preventDefault();
+        navigateToNextField("purchase_invoice");
+      }
+    }}
+    isSearchable
+    classNamePrefix="react-select"
+    styles={{
+      control: (base) => ({
+        ...base,
+        minHeight: "28px",
+        height: "28px",
+        fontSize: "12px",
+      }),
+      valueContainer: (base) => ({
+        ...base,
+        height: "28px",
+        padding: "0 4px",
+      }),
+      input: (base) => ({
+        ...base,
+        margin: 0,
+        padding: 0,
+      }),
+    }}
+  />
+</td>
+
 
               <td className="border p-1 w-1/4">
                 <label className="block text-[10px]">Remarks</label>
