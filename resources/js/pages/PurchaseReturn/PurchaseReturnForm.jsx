@@ -71,7 +71,17 @@ export default function PurchaseReturnForm({ returnId, initialData, onSuccess })
   }, [returnId]);
 
   useEffect(() => {
-    setTimeout(() => supplierRef.current && supplierRef.current.focus && supplierRef.current.focus(), 120);
+    const focusSupplierInput = () => {
+      if (supplierRef.current) {
+        const input = supplierRef.current.querySelector('input');
+        if (input) {
+          input.focus();
+          input.select();
+        }
+      }
+    };
+    
+    setTimeout(focusSupplierInput, 120);
   }, []);
 
   // When initialData prop changes (edit mode), populate form
@@ -589,41 +599,42 @@ const handleProductSelect = async (index, productId) => {
 
               <td className="border p-1 w-1/3">
                 <label className="block text-[10px]">Supplier *</label>
-                <Select
-                  ref={supplierRef}
-                  options={suppliers.map((s) => ({ value: s.id, label: s.name }))}
-                  value={suppliers.map((s) => ({ value: s.id, label: s.name })).find((s) => s.value === form.supplier_id) || null}
-                  onChange={(val) => {
-                    handleSelectChange("supplier_id", val);
-                    navigateToNextField('supplier');
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && form.supplier_id) {
-                      e.preventDefault();
+                <div ref={supplierRef}>
+                  <Select
+                    options={suppliers.map((s) => ({ value: s.id, label: s.name }))}
+                    value={suppliers.map((s) => ({ value: s.id, label: s.name })).find((s) => s.value === form.supplier_id) || null}
+                    onChange={(val) => {
+                      handleSelectChange("supplier_id", val);
                       navigateToNextField('supplier');
-                    }
-                  }}
-                  isSearchable
-                  className="text-xs"
-                  styles={{
-                    control: (base) => ({
-                      ...base,
-                      minHeight: "28px",
-                      height: "28px",
-                      fontSize: "12px",
-                    }),
-                    valueContainer: (base) => ({
-                      ...base,
-                      height: "28px",
-                      padding: "0 4px",
-                    }),
-                    input: (base) => ({
-                      ...base,
-                      margin: 0,
-                      padding: 0,
-                    }),
-                  }}
-                />
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && form.supplier_id) {
+                        e.preventDefault();
+                        navigateToNextField('supplier');
+                      }
+                    }}
+                    isSearchable
+                    className="text-xs"
+                    styles={{
+                      control: (base) => ({
+                        ...base,
+                        minHeight: "28px",
+                        height: "28px",
+                        fontSize: "12px",
+                      }),
+                      valueContainer: (base) => ({
+                        ...base,
+                        height: "28px",
+                        padding: "0 4px",
+                      }),
+                      input: (base) => ({
+                        ...base,
+                        margin: 0,
+                        padding: 0,
+                      }),
+                    }}
+                  />
+                </div>
               </td>
 
               <td className="border p-1 w-1/3">
