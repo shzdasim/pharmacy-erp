@@ -173,7 +173,7 @@ export default function PurchaseReturnFormUI({
 
           <tbody>
             {form.items.map((item, i) => (
-              <tr key={i} className="text-center">
+              <tr key={item.id} className="text-center">
                 {/* Remove */}
                 <td className="border">
                   <button

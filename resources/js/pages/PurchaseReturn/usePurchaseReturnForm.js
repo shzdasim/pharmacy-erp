@@ -5,6 +5,7 @@ import { recalcItem, recalcFooter } from "../../Formula/PurchaseReturn.js";
 
 export default function usePurchaseReturnForm({ returnId, initialData, onSuccess }) {
   const defaultItem = {
+    id: Date.now() + Math.random(),
     product_id: "",
     batch: "",
     expiry: "",
@@ -169,25 +170,32 @@ export default function usePurchaseReturnForm({ returnId, initialData, onSuccess
     }
   };
 
-  const fetchProductsFromInvoice = async (invoiceId) => {
-    try {
-      const res = await axios.get(`/api/purchase-invoices/${invoiceId}`);
-      const invoice = res.data;
-      const invoiceProducts = invoice.items.map(item => ({
-        ...item.product,
-        pack_purchase_price: item.pack_purchase_price,
-        unit_purchase_price: item.unit_purchase_price,
-        pack_size: item.pack_size,
-        pack_quantity: item.pack_quantity,
-        batch: item.batch,
-        expiry: item.expiry,
-      }));
-      setProducts(invoiceProducts);
-    } catch (err) {
-      console.error(err);
-      toast.error("Failed to load products from invoice");
-    }
-  };
+const fetchProductsFromInvoice = async (invoiceId) => {
+  try {
+    const res = await axios.get(`/api/purchase-invoices/${invoiceId}`);
+    const invoice = res.data;
+
+    // Unique products only
+    const productMap = new Map();
+    invoice.items.forEach(item => {
+      if (!productMap.has(item.product.id)) {
+        productMap.set(item.product.id, {
+          ...item.product,
+          pack_purchase_price: item.pack_purchase_price,
+          unit_purchase_price: item.unit_purchase_price,
+          pack_size: item.pack_size,
+          pack_quantity: item.pack_quantity,
+        });
+      }
+    });
+
+    setProducts([...productMap.values()]);
+  } catch (err) {
+    console.error(err);
+    toast.error("Failed to load products from invoice");
+  }
+};
+
 
   // ---------------------- helpers ----------------------
   const sanitizeNumberInput = (value, allowDecimal = false) => {
@@ -324,10 +332,12 @@ export default function usePurchaseReturnForm({ returnId, initialData, onSuccess
     }, 50);
   };
 
-  const addItem = () => {
-    setForm((prev) => ({ ...prev, items: [...prev.items, Object.assign({}, defaultItem)] }));
-    setCurrentRowIndex(form.items.length);
-  };
+const addItem = () => {
+  const newItem = { ...defaultItem, id: Date.now() + Math.random() };
+  setForm((prev) => ({ ...prev, items: [...prev.items, newItem] }));
+  setCurrentRowIndex(form.items.length);
+};
+
 
   const removeItem = (index) => {
     if (form.items.length <= 1) return;
