@@ -1,7 +1,7 @@
 import Select from "react-select";
 import ProductSearchInput from "../../components/ProductSearchInput.jsx";
 import BatchSearchInput from "../../components/BatchSearchInput.jsx";
-
+import SupplierSearchInput from "../../components/SupplierSearchInput.jsx";
 export default function PurchaseReturnFormUI({
   // Props
   returnId,
@@ -67,65 +67,12 @@ export default function PurchaseReturnFormUI({
 
               <td className="border p-1 w-1/3">
                 <label className="block text-[10px]">Supplier *</label>
-                <Select
-                  ref={supplierSelectRef}
-                  options={suppliers.map((s) => ({ value: s.id, label: s.name }))}
-                  value={suppliers.map((s) => ({ value: s.id, label: s.name }))
-                    .find((s) => s.value === form.supplier_id) || null}
-                  onChange={(val) => {
-                    handleSelectChange("supplier_id", val);
-                    // Move focus to Purchase Invoice field
-                    setTimeout(() => {
-                      if (purchaseInvoiceRef.current) {
-                        purchaseInvoiceRef.current.focus();
-                        purchaseInvoiceRef.current.openMenu();
-                      }
-                    }, 50);
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && form.supplier_id) {
-                      e.preventDefault();
-                      if (purchaseInvoiceRef.current) {
-                        purchaseInvoiceRef.current.focus();
-                        purchaseInvoiceRef.current.openMenu();
-                      }
-                    } else if (e.key === "ArrowDown") {
-                      e.preventDefault();
-                      const currentIndex = suppliers.findIndex(s => s.id === form.supplier_id);
-                      const nextIndex = (currentIndex + 1) % suppliers.length;
-                      if (suppliers[nextIndex]) {
-                        handleSelectChange("supplier_id", { value: suppliers[nextIndex].id, label: suppliers[nextIndex].name });
-                      }
-                    } else if (e.key === "ArrowUp") {
-                      e.preventDefault();
-                      const currentIndex = suppliers.findIndex(s => s.id === form.supplier_id);
-                      const prevIndex = (currentIndex - 1 + suppliers.length) % suppliers.length;
-                      if (suppliers[prevIndex]) {
-                        handleSelectChange("supplier_id", { value: suppliers[prevIndex].id, label: suppliers[prevIndex].name });
-                      }
-                    }
-                  }}
-                  isSearchable
-                  className="text-xs"
-                  styles={{
-                    control: (base) => ({
-                      ...base,
-                      minHeight: "28px",
-                      height: "28px",
-                      fontSize: "12px",
-                    }),
-                    valueContainer: (base) => ({
-                      ...base,
-                      height: "28px",
-                      padding: "0 4px",
-                    }),
-                    input: (base) => ({
-                      ...base,
-                      margin: 0,
-                      padding: 0,
-                    }),
-                  }}
-                />
+                <SupplierSearchInput
+  value={form.supplier_id}
+  onChange={(id) => handleSelectChange("supplier_id", { value: id })}
+  suppliers={suppliers}
+/>
+
               </td>
 
               <td className="border p-1 w-1/3">
