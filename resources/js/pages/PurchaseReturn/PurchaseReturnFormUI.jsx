@@ -68,10 +68,15 @@ export default function PurchaseReturnFormUI({
               <td className="border p-1 w-1/3">
                 <label className="block text-[10px]">Supplier *</label>
                 <SupplierSearchInput
-  value={form.supplier_id}
-  onChange={(id) => handleSelectChange("supplier_id", { value: id })}
-  suppliers={suppliers}
-/>
+                ref={supplierSelectRef}
+                value={form.supplier_id}
+                onChange={(id) => {
+                  handleSelectChange("supplier_id", { value: id });
+                  setTimeout(() => purchaseInvoiceRef.current?.focus(), 50);
+                }}
+                suppliers={suppliers}
+              />
+
 
               </td>
 
@@ -94,6 +99,9 @@ export default function PurchaseReturnFormUI({
                   onKeyDown={(e) => {
                     if (e.key === "Enter" && form.purchase_invoice_id) {
                       e.preventDefault();
+                      setTimeout(() => {
+                        productSearchRefs.current[0]?.querySelector("input")?.focus();
+                      }, 50);
                     }
                   }}
                   isSearchable
