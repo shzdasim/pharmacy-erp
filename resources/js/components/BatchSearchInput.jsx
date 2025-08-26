@@ -1,5 +1,11 @@
 // resources/js/components/BatchSearchInput.jsx
-import React, { useState, useEffect, useRef, forwardRef } from "react";
+import React, {
+  useState,
+  useEffect,
+  useRef,
+  forwardRef,
+  useImperativeHandle,
+} from "react";
 
 const BatchSearchInput = forwardRef(
   ({ value, onChange, batches, usedBatches = [], onKeyDown }, ref) => {
@@ -7,6 +13,14 @@ const BatchSearchInput = forwardRef(
     const [showDropdown, setShowDropdown] = useState(false);
     const [highlightIndex, setHighlightIndex] = useState(0);
     const wrapperRef = useRef(null);
+    const inputRef = useRef(null);
+
+    // ✅ Expose API to parent
+    useImperativeHandle(ref, () => ({
+      focus: () => inputRef.current?.focus(),
+      openMenu: () => setShowDropdown(true),
+      closeMenu: () => setShowDropdown(false),
+    }));
 
     // Close dropdown on outside click
     useEffect(() => {
@@ -16,7 +30,8 @@ const BatchSearchInput = forwardRef(
         }
       }
       document.addEventListener("mousedown", handleClickOutside);
-      return () => document.removeEventListener("mousedown", handleClickOutside);
+      return () =>
+        document.removeEventListener("mousedown", handleClickOutside);
     }, []);
 
     // Update query if value changes externally
@@ -69,7 +84,7 @@ const BatchSearchInput = forwardRef(
     return (
       <div ref={wrapperRef} className="relative w-full">
         <input
-          ref={ref}
+          ref={inputRef}
           type="text"
           value={query}
           onChange={(e) => {

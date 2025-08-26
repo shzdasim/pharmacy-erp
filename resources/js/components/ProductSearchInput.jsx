@@ -1,11 +1,25 @@
 // resources/js/components/ProductSearchInput.jsx
-import React, { useState, useEffect, useRef } from "react";
+import React, {
+  useState,
+  useEffect,
+  useRef,
+  forwardRef,
+  useImperativeHandle,
+} from "react";
 
-export default function ProductSearchInput({ value, onChange, products }) {
+const ProductSearchInput = forwardRef(({ value, onChange, products }, ref) => {
   const [query, setQuery] = useState("");
   const [showDropdown, setShowDropdown] = useState(false);
   const [highlightIndex, setHighlightIndex] = useState(0);
   const wrapperRef = useRef(null);
+  const inputRef = useRef(null);
+
+  // ✅ Expose methods to parent
+  useImperativeHandle(ref, () => ({
+    focus: () => inputRef.current?.focus(),
+    openMenu: () => setShowDropdown(true),
+    closeMenu: () => setShowDropdown(false),
+  }));
 
   // Close dropdown on outside click
   useEffect(() => {
@@ -41,8 +55,8 @@ export default function ProductSearchInput({ value, onChange, products }) {
       const highlightedElement = document.querySelector(`tr.bg-blue-100`);
       if (highlightedElement) {
         highlightedElement.scrollIntoView({
-          block: 'nearest',
-          behavior: 'smooth'
+          block: "nearest",
+          behavior: "smooth",
         });
       }
     }
@@ -51,10 +65,8 @@ export default function ProductSearchInput({ value, onChange, products }) {
   // Keyboard navigation
   const handleKeyDown = (e) => {
     if (!showDropdown) {
-      // If dropdown is not shown and Enter is pressed, trigger the onChange callback
       if (e.key === "Enter") {
         e.preventDefault();
-        // This will trigger the parent component's handleProductSelect
         if (onChange) onChange(value);
       }
       return;
@@ -79,6 +91,7 @@ export default function ProductSearchInput({ value, onChange, products }) {
   return (
     <div ref={wrapperRef} className="relative w-full">
       <input
+        ref={inputRef}
         type="text"
         value={query}
         onChange={(e) => {
@@ -136,4 +149,7 @@ export default function ProductSearchInput({ value, onChange, products }) {
       )}
     </div>
   );
-}
+});
+
+ProductSearchInput.displayName = "ProductSearchInput";
+export default ProductSearchInput;
