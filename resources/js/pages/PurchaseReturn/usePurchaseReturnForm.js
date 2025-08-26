@@ -215,6 +215,7 @@ export default function usePurchaseReturnForm({ returnId, initialData, onSuccess
   };
 
   const handleSelectChange = (field, valueObj) => {
+    console.log("Selected Supplier ID:", valueObj?.value); // Debug log
     setForm({ ...form, [field]: valueObj?.value || "" });
     if (field === "supplier_id") {
       fetchPurchaseInvoices(valueObj?.value);

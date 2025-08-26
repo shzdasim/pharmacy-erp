@@ -89,6 +89,20 @@ export default function PurchaseReturnFormUI({
                         purchaseInvoiceRef.current.focus();
                         purchaseInvoiceRef.current.openMenu();
                       }
+                    } else if (e.key === "ArrowDown") {
+                      e.preventDefault();
+                      const currentIndex = suppliers.findIndex(s => s.id === form.supplier_id);
+                      const nextIndex = (currentIndex + 1) % suppliers.length;
+                      if (suppliers[nextIndex]) {
+                        handleSelectChange("supplier_id", { value: suppliers[nextIndex].id, label: suppliers[nextIndex].name });
+                      }
+                    } else if (e.key === "ArrowUp") {
+                      e.preventDefault();
+                      const currentIndex = suppliers.findIndex(s => s.id === form.supplier_id);
+                      const prevIndex = (currentIndex - 1 + suppliers.length) % suppliers.length;
+                      if (suppliers[prevIndex]) {
+                        handleSelectChange("supplier_id", { value: suppliers[prevIndex].id, label: suppliers[prevIndex].name });
+                      }
                     }
                   }}
                   isSearchable
