@@ -4,18 +4,25 @@ import toast from "react-hot-toast";
 import { recalcItem, recalcFooter } from "../../Formula/PurchaseReturn.js";
 
 /**
- * Behavior tied to your models:
- * - Uses PurchaseInvoice -> items[] (PurchaseInvoiceItem) fields:
- *   product_id, batch, expiry, pack_quantity, pack_size, pack_purchase_price, unit_purchase_price
- * - Pack Purchased Qty comes from invoice items:
- *     • If product has batches on the invoice: choosing a batch sets qty = that row's pack_quantity.
- *     • If product has NO batches on the invoice: qty = SUM(pack_quantity) for that product on the invoice.
- * - Batch options are shaped as { batch_number, expiry, pack_quantity } to satisfy BatchSearchInput.
- * - All hooks are called unconditionally at the top level (no hook-order warnings).
+ * Models used:
+ *  - PurchaseInvoice hasMany PurchaseInvoiceItem
+ *  - PurchaseInvoiceItem fields: product_id, batch, expiry, pack_quantity, pack_size,
+ *    pack_purchase_price, unit_purchase_price, ...
+ *
+ * Behavior:
+ *  • Product list is filtered by the selected Purchase Invoice (falls back to catalog if needed).
+ *  • Selecting a BATCH sets: Pack Purchased Qty (= item.pack_quantity), Expiry, Pack Size, Prices (P/U).
+ *  • If the product has NO batches on that invoice:
+ *      - Pack Purchased Qty = SUM(pack_quantity) for that product on the invoice
+ *      - Return Qty Pack/Unit **NOT** auto-filled (left empty for the user)
+ *      - Purchase Price (P/U) filled using QUANTITY-WEIGHTED averages from invoice rows
+ *      - Totals recalc instantly
+ *
+ * UI/layout not changed.
  */
 
 export default function usePurchaseReturnForm({ returnId, initialData, onSuccess }) {
-  // ===== stable hooks order (DON'T MOVE) =====
+  // ===== hooks (fixed order) =====
   const defaultItem = {
     id: Date.now() + Math.random(),
     product_id: "",
@@ -48,10 +55,10 @@ export default function usePurchaseReturnForm({ returnId, initialData, onSuccess
 
   const [suppliers, setSuppliers] = useState([]);
   const [catalogProducts, setCatalogProducts] = useState([]); // full catalog
-  const [products, setProducts] = useState([]);               // filtered to invoice
+  const [products, setProducts] = useState([]);               // filtered by invoice
   const [purchaseInvoices, setPurchaseInvoices] = useState([]);
 
-  // from selected invoice
+  // Data of the selected invoice
   const [invoiceItems, setInvoiceItems] = useState([]);       // PurchaseInvoiceItem[]
   const [batches, setBatches] = useState([]);                 // for current row/product: [{batch_number, expiry, pack_quantity}]
 
@@ -66,14 +73,12 @@ export default function usePurchaseReturnForm({ returnId, initialData, onSuccess
   const packPurchasePriceRefs = useRef([]);
   const itemDiscountRefs = useRef([]);
 
-  // keep ref arrays aligned
   useEffect(() => {
     productSearchRefs.current = productSearchRefs.current.slice(0, form.items.length);
     packQuantityRefs.current = packQuantityRefs.current.slice(0, form.items.length);
     packPurchasePriceRefs.current = packPurchasePriceRefs.current.slice(0, form.items.length);
     itemDiscountRefs.current = itemDiscountRefs.current.slice(0, form.items.length);
   }, [form.items.length]);
-  // ===== end of hooks header =====
 
   // ===== helpers =====
   const toNum = (v) => (v === undefined || v === null || v === "" ? 0 : Number(v));
@@ -86,6 +91,25 @@ export default function usePurchaseReturnForm({ returnId, initialData, onSuccess
     pack_purchase_price: toNum(firstDefined(src?.pack_purchase_price, src?.product?.pack_purchase_price)),
     unit_purchase_price: toNum(firstDefined(src?.unit_purchase_price, src?.product?.unit_purchase_price)),
   });
+
+  const sumBy = (rows, get) => rows.reduce((s, r) => s + toNum(get(r)), 0);
+  const weightedAvg = (rows, valueKey, weightKey = "pack_quantity") => {
+    const wSum = sumBy(rows, (r) => r[weightKey]);
+    if (!wSum) return 0;
+    const vSum = rows.reduce((s, r) => s + toNum(r[valueKey]) * toNum(r[weightKey]), 0);
+    return vSum / wSum;
+  };
+  const mostCommon = (rows, key) => {
+    const map = new Map();
+    rows.forEach((r) => {
+      const k = r[key];
+      if (k === undefined || k === null || k === "") return;
+      map.set(k, (map.get(k) || 0) + 1);
+    });
+    let maxK = undefined, maxC = -1;
+    map.forEach((c, k) => { if (c > maxC) { maxC = c; maxK = k; } });
+    return maxK;
+  };
 
   const focusProductSearch = (row) => {
     setTimeout(() => {
@@ -109,9 +133,9 @@ export default function usePurchaseReturnForm({ returnId, initialData, onSuccess
     }, 50);
   };
 
-  // ===== initial loads (not conditional hooks) =====
+  // ===== initial loads =====
   useEffect(() => {
-    const boot = async () => {
+    (async () => {
       try {
         const [supRes, prodRes, codeRes] = await Promise.all([
           axios.get("/api/suppliers"),
@@ -121,16 +145,15 @@ export default function usePurchaseReturnForm({ returnId, initialData, onSuccess
         setSuppliers(supRes.data || []);
         const catalog = Array.isArray(prodRes.data) ? prodRes.data : [];
         setCatalogProducts(catalog);
-        setProducts(catalog); // until invoice is chosen, show all for search
+        setProducts(catalog); // before invoice selection
         setForm((prev) => ({ ...prev, posted_number: codeRes.data?.posted_number || codeRes.data?.code || "" }));
       } catch (err) { console.error(err); }
-    };
-    boot();
+    })();
   }, []);
 
   useEffect(() => {
-    const loadReturn = async () => {
-      if (!returnId) return;
+    if (!returnId) return;
+    (async () => {
       try {
         const res = await axios.get(`/api/purchase-returns/${returnId}`);
         const data = res.data || {};
@@ -150,18 +173,13 @@ export default function usePurchaseReturnForm({ returnId, initialData, onSuccess
           total: toNum(data.total),
         };
         setForm((prev) => recalcFooter({ ...prev, ...normalized }, "init"));
-        if (normalized.supplier_id) {
-          await fetchPurchaseInvoices(normalized.supplier_id);
-        }
-        if (normalized.purchase_invoice_id) {
-          await loadInvoice(normalized.purchase_invoice_id);
-        }
+        if (normalized.supplier_id) await fetchPurchaseInvoices(normalized.supplier_id);
+        if (normalized.purchase_invoice_id) await loadInvoice(normalized.purchase_invoice_id);
       } catch (err) { console.error(err); }
-    };
-    loadReturn();
+    })();
   }, [returnId]);
 
-  // ===== data fetchers =====
+  // ===== fetchers =====
   const fetchPurchaseInvoices = async (supplierId) => {
     if (!supplierId) { setPurchaseInvoices([]); return; }
     try {
@@ -176,7 +194,7 @@ export default function usePurchaseReturnForm({ returnId, initialData, onSuccess
       const items = Array.isArray(res.data?.items) ? res.data.items : [];
       setInvoiceItems(items);
 
-      // build unique products list from invoice items
+      // derive product list from invoice items
       const byId = new Map();
       for (const it of items) {
         const p = normalizeProduct(it.product || it);
@@ -191,8 +209,8 @@ export default function usePurchaseReturnForm({ returnId, initialData, onSuccess
       setProducts(invoiceProducts.length ? invoiceProducts : catalogProducts);
     } catch (err) {
       console.error(err);
-      setProducts(catalogProducts);
       setInvoiceItems([]);
+      setProducts(catalogProducts);
     }
   };
 
@@ -213,7 +231,7 @@ export default function usePurchaseReturnForm({ returnId, initialData, onSuccess
       await fetchPurchaseInvoices(v);
       setInvoiceItems([]);
       setBatches([]);
-      setProducts(catalogProducts); // allow product search until invoice chosen
+      setProducts(catalogProducts); // allow search until invoice chosen
       setForm((prev) => {
         const items = prev.items.map((it) => ({
           ...it,
@@ -263,7 +281,7 @@ export default function usePurchaseReturnForm({ returnId, initialData, onSuccess
     invoiceItems.filter((it) => Number(it.product_id) === Number(productId));
 
   const buildBatchOptions = (itemsForProduct) => {
-    // only truthy batches; shape for BatchSearchInput
+    // only truthy batches; must have 'batch_number' for BatchSearchInput
     const seen = new Set();
     const opts = [];
     for (const it of itemsForProduct) {
@@ -271,9 +289,12 @@ export default function usePurchaseReturnForm({ returnId, initialData, onSuccess
       if (b && !seen.has(b)) {
         seen.add(b);
         opts.push({
-          batch_number: b,           // REQUIRED by BatchSearchInput
+          batch_number: b,
           expiry: it.expiry || "",
           pack_quantity: toNum(it.pack_quantity),
+          pack_size: toNum(it.pack_size),
+          pack_purchase_price: toNum(it.pack_purchase_price),
+          unit_purchase_price: toNum(it.unit_purchase_price),
         });
       }
     }
@@ -315,18 +336,32 @@ export default function usePurchaseReturnForm({ returnId, initialData, onSuccess
     setBatches(batchOpts);
 
     if (batchOpts.length === 0) {
-      // NO batch on invoice → qty = sum(pack_quantity) for that product
-      const totalPacks = itemsForProduct.reduce((sum, it) => sum + toNum(it.pack_quantity), 0);
-      const onlyOne = itemsForProduct.length === 1 ? itemsForProduct[0] : null;
+      // NO batch on invoice → fill ONLY purchased qty + pack size + prices; leave return qty EMPTY
+      const totalPacks = sumBy(itemsForProduct, (it) => it.pack_quantity);
+      const pickedPackSize = toNum(mostCommon(itemsForProduct, "pack_size")) || toNum(newItems[index].pack_size) || 0;
+      let avgPackPrice = weightedAvg(itemsForProduct, "pack_purchase_price");
+      let avgUnitPrice = weightedAvg(itemsForProduct, "unit_purchase_price");
+      if (!avgUnitPrice && pickedPackSize) avgUnitPrice = avgPackPrice / pickedPackSize;
+      if (!avgPackPrice && pickedPackSize) avgPackPrice = avgUnitPrice * pickedPackSize;
+
+      const uniqueExpiry = (() => {
+        const set = new Set(itemsForProduct.map((it) => (it.expiry || "").toString()));
+        return set.size === 1 ? Array.from(set)[0] : "";
+      })();
+
       const upd = [...form.items];
       upd[index] = recalcItem(
         {
           ...upd[index],
           batch: "",
-          expiry: onlyOne?.expiry || "",
+          expiry: uniqueExpiry,
+          pack_size: pickedPackSize,
           pack_purchased_quantity: toNum(totalPacks),
+          // DO NOT set return quantities here
+          pack_purchase_price: toNum(avgPackPrice),
+          unit_purchase_price: toNum(avgUnitPrice),
         },
-        "product_no_batch_qty"
+        "auto_no_batch_fill"
       );
       setForm((prev) => recalcFooter({ ...prev, items: upd }, "items"));
       focusOnField("pack_quantity", index);
@@ -341,7 +376,11 @@ export default function usePurchaseReturnForm({ returnId, initialData, onSuccess
           ...upd[index],
           batch: b.batch_number,
           expiry: b.expiry || "",
+          pack_size: toNum(firstDefined(b.pack_size, upd[index].pack_size)),
           pack_purchased_quantity: toNum(b.pack_quantity),
+          // Set prices from the batch's invoice row
+          pack_purchase_price: toNum(firstDefined(b.pack_purchase_price, upd[index].pack_purchase_price)),
+          unit_purchase_price: toNum(firstDefined(b.unit_purchase_price, upd[index].unit_purchase_price)),
         },
         "batch_auto_apply"
       );
@@ -350,6 +389,7 @@ export default function usePurchaseReturnForm({ returnId, initialData, onSuccess
       return;
     }
 
+    // Multi-batch → wait for user to pick
     setCurrentField("batch");
     setCurrentRowIndex(index);
   };
@@ -369,9 +409,18 @@ export default function usePurchaseReturnForm({ returnId, initialData, onSuccess
       const batchOpts = buildBatchOptions(itemsForProduct);
       const upd = [...form.items];
       if (batchOpts.length === 0) {
-        const totalPacks = itemsForProduct.reduce((s, it) => s + toNum(it.pack_quantity), 0);
+        // revert to no-batch auto fill (ONLY purchased qty + pack size)
+        const totalPacks = sumBy(itemsForProduct, (it) => it.pack_quantity);
+        const pickedPackSize = toNum(mostCommon(itemsForProduct, "pack_size")) || toNum(upd[index].pack_size) || 0;
         upd[index] = recalcItem(
-          { ...upd[index], batch: "", expiry: "", pack_purchased_quantity: toNum(totalPacks) },
+          {
+            ...upd[index],
+            batch: "",
+            expiry: "",
+            pack_size: pickedPackSize,
+            pack_purchased_quantity: toNum(totalPacks),
+            // DO NOT set return quantities here
+          },
           "batch_clear_no_batches"
         );
       } else {
@@ -403,7 +452,11 @@ export default function usePurchaseReturnForm({ returnId, initialData, onSuccess
         ...upd[index],
         batch: batchNumber,
         expiry: matched.expiry || "",
+        pack_size: toNum(firstDefined(matched.pack_size, upd[index].pack_size)),
         pack_purchased_quantity: toNum(matched.pack_quantity),
+        // set prices from invoice row
+        pack_purchase_price: toNum(firstDefined(matched.pack_purchase_price, upd[index].pack_purchase_price)),
+        unit_purchase_price: toNum(firstDefined(matched.unit_purchase_price, upd[index].unit_purchase_price)),
       },
       "batch_selected"
     );
@@ -525,9 +578,9 @@ export default function usePurchaseReturnForm({ returnId, initialData, onSuccess
     // state
     form,
     suppliers,
-    products,           // filtered list for ProductSearchInput
+    products,
     purchaseInvoices,
-    batches,            // [{batch_number, expiry, pack_quantity}]
+    batches,            // [{batch_number, expiry, pack_quantity, pack_size, pack_purchase_price, unit_purchase_price}]
     currentField,
     currentRowIndex,
 

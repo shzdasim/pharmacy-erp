@@ -12,7 +12,7 @@ export default function PurchaseReturnFormUI({
   suppliers,
   products,
   purchaseInvoices,
-  batches,                // [{batch_number, expiry, pack_quantity}]
+  batches,                // [{batch_number, expiry, pack_quantity, ...}]
   currentField,
   currentRowIndex,
   
@@ -82,7 +82,7 @@ export default function PurchaseReturnFormUI({
               <td className="border p-1 w-1/3">
                 <label className="block text-[10px]">Purchase Invoice *</label>
                 <Select
-                  ref={purchaseInvoiceRef}   
+                  ref={purchaseInvoiceRef}
                   options={purchaseInvoices.map((inv) => ({
                     value: inv.id,
                     label: inv.posted_number,
@@ -215,7 +215,6 @@ export default function PurchaseReturnFormUI({
                       }
                     }}
                     value={item.batch}
-                    // IMPORTANT: batches carry {batch_number, expiry, pack_quantity}
                     batches={batches}
                     usedBatches={form.items.filter((_, rowIdx) => rowIdx !== i).map((r) => r.batch)}
                     onChange={(batchNumber) => handleBatchSelect(i, { value: batchNumber })}
