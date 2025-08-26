@@ -1,5 +1,11 @@
 // resources/js/components/SupplierSearchInput.jsx
-import React, { useState, useEffect, useRef, forwardRef } from "react";
+import React, {
+  useState,
+  useEffect,
+  useRef,
+  forwardRef,
+  useImperativeHandle,
+} from "react";
 
 const SupplierSearchInput = forwardRef(({ value, onChange, suppliers }, ref) => {
   const [query, setQuery] = useState("");
@@ -8,12 +14,14 @@ const SupplierSearchInput = forwardRef(({ value, onChange, suppliers }, ref) => 
   const wrapperRef = useRef(null);
   const inputRef = useRef(null);
 
-  // Allow parent to control focus
-  React.useImperativeHandle(ref, () => ({
+  // ✅ Expose functions to parent
+  useImperativeHandle(ref, () => ({
     focus: () => inputRef.current?.focus(),
+    openMenu: () => setShowDropdown(true),
+    closeMenu: () => setShowDropdown(false),
   }));
 
-  // Autofocus on mount
+  // Autofocus on mount (optional)
   useEffect(() => {
     inputRef.current?.focus();
   }, []);
