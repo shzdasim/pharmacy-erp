@@ -2,6 +2,7 @@ import Select from "react-select";
 import ProductSearchInput from "../../components/ProductSearchInput.jsx";
 import BatchSearchInput from "../../components/BatchSearchInput.jsx";
 import SupplierSearchInput from "../../components/SupplierSearchInput.jsx";
+
 export default function PurchaseReturnFormUI({
   // Props
   returnId,
@@ -11,7 +12,7 @@ export default function PurchaseReturnFormUI({
   suppliers,
   products,
   purchaseInvoices,
-  batches,
+  batches,                // [{batch_number, expiry, pack_quantity}]
   currentField,
   currentRowIndex,
   
@@ -68,16 +69,14 @@ export default function PurchaseReturnFormUI({
               <td className="border p-1 w-1/3">
                 <label className="block text-[10px]">Supplier *</label>
                 <SupplierSearchInput
-                ref={supplierSelectRef}
-                value={form.supplier_id}
-                onChange={(id) => {
-                  handleSelectChange("supplier_id", { value: id });
-                  setTimeout(() => purchaseInvoiceRef.current?.focus(), 50);
-                }}
-                suppliers={suppliers}
-              />
-
-
+                  ref={supplierSelectRef}
+                  value={form.supplier_id}
+                  onChange={(id) => {
+                    handleSelectChange("supplier_id", { value: id });
+                    setTimeout(() => purchaseInvoiceRef.current?.focus(), 50);
+                  }}
+                  suppliers={suppliers}
+                />
               </td>
 
               <td className="border p-1 w-1/3">
@@ -216,6 +215,7 @@ export default function PurchaseReturnFormUI({
                       }
                     }}
                     value={item.batch}
+                    // IMPORTANT: batches carry {batch_number, expiry, pack_quantity}
                     batches={batches}
                     usedBatches={form.items.filter((_, rowIdx) => rowIdx !== i).map((r) => r.batch)}
                     onChange={(batchNumber) => handleBatchSelect(i, { value: batchNumber })}

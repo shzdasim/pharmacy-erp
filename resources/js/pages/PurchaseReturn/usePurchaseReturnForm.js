@@ -1,9 +1,21 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef } from "react";
 import axios from "axios";
 import toast from "react-hot-toast";
 import { recalcItem, recalcFooter } from "../../Formula/PurchaseReturn.js";
 
+/**
+ * Behavior tied to your models:
+ * - Uses PurchaseInvoice -> items[] (PurchaseInvoiceItem) fields:
+ *   product_id, batch, expiry, pack_quantity, pack_size, pack_purchase_price, unit_purchase_price
+ * - Pack Purchased Qty comes from invoice items:
+ *     • If product has batches on the invoice: choosing a batch sets qty = that row's pack_quantity.
+ *     • If product has NO batches on the invoice: qty = SUM(pack_quantity) for that product on the invoice.
+ * - Batch options are shaped as { batch_number, expiry, pack_quantity } to satisfy BatchSearchInput.
+ * - All hooks are called unconditionally at the top level (no hook-order warnings).
+ */
+
 export default function usePurchaseReturnForm({ returnId, initialData, onSuccess }) {
+  // ===== stable hooks order (DON'T MOVE) =====
   const defaultItem = {
     id: Date.now() + Math.random(),
     product_id: "",
@@ -19,32 +31,34 @@ export default function usePurchaseReturnForm({ returnId, initialData, onSuccess
     sub_total: 0,
   };
 
-  const [form, setForm] = useState(
-    initialData || {
-      supplier_id: "",
-      posted_number: "",
-      date: new Date().toISOString().split("T")[0],
-      purchase_invoice_id: "",
-      remarks: "",
-      gross_total: 0,
-      discount_percentage: 0,
-      tax_percentage: 0,
-      discount_amount: 0,
-      tax_amount: 0,
-      total: 0,
-      items: [Object.assign({}, defaultItem)],
-    }
-  );
+  const [form, setForm] = useState({
+    posted_number: "",
+    date: new Date().toISOString().slice(0, 10),
+    supplier_id: "",
+    purchase_invoice_id: "",
+    remarks: "",
+    items: [{ ...defaultItem }],
+    gross_total: 0,
+    discount_percentage: 0,
+    discount_amount: 0,
+    tax_percentage: 0,
+    tax_amount: 0,
+    total: 0,
+  });
 
-  // Data lists
   const [suppliers, setSuppliers] = useState([]);
-  const [products, setProducts] = useState([]);
+  const [catalogProducts, setCatalogProducts] = useState([]); // full catalog
+  const [products, setProducts] = useState([]);               // filtered to invoice
   const [purchaseInvoices, setPurchaseInvoices] = useState([]);
-  const [batches, setBatches] = useState([]);
-  const [currentField, setCurrentField] = useState('supplier');
+
+  // from selected invoice
+  const [invoiceItems, setInvoiceItems] = useState([]);       // PurchaseInvoiceItem[]
+  const [batches, setBatches] = useState([]);                 // for current row/product: [{batch_number, expiry, pack_quantity}]
+
+  const [currentField, setCurrentField] = useState(null);
   const [currentRowIndex, setCurrentRowIndex] = useState(0);
 
-  // Focus/navigation refs
+  // Refs
   const supplierSelectRef = useRef(null);
   const purchaseInvoiceRef = useRef(null);
   const productSearchRefs = useRef([]);
@@ -52,531 +66,480 @@ export default function usePurchaseReturnForm({ returnId, initialData, onSuccess
   const packPurchasePriceRefs = useRef([]);
   const itemDiscountRefs = useRef([]);
 
-  // keep refs arrays length in sync with items
+  // keep ref arrays aligned
   useEffect(() => {
     productSearchRefs.current = productSearchRefs.current.slice(0, form.items.length);
     packQuantityRefs.current = packQuantityRefs.current.slice(0, form.items.length);
     packPurchasePriceRefs.current = packPurchasePriceRefs.current.slice(0, form.items.length);
     itemDiscountRefs.current = itemDiscountRefs.current.slice(0, form.items.length);
   }, [form.items.length]);
+  // ===== end of hooks header =====
 
-  useEffect(() => {
-    fetchSuppliers();
-    fetchProducts();
+  // ===== helpers =====
+  const toNum = (v) => (v === undefined || v === null || v === "" ? 0 : Number(v));
+  const firstDefined = (...vals) => vals.find((v) => v !== undefined && v !== null);
 
-    if (!returnId) fetchNewCode();
+  const normalizeProduct = (src) => ({
+    id: Number(firstDefined(src?.id, src?.product_id, src?.ProductId, src?.product?.id)),
+    name: firstDefined(src?.name, src?.product_name, src?.product?.name, src?.title, src?.label),
+    pack_size: toNum(firstDefined(src?.pack_size, src?.product?.pack_size)),
+    pack_purchase_price: toNum(firstDefined(src?.pack_purchase_price, src?.product?.pack_purchase_price)),
+    unit_purchase_price: toNum(firstDefined(src?.unit_purchase_price, src?.product?.unit_purchase_price)),
+  });
 
-    if (returnId) fetchReturn(returnId);
-  }, [returnId]);
-
-  useEffect(() => {
+  const focusProductSearch = (row) => {
     setTimeout(() => {
-      if (supplierSelectRef.current) {
-        supplierSelectRef.current.focus();
-        supplierSelectRef.current.openMenu();
-      }
-    }, 120);
-  }, []);
-
-  // When initialData prop changes (edit mode), populate form
-  useEffect(() => {
-    if (initialData) {
-      // normalize numeric fields
-      const normalized = {
-        ...initialData,
-        gross_total: Number(initialData.gross_total || 0),
-        discount_percentage: Number(initialData.discount_percentage || 0),
-        tax_percentage: Number(initialData.tax_percentage || 0),
-        discount_amount: Number(initialData.discount_amount || 0),
-        tax_amount: Number(initialData.tax_amount || 0),
-        total: Number(initialData.total || 0),
-        items:
-          (initialData.items && initialData.items.length)
-            ? initialData.items.map((it) => ({
-                product_id: it.product_id || "",
-                batch: it.batch || "",
-                expiry: it.expiry || "",
-                pack_size: Number(it.pack_size || 0),
-                return_pack_quantity: Number(it.return_pack_quantity || 0),
-                return_unit_quantity: Number(it.return_unit_quantity || 0),
-                pack_purchase_price: Number(it.pack_purchase_price || 0),
-                unit_purchase_price: Number(it.unit_purchase_price || 0),
-                item_discount_percentage: Number(it.item_discount_percentage || 0),
-                sub_total: Number(it.sub_total || 0),
-              }))
-            : [Object.assign({}, defaultItem)],
-      };
-      setForm(normalized);
-    }
-  }, [initialData]);
-
-  // Keyboard shortcut: Alt+S to submit
-  useEffect(() => {
-    const onKey = (e) => {
-      if (e.altKey && e.key.toLowerCase() === "s") {
-        e.preventDefault();
-        handleSubmit(e);
-      }
-    };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [form]);
-
-  // ---------------------- API fetchers ----------------------
-  const fetchSuppliers = async () => {
-    try {
-      const res = await axios.get("/api/suppliers");
-      setSuppliers(res.data || []);
-    } catch (err) {
-      console.error(err);
-    }
-  };
-
-  const fetchProducts = async () => {
-    try {
-      const res = await axios.get("/api/products");
-      setProducts(res.data || []);
-    } catch (err) {
-      console.error(err);
-    }
-  };
-
-  const fetchPurchaseInvoices = async (supplierId) => {
-    try {
-      const res = await axios.get(`/api/purchase-invoices?supplier_id=${supplierId}`);
-      setPurchaseInvoices(res.data || []);
-    } catch (err) {
-      console.error(err);
-    }
-  };
-
-  const fetchNewCode = async () => {
-    try {
-      const res = await axios.get("/api/purchase-returns/new-code");
-      setForm((prev) => ({ ...prev, posted_number: res.data.posted_number || res.data.code || "" }));
-    } catch (err) {
-      console.error(err);
-    }
-  };
-
-  const fetchReturn = async (id) => {
-    try {
-      const res = await axios.get(`/api/purchase-returns/${id}`);
-      const data = res.data;
-      setForm((prev) => ({ ...prev, ...(data || {}) }));
-    } catch (err) {
-      console.error(err);
-      toast.error("Failed to load purchase return");
-    }
-  };
-
-const fetchProductsFromInvoice = async (invoiceId) => {
-  try {
-    const res = await axios.get(`/api/purchase-invoices/${invoiceId}`);
-    const invoice = res.data;
-
-    // Unique products only
-    const productMap = new Map();
-    invoice.items.forEach(item => {
-      if (!productMap.has(item.product.id)) {
-        productMap.set(item.product.id, {
-          ...item.product,
-          pack_purchase_price: item.pack_purchase_price,
-          unit_purchase_price: item.unit_purchase_price,
-          pack_size: item.pack_size,
-          pack_quantity: item.pack_quantity,
-        });
-      }
-    });
-
-    setProducts([...productMap.values()]);
-  } catch (err) {
-    console.error(err);
-    toast.error("Failed to load products from invoice");
-  }
-};
-
-
-  // ---------------------- helpers ----------------------
-  const sanitizeNumberInput = (value, allowDecimal = false) => {
-    if (value === "" || value === null || value === undefined) return "";
-    value = String(value);
-    if (allowDecimal) {
-      if (/^\d*\.?\d*$/.test(value)) return value;
-      return value.slice(0, -1);
-    }
-    return value.replace(/\D/g, "");
-  };
-
-  // Header simple change
-  const handleChange = (e) => {
-    const { name, value } = e.target;
-    let v = value;
-    const numericFields = ["discount_percentage", "discount_amount", "tax_percentage", "tax_amount"];
-    if (numericFields.includes(name)) v = sanitizeNumberInput(value, true);
-
-    let newForm = { ...form, [name]: v };
-    if (["tax_percentage", "tax_amount", "discount_percentage", "discount_amount"].includes(name)) {
-      newForm = recalcFooter(newForm, name);
-    }
-    setForm(newForm);
-  };
-
-  const handleSelectChange = (field, valueObj) => {
-    console.log("Selected Supplier ID:", valueObj?.value); // Debug log
-    setForm({ ...form, [field]: valueObj?.value || "" });
-    if (field === "supplier_id") {
-      fetchPurchaseInvoices(valueObj?.value);
-    } else if (field === "purchase_invoice_id") {
-      fetchProductsFromInvoice(valueObj?.value);
-    }
-  };
-
-  // Items handling
-  const handleItemChange = (index, field, rawValue) => {
-    let value = rawValue;
-
-    const allowDecimalFields = ["pack_purchase_price", "unit_purchase_price", "item_discount_percentage"];
-    const integerFields = ["return_pack_quantity", "return_unit_quantity", "pack_size"];
-
-    if (allowDecimalFields.includes(field)) {
-      if (!/^\d*\.?\d*$/.test(String(value))) return;
-    } else if (integerFields.includes(field)) {
-      value = String(value).replace(/\D/g, "");
-    }
-
-    const newItems = [...form.items];
-    newItems[index] = recalcItem({ ...newItems[index], [field]: value }, field);
-
-    let newForm = { ...form, items: newItems };
-    newForm = recalcFooter(newForm, "items");
-    setForm(newForm);
-  };
-
-  const handleProductSelect = async (index, productId) => {
-    const selected = products.find((p) => Number(p.id) === Number(productId));
-    let packPurchasedQty = 0;
-    if (selected && selected.pack_quantity !== undefined) {
-      packPurchasedQty = selected.pack_quantity;
-    }
-    const newItems = [...form.items];
-    newItems[index] = {
-      ...newItems[index],
-      product_id: selected?.id || "",
-      pack_size: selected?.pack_size || 0,
-      pack_purchase_price: selected?.pack_purchase_price ?? 0,
-      unit_purchase_price: selected?.unit_purchase_price ?? 0,
-      pack_purchased_quantity: packPurchasedQty,
-    };
-    newItems[index] = recalcItem(newItems[index], "product_id");
-    
-    // Fetch batches for the selected product
-    try {
-      const res = await axios.get(`/api/products/${selected.id}/batches`);
-      const fetchedBatches = res.data || [];
-      setBatches(fetchedBatches);
-      
-      const newForm = recalcFooter({ ...form, items: newItems }, "items");
-      setForm(newForm);
-      
-      // After setting form and batches, navigate to next field
-      setTimeout(() => {
-        if (fetchedBatches.length > 0) {
-          setCurrentField('batch');
-        } else {
-          if (packQuantityRefs.current[index]) {
-            packQuantityRefs.current[index].focus();
-            setCurrentField('pack_quantity');
-            setCurrentRowIndex(index);
-          }
-        }
-      }, 100);
-    } catch (err) {
-      console.error(err);
-      toast.error("Failed to load batches");
-      
-      const newForm = recalcFooter({ ...form, items: newItems }, "items");
-      setForm(newForm);
-      
-      // On error, still navigate to return pack quantity
-      setTimeout(() => {
-        if (packQuantityRefs.current[index]) {
-          packQuantityRefs.current[index].focus();
-          setCurrentField('pack_quantity');
-          setCurrentRowIndex(index);
-        }
-      }, 100);
-    }
-  };
-
-  const handleBatchSelect = (index, valueObj) => {
-    const batchNumber = valueObj?.value || "";
-    const newItems = [...form.items];
-    newItems[index] = { ...newItems[index], batch: batchNumber };
-    
-    // Find the batch details to set expiry
-    const selectedBatch = batches.find(b => b.batch_number === batchNumber);
-    if (selectedBatch) {
-      newItems[index] = { ...newItems[index], expiry: selectedBatch.expiry_date || "" };
-    }
-    
-    setForm({ ...form, items: newItems });
-    
-    // Navigate to next field after batch selection
-    setTimeout(() => {
-      if (packQuantityRefs.current[index]) {
-        packQuantityRefs.current[index].focus();
-        setCurrentField('pack_quantity');
-        setCurrentRowIndex(index);
-      }
+      productSearchRefs.current[row]?.querySelector("input")?.focus?.();
+      setCurrentField("product");
+      setCurrentRowIndex(row);
     }, 50);
   };
 
-const addItem = () => {
-  const newItem = { ...defaultItem, id: Date.now() + Math.random() };
-  setForm((prev) => ({ ...prev, items: [...prev.items, newItem] }));
-  setCurrentRowIndex(form.items.length);
-};
+  const focusOnField = (key, row) => {
+    setTimeout(() => {
+      if (key === "pack_quantity" && packQuantityRefs.current[row]) {
+        packQuantityRefs.current[row].focus();
+      } else if (key === "pack_purchase_price" && packPurchasePriceRefs.current[row]) {
+        packPurchasePriceRefs.current[row].focus();
+      } else if (key === "item_discount" && itemDiscountRefs.current[row]) {
+        itemDiscountRefs.current[row].focus();
+      }
+      setCurrentField(key);
+      setCurrentRowIndex(row);
+    }, 50);
+  };
 
+  // ===== initial loads (not conditional hooks) =====
+  useEffect(() => {
+    const boot = async () => {
+      try {
+        const [supRes, prodRes, codeRes] = await Promise.all([
+          axios.get("/api/suppliers"),
+          axios.get("/api/products"),
+          axios.get("/api/purchase-returns/new-code"),
+        ]);
+        setSuppliers(supRes.data || []);
+        const catalog = Array.isArray(prodRes.data) ? prodRes.data : [];
+        setCatalogProducts(catalog);
+        setProducts(catalog); // until invoice is chosen, show all for search
+        setForm((prev) => ({ ...prev, posted_number: codeRes.data?.posted_number || codeRes.data?.code || "" }));
+      } catch (err) { console.error(err); }
+    };
+    boot();
+  }, []);
+
+  useEffect(() => {
+    const loadReturn = async () => {
+      if (!returnId) return;
+      try {
+        const res = await axios.get(`/api/purchase-returns/${returnId}`);
+        const data = res.data || {};
+        const items = Array.isArray(data.items) && data.items.length ? data.items : [{ ...defaultItem }];
+        const normalized = {
+          posted_number: data.posted_number || data.code || "",
+          date: data.date || new Date().toISOString().slice(0, 10),
+          supplier_id: data.supplier_id || "",
+          purchase_invoice_id: data.purchase_invoice_id || "",
+          remarks: data.remarks || "",
+          items: items.map((it) => ({ ...defaultItem, ...it })),
+          gross_total: toNum(data.gross_total),
+          discount_percentage: toNum(data.discount_percentage),
+          discount_amount: toNum(data.discount_amount),
+          tax_percentage: toNum(data.tax_percentage),
+          tax_amount: toNum(data.tax_amount),
+          total: toNum(data.total),
+        };
+        setForm((prev) => recalcFooter({ ...prev, ...normalized }, "init"));
+        if (normalized.supplier_id) {
+          await fetchPurchaseInvoices(normalized.supplier_id);
+        }
+        if (normalized.purchase_invoice_id) {
+          await loadInvoice(normalized.purchase_invoice_id);
+        }
+      } catch (err) { console.error(err); }
+    };
+    loadReturn();
+  }, [returnId]);
+
+  // ===== data fetchers =====
+  const fetchPurchaseInvoices = async (supplierId) => {
+    if (!supplierId) { setPurchaseInvoices([]); return; }
+    try {
+      const res = await axios.get(`/api/purchase-invoices?supplier_id=${supplierId}`);
+      setPurchaseInvoices(res.data || []);
+    } catch (err) { console.error(err); }
+  };
+
+  const loadInvoice = async (invoiceId) => {
+    try {
+      const res = await axios.get(`/api/purchase-invoices/${invoiceId}`);
+      const items = Array.isArray(res.data?.items) ? res.data.items : [];
+      setInvoiceItems(items);
+
+      // build unique products list from invoice items
+      const byId = new Map();
+      for (const it of items) {
+        const p = normalizeProduct(it.product || it);
+        if (p.id && p.name && !byId.has(p.id)) {
+          p.pack_size = toNum(firstDefined(it.pack_size, p.pack_size));
+          p.pack_purchase_price = toNum(firstDefined(it.pack_purchase_price, p.pack_purchase_price));
+          p.unit_purchase_price = toNum(firstDefined(it.unit_purchase_price, p.unit_purchase_price));
+          byId.set(p.id, p);
+        }
+      }
+      const invoiceProducts = Array.from(byId.values());
+      setProducts(invoiceProducts.length ? invoiceProducts : catalogProducts);
+    } catch (err) {
+      console.error(err);
+      setProducts(catalogProducts);
+      setInvoiceItems([]);
+    }
+  };
+
+  // ===== handlers =====
+  const handleChange = (e) => {
+    const { name, value } = e.target;
+    let next = { ...form, [name]: value };
+    if (name === "discount_percentage" || name === "tax_percentage") {
+      next = recalcFooter(next, name);
+    }
+    setForm(next);
+  };
+
+  const handleSelectChange = async (field, value) => {
+    const v = value?.value ?? value ?? "";
+    if (field === "supplier_id") {
+      setForm((prev) => ({ ...prev, supplier_id: v, purchase_invoice_id: "" }));
+      await fetchPurchaseInvoices(v);
+      setInvoiceItems([]);
+      setBatches([]);
+      setProducts(catalogProducts); // allow product search until invoice chosen
+      setForm((prev) => {
+        const items = prev.items.map((it) => ({
+          ...it,
+          product_id: "",
+          batch: "",
+          expiry: "",
+          pack_size: 0,
+          pack_purchased_quantity: 0,
+          return_pack_quantity: 0,
+          return_unit_quantity: 0,
+          pack_purchase_price: 0,
+          unit_purchase_price: 0,
+        }));
+        return recalcFooter({ ...prev, items }, "supplier_change");
+      });
+      setTimeout(() => purchaseInvoiceRef.current?.focus?.(), 50);
+      return;
+    }
+
+    if (field === "purchase_invoice_id") {
+      setForm((prev) => ({ ...prev, purchase_invoice_id: v }));
+      await loadInvoice(v);
+      setBatches([]);
+      setForm((prev) => {
+        const items = prev.items.map((it) => ({
+          ...it,
+          product_id: "",
+          batch: "",
+          expiry: "",
+          pack_size: 0,
+          pack_purchased_quantity: 0,
+          return_pack_quantity: 0,
+          return_unit_quantity: 0,
+          pack_purchase_price: 0,
+          unit_purchase_price: 0,
+        }));
+        return recalcFooter({ ...prev, items }, "invoice_change");
+      });
+      setTimeout(() => {
+        productSearchRefs.current[0]?.querySelector("input")?.focus?.();
+      }, 50);
+      return;
+    }
+  };
+
+  const invoiceItemsForProduct = (productId) =>
+    invoiceItems.filter((it) => Number(it.product_id) === Number(productId));
+
+  const buildBatchOptions = (itemsForProduct) => {
+    // only truthy batches; shape for BatchSearchInput
+    const seen = new Set();
+    const opts = [];
+    for (const it of itemsForProduct) {
+      const b = (it.batch ?? "").toString().trim();
+      if (b && !seen.has(b)) {
+        seen.add(b);
+        opts.push({
+          batch_number: b,           // REQUIRED by BatchSearchInput
+          expiry: it.expiry || "",
+          pack_quantity: toNum(it.pack_quantity),
+        });
+      }
+    }
+    return opts;
+  };
+
+  const handleProductSelect = async (index, productIdOrObj) => {
+    const pid =
+      typeof productIdOrObj === "object"
+        ? (productIdOrObj?.id ?? productIdOrObj?.value)
+        : productIdOrObj;
+
+    const selected =
+      products.find((p) => Number(firstDefined(p.id, p.value)) === Number(pid)) ||
+      catalogProducts.find((p) => Number(firstDefined(p.id, p.value)) === Number(pid));
+
+    const newItems = [...form.items];
+    newItems[index] = recalcItem(
+      {
+        ...newItems[index],
+        product_id: selected?.id || "",
+        pack_size: toNum(firstDefined(selected?.pack_size, newItems[index].pack_size)),
+        pack_purchase_price: toNum(firstDefined(selected?.pack_purchase_price, newItems[index].pack_purchase_price)),
+        unit_purchase_price: toNum(firstDefined(selected?.unit_purchase_price, newItems[index].unit_purchase_price)),
+        batch: "",
+        expiry: "",
+        pack_purchased_quantity: 0,
+        return_pack_quantity: 0,
+        return_unit_quantity: 0,
+      },
+      "product_id"
+    );
+    setForm((prev) => recalcFooter({ ...prev, items: newItems }, "items"));
+
+    if (!selected?.id) { setBatches([]); return; }
+
+    const itemsForProduct = invoiceItemsForProduct(selected.id);
+    const batchOpts = buildBatchOptions(itemsForProduct);
+    setBatches(batchOpts);
+
+    if (batchOpts.length === 0) {
+      // NO batch on invoice → qty = sum(pack_quantity) for that product
+      const totalPacks = itemsForProduct.reduce((sum, it) => sum + toNum(it.pack_quantity), 0);
+      const onlyOne = itemsForProduct.length === 1 ? itemsForProduct[0] : null;
+      const upd = [...form.items];
+      upd[index] = recalcItem(
+        {
+          ...upd[index],
+          batch: "",
+          expiry: onlyOne?.expiry || "",
+          pack_purchased_quantity: toNum(totalPacks),
+        },
+        "product_no_batch_qty"
+      );
+      setForm((prev) => recalcFooter({ ...prev, items: upd }, "items"));
+      focusOnField("pack_quantity", index);
+      return;
+    }
+
+    if (batchOpts.length === 1) {
+      const b = batchOpts[0];
+      const upd = [...form.items];
+      upd[index] = recalcItem(
+        {
+          ...upd[index],
+          batch: b.batch_number,
+          expiry: b.expiry || "",
+          pack_purchased_quantity: toNum(b.pack_quantity),
+        },
+        "batch_auto_apply"
+      );
+      setForm((prev) => recalcFooter({ ...prev, items: upd }, "items"));
+      focusOnField("pack_quantity", index);
+      return;
+    }
+
+    setCurrentField("batch");
+    setCurrentRowIndex(index);
+  };
+
+  const handleBatchSelect = (index, valueObjOrString) => {
+    const rowItem = form.items[index];
+    if (!rowItem?.product_id) return;
+
+    const batchNumber =
+      typeof valueObjOrString === "string"
+        ? valueObjOrString
+        : valueObjOrString?.value ?? valueObjOrString?.batch ?? valueObjOrString?.batch_number ?? "";
+
+    // clear
+    if (!batchNumber) {
+      const itemsForProduct = invoiceItemsForProduct(rowItem.product_id);
+      const batchOpts = buildBatchOptions(itemsForProduct);
+      const upd = [...form.items];
+      if (batchOpts.length === 0) {
+        const totalPacks = itemsForProduct.reduce((s, it) => s + toNum(it.pack_quantity), 0);
+        upd[index] = recalcItem(
+          { ...upd[index], batch: "", expiry: "", pack_purchased_quantity: toNum(totalPacks) },
+          "batch_clear_no_batches"
+        );
+      } else {
+        upd[index] = recalcItem(
+          { ...upd[index], batch: "", expiry: "", pack_purchased_quantity: 0 },
+          "batch_clear"
+        );
+      }
+      setForm((prev) => recalcFooter({ ...prev, items: upd }, "items"));
+      focusOnField("pack_quantity", index);
+      return;
+    }
+
+    // match invoice item (product + batch)
+    const matched = invoiceItems.find(
+      (it) =>
+        Number(it.product_id) === Number(rowItem.product_id) &&
+        (it.batch ?? "").toString() === batchNumber
+    );
+
+    if (!matched) {
+      toast.error("Selected batch not found on this invoice.");
+      return;
+    }
+
+    const upd = [...form.items];
+    upd[index] = recalcItem(
+      {
+        ...upd[index],
+        batch: batchNumber,
+        expiry: matched.expiry || "",
+        pack_purchased_quantity: toNum(matched.pack_quantity),
+      },
+      "batch_selected"
+    );
+    setForm((prev) => recalcFooter({ ...prev, items: upd }, "items"));
+    focusOnField("pack_quantity", index);
+  };
+
+  const handleItemChange = (rowIndex, field, rawVal) => {
+    const value = rawVal === "" ? "" : Number(rawVal);
+    const newItems = [...form.items];
+    newItems[rowIndex] = recalcItem({ ...newItems[rowIndex], [field]: value }, field);
+    const newForm = recalcFooter({ ...form, items: newItems }, "items");
+    setForm(newForm);
+  };
+
+  const handleProductKeyDown = (e, rowIndex) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      if (currentField === "batch") setCurrentRowIndex(rowIndex);
+      else focusOnField("pack_quantity", rowIndex);
+    }
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      const nextRow = Math.min(form.items.length - 1, rowIndex + 1);
+      focusProductSearch(nextRow);
+    }
+    if (e.key === "ArrowUp") {
+      e.preventDefault();
+      const prevRow = Math.max(0, rowIndex - 1);
+      focusProductSearch(prevRow);
+    }
+  };
+
+  const handleKeyDown = (e, field, rowIndex) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      if (field === "pack_quantity") focusOnField("pack_purchase_price", rowIndex);
+      else if (field === "pack_purchase_price") focusOnField("item_discount", rowIndex);
+      else if (field === "item_discount") {
+        if (rowIndex === form.items.length - 1) {
+          addItem();
+          focusProductSearch(form.items.length);
+        } else {
+          focusProductSearch(rowIndex + 1);
+        }
+      }
+    }
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      const nextRow = Math.min(form.items.length - 1, rowIndex + 1);
+      focusOnField(field, nextRow);
+    }
+    if (e.key === "ArrowUp") {
+      e.preventDefault();
+      const prevRow = Math.max(0, rowIndex - 1);
+      focusOnField(field, prevRow);
+    }
+  };
+
+  const addItem = () => {
+    const newItem = { ...defaultItem, id: Date.now() + Math.random() };
+    setForm((prev) => ({ ...prev, items: [...prev.items, newItem] }));
+    setCurrentRowIndex(form.items.length);
+  };
 
   const removeItem = (index) => {
     if (form.items.length <= 1) return;
     const newItems = form.items.filter((_, i) => i !== index);
     const newForm = recalcFooter({ ...form, items: newItems }, "items");
     setForm(newForm);
-    if (currentRowIndex >= newItems.length) {
-      setCurrentRowIndex(newItems.length - 1);
-    }
   };
 
-  // Helper: robustly focus the ProductSearchInput inside its wrapper
-  const focusProductSearch = (rowIndex = 0) => {
-    const tryFocus = () => {
-      const container = productSearchRefs.current[rowIndex];
-      if (!container) return false;
-
-      if (container instanceof HTMLElement) {
-        const input = container.querySelector('input, [contenteditable="true"]');
-        if (input && typeof input.focus === 'function') {
-          input.focus();
-          if (typeof input.select === 'function') input.select();
-          setCurrentField('product');
-          setCurrentRowIndex(rowIndex);
-          return true;
-        }
-      }
-
-      if (container && typeof container.focus === 'function') {
-        container.focus();
-        setCurrentField('product');
-        setCurrentRowIndex(rowIndex);
-        return true;
-      }
-
-      return false;
-    };
-
-    if (tryFocus()) return;
-
-    let attempts = 0;
-    const maxAttempts = 10;
-    const retry = () => {
-      attempts += 1;
-      if (tryFocus() || attempts >= maxAttempts) return;
-      setTimeout(retry, 50);
-    };
-    setTimeout(retry, 30);
-  };
-
-  // Helper function to focus on the same field in a different row
-  const focusOnField = (field, rowIndex) => {
-    setTimeout(() => {
-      switch (field) {
-        case 'pack_quantity':
-          if (packQuantityRefs.current[rowIndex]) {
-            packQuantityRefs.current[rowIndex].focus();
-            setCurrentField('pack_quantity');
-            setCurrentRowIndex(rowIndex);
-          }
-          break;
-        case 'pack_purchase_price':
-          if (packPurchasePriceRefs.current[rowIndex]) {
-            packPurchasePriceRefs.current[rowIndex].focus();
-            setCurrentField('pack_purchase_price');
-            setCurrentRowIndex(rowIndex);
-          }
-          break;
-        case 'item_discount':
-          if (itemDiscountRefs.current[rowIndex]) {
-            itemDiscountRefs.current[rowIndex].focus();
-            setCurrentField('item_discount');
-            setCurrentRowIndex(rowIndex);
-          }
-          break;
-        default:
-          focusProductSearch(rowIndex);
-          break;
-      }
-    }, 50);
-  };
-
-  const navigateToNextField = (currentFieldName, rowIndex = 0) => {
-    setTimeout(() => {
-      switch (currentFieldName) {
-        case 'supplier':
-          if (purchaseInvoiceRef.current) {
-            purchaseInvoiceRef.current.focus();
-            setCurrentField('purchase_invoice');
-          }
-          break;
-        case 'purchase_invoice':
-          focusProductSearch(0);
-          break;
-        case 'product':
-          const selectedProduct = products.find(p => p.id === form.items[rowIndex]?.product_id);
-          if (selectedProduct && batches.length > 0) {
-            setCurrentField('batch');
-          } else {
-            if (packQuantityRefs.current[rowIndex]) {
-              packQuantityRefs.current[rowIndex].focus();
-              setCurrentField('pack_quantity');
-            }
-          }
-          break;
-        case 'batch':
-          if (packQuantityRefs.current[rowIndex]) {
-            packQuantityRefs.current[rowIndex].focus();
-            setCurrentField('pack_quantity');
-          }
-          break;
-        case 'pack_quantity':
-          if (packPurchasePriceRefs.current[rowIndex]) {
-            packPurchasePriceRefs.current[rowIndex].focus();
-            setCurrentField('pack_purchase_price');
-          }
-          break;
-        case 'pack_purchase_price':
-          if (itemDiscountRefs.current[rowIndex]) {
-            itemDiscountRefs.current[rowIndex].focus();
-            setCurrentField('item_discount');
-          }
-          break;
-        case 'item_discount':
-          addItem();
-          focusProductSearch(rowIndex + 1);
-          break;
-      }
-    }, 50);
-  };
-
-  const handleKeyDown = (e, field, rowIndex = 0) => {
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      navigateToNextField(field, rowIndex);
-    } else if (e.key === 'ArrowDown') {
-      e.preventDefault();
-      if (rowIndex === form.items.length - 1) {
-        addItem();
-        setTimeout(() => {
-          focusOnField(field, rowIndex + 1);
-        }, 200);
-      } else {
-        const nextRowIndex = rowIndex + 1;
-        focusOnField(field, nextRowIndex);
-      }
-    } else if (e.key === 'ArrowUp') {
-      e.preventDefault();
-      if (rowIndex > 0) {
-        const prevRowIndex = rowIndex - 1;
-        focusOnField(field, prevRowIndex);
-      }
-    }
-  };
-
-  const handleProductKeyDown = (e, rowIndex) => {
-    if (e.key === 'Enter') {
-      e.preventDefault();
-    } else if (e.key === 'ArrowUp' && rowIndex > 0) {
-      e.preventDefault();
-      const prevRowIndex = rowIndex - 1;
-      focusProductSearch(prevRowIndex);
-    } else if (e.key === 'ArrowDown') {
-      e.preventDefault();
-      if (rowIndex === form.items.length - 1) {
-        addItem();
-        setTimeout(() => {
-          focusProductSearch(rowIndex + 1);
-        }, 200);
-      } else {
-        focusProductSearch(rowIndex + 1);
-      }
-    }
-  };
-
-  // ---------------------- submit ----------------------
-  const handleSubmit = async (e) => {
-    e.preventDefault();
+  const handleSubmit = async () => {
     try {
+      if (!form.supplier_id) {
+        toast.error("Please select a supplier");
+        supplierSelectRef.current?.focus?.();
+        return;
+      }
+      if (!form.purchase_invoice_id) {
+        toast.error("Please select a purchase invoice");
+        purchaseInvoiceRef.current?.focus?.();
+        return;
+      }
+
       const payload = {
-        supplier_id: form.supplier_id,
-        posted_number: form.posted_number,
-        date: form.date,
-        purchase_invoice_id: form.purchase_invoice_id,
-        remarks: form.remarks,
-        gross_total: Number(form.gross_total || 0),
-        discount_percentage: Number(form.discount_percentage || 0),
-        discount_amount: Number(form.discount_amount || 0),
-        tax_percentage: Number(form.tax_percentage || 0),
-        tax_amount: Number(form.tax_amount || 0),
-        total: Number(form.total || 0),
-        items: form.items.map((it) => ({
-          product_id: it.product_id,
-          batch: it.batch || null,
-          expiry: it.expiry || null,
-          pack_size: Number(it.pack_size || 0),
-          return_pack_quantity: Number(it.return_pack_quantity || 0),
-          return_unit_quantity: Number(it.return_unit_quantity || 0),
-          pack_purchase_price: Number(it.pack_purchase_price || 0),
-          unit_purchase_price: Number(it.unit_purchase_price || 0),
-          item_discount_percentage: Number(it.item_discount_percentage || 0),
-          sub_total: Number(it.sub_total || 0),
-        })),
+        ...form,
+        items: form.items
+          .filter((it) => it.product_id)
+          .map((it) => ({
+            ...it,
+            pack_size: toNum(it.pack_size),
+            pack_purchased_quantity: toNum(it.pack_purchased_quantity),
+            return_pack_quantity: toNum(it.return_pack_quantity),
+            return_unit_quantity: toNum(it.return_unit_quantity),
+            pack_purchase_price: toNum(it.pack_purchase_price),
+            unit_purchase_price: toNum(it.unit_purchase_price),
+            item_discount_percentage: toNum(it.item_discount_percentage),
+            sub_total: toNum(it.sub_total),
+          })),
       };
 
       if (returnId) {
         await axios.put(`/api/purchase-returns/${returnId}`, payload);
-        toast.success("Return updated successfully");
+        toast.success("Purchase return updated");
       } else {
         await axios.post(`/api/purchase-returns`, payload);
-        toast.success("Return created successfully");
+        toast.success("Purchase return created");
       }
 
-      if (onSuccess) onSuccess();
+      onSuccess?.();
     } catch (err) {
       console.error(err);
-      toast.error("Failed to save return");
+      toast.error("Failed to save purchase return");
     }
   };
 
   return {
-    // State
+    // state
     form,
     suppliers,
-    products,
+    products,           // filtered list for ProductSearchInput
     purchaseInvoices,
-    batches,
+    batches,            // [{batch_number, expiry, pack_quantity}]
     currentField,
     currentRowIndex,
-    
-    // Refs
+
+    // refs
     supplierSelectRef,
     purchaseInvoiceRef,
     productSearchRefs,
     packQuantityRefs,
     packPurchasePriceRefs,
     itemDiscountRefs,
-    
-    // Handlers
+
+    // handlers
     handleChange,
     handleSelectChange,
     handleItemChange,
@@ -587,10 +550,8 @@ const addItem = () => {
     addItem,
     removeItem,
     handleSubmit,
-    
-    // Focus helpers
-    focusProductSearch,
+
+    // focus helper
     focusOnField,
-    navigateToNextField
   };
 }
