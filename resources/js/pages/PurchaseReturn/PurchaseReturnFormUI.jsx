@@ -6,16 +6,16 @@ import SupplierSearchInput from "../../components/SupplierSearchInput.jsx";
 export default function PurchaseReturnFormUI({
   // Props
   returnId,
-  
+
   // State
   form,
   suppliers,
   products,
   purchaseInvoices,
-  batches,                // [{batch_number, expiry, pack_quantity, ...}]
+  batches,
   currentField,
   currentRowIndex,
-  
+
   // Refs
   supplierSelectRef,
   purchaseInvoiceRef,
@@ -23,7 +23,7 @@ export default function PurchaseReturnFormUI({
   packQuantityRefs,
   packPurchasePriceRefs,
   itemDiscountRefs,
-  
+
   // Handlers
   handleChange,
   handleSelectChange,
@@ -35,6 +35,9 @@ export default function PurchaseReturnFormUI({
   addItem,
   removeItem,
   handleSubmit,
+
+  // New
+  onCancel,
 }) {
   return (
     <form className="flex flex-col" style={{ minHeight: "74vh", maxHeight: "80vh" }}>
@@ -364,15 +367,25 @@ export default function PurchaseReturnFormUI({
               </td>
             </tr>
 
+            {/* Right-aligned actions */}
             <tr>
-              <td colSpan={6} className="p-2 text-center">
-                <button
-                  type="button"
-                  onClick={handleSubmit}
-                  className="bg-green-600 text-white px-8 py-3 rounded text-sm hover:bg-green-700 transition duration-200"
-                >
-                  {form.returnId || returnId ? "Update Return" : "Create Return"}
-                </button>
+              <td colSpan={6} className="p-2">
+                <div className="flex justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={onCancel}
+                    className="bg-gray-200 text-gray-800 px-6 py-3 rounded text-sm hover:bg-gray-300 transition"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleSubmit}
+                    className="bg-green-600 text-white px-8 py-3 rounded text-sm hover:bg-green-700 transition"
+                  >
+                    {form.returnId || returnId ? "Update Return" : "Create Return"}
+                  </button>
+                </div>
               </td>
             </tr>
           </tbody>

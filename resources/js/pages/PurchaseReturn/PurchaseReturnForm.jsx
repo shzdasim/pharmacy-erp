@@ -1,5 +1,6 @@
 import usePurchaseReturnForm from "./usePurchaseReturnForm";
 import PurchaseReturnFormUI from "./PurchaseReturnFormUI";
+import { useNavigate } from "react-router-dom";
 
 export default function PurchaseReturnForm({ returnId, initialData, onSuccess }) {
   const {
@@ -28,6 +29,13 @@ export default function PurchaseReturnForm({ returnId, initialData, onSuccess })
     handleSubmit,
   } = usePurchaseReturnForm({ returnId, initialData, onSuccess });
 
+  // Navigate to the Purchase Return index page
+  const navigate = useNavigate();
+  const INDEX_ROUTE = "/purchase-returns"; // <-- path to your index.jsx (adjust if different)
+  const handleCancel = () => {
+    navigate(INDEX_ROUTE);
+  };
+
   return (
     <PurchaseReturnFormUI
       returnId={returnId}
@@ -54,6 +62,7 @@ export default function PurchaseReturnForm({ returnId, initialData, onSuccess })
       addItem={addItem}
       removeItem={removeItem}
       handleSubmit={handleSubmit}
+      onCancel={handleCancel}
     />
   );
 }
