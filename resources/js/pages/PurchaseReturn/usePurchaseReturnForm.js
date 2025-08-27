@@ -10,6 +10,10 @@ import { recalcItem, recalcFooter } from "../../Formula/PurchaseReturn.js";
  *    • With invoice: Return Pack Qty <= Pack Purchased Qty (per row).
  *    • Without invoice: Return Unit Qty <= available units (fetched from backend).
  * - Discount % auto-populates from invoice item; for no-batch, weighted average.
+ * - Duplicate guard:
+ *    • If same product is already used in another row WITHOUT a batch (or in open-return), block immediately.
+ *    • If same product+same batch is selected, block immediately.
+ *    • While blocked, only the offending row’s Product (and Batch in invoice mode) are interactive.
  */
 
 export default function usePurchaseReturnForm({ returnId, initialData, onSuccess }) {
@@ -54,6 +58,10 @@ export default function usePurchaseReturnForm({ returnId, initialData, onSuccess
 
   const [currentField, setCurrentField] = useState(null);
   const [currentRowIndex, setCurrentRowIndex] = useState(0);
+
+  // NEW: global duplicate lock (blocks entire UI except product/batch for one row)
+  // { rowIndex, productId, productName, batch? }
+  const [dupBlock, setDupBlock] = useState(null);
 
   // Refs
   const supplierSelectRef = useRef(null);
@@ -102,6 +110,13 @@ export default function usePurchaseReturnForm({ returnId, initialData, onSuccess
     // try a few common stock keys so open-return validation can work without extra calls
     available_units: toNum(firstDefined(src?.available_units, src?.available_quantity, src?.stock_units, src?.quantity, src?.stock)),
   });
+
+  const productNameById = (pid) => {
+    const p =
+      products.find((p) => Number(firstDefined(p.id, p.value)) === Number(pid)) ||
+      catalogProducts.find((p) => Number(firstDefined(p.id, p.value)) === Number(pid));
+    return p?.name || `#${pid}`;
+  };
 
   const focusProductSearch = (row) => {
     setTimeout(() => {
@@ -235,6 +250,7 @@ export default function usePurchaseReturnForm({ returnId, initialData, onSuccess
         }));
         return recalcFooter({ ...prev, items }, "supplier_change");
       });
+      setDupBlock(null); // reset any lock on supplier change
       setTimeout(() => purchaseInvoiceRef.current?.focus?.(), 50);
       return;
     }
@@ -255,6 +271,7 @@ export default function usePurchaseReturnForm({ returnId, initialData, onSuccess
         }));
         return recalcFooter({ ...prev, items }, "invoice_change");
       });
+      setDupBlock(null); // reset lock on invoice change
       setTimeout(() => {
         productSearchRefs.current[0]?.querySelector("input")?.focus?.();
       }, 50);
@@ -286,6 +303,17 @@ export default function usePurchaseReturnForm({ returnId, initialData, onSuccess
     return opts;
   };
 
+  // ---------- Duplicate blocker helper ----------
+  const triggerDupBlock = (rowIndex, productId, productName, batch) => {
+    setDupBlock({ rowIndex, productId, productName, batch });
+    toast.error(
+      batch
+        ? `Duplicate product selected: ${productName} (Batch ${batch}). Change batch or product.`
+        : `Duplicate product selected: ${productName}. Change product or assign a different batch.`
+    );
+    focusProductSearch(rowIndex);
+  };
+
   const handleProductSelect = async (index, productIdOrObj) => {
     const pid =
       typeof productIdOrObj === "object"
@@ -296,6 +324,21 @@ export default function usePurchaseReturnForm({ returnId, initialData, onSuccess
       products.find((p) => Number(firstDefined(p.id, p.value)) === Number(pid)) ||
       catalogProducts.find((p) => Number(firstDefined(p.id, p.value)) === Number(pid));
 
+    // Duplicate logic:
+    if (selected?.id) {
+      const sameProductRows = form.items.filter((it, i) => i !== index && Number(it.product_id) === Number(selected.id));
+
+      // If any existing row has same product WITHOUT a batch OR we are in open-return (no invoice),
+      // we must block immediately because "different batch" condition can't be satisfied yet.
+      const anyWithoutBatch = sameProductRows.some((it) => !it.batch || it.batch === "");
+      const openReturn = !form.purchase_invoice_id;
+      if (sameProductRows.length && (openReturn || anyWithoutBatch)) {
+        triggerDupBlock(index, selected.id, selected.name);
+        return; // DO NOT set the product; user must change it
+      }
+    }
+
+    // Allowed path — set product
     const newItems = [...form.items];
     newItems[index] = recalcItem(
       {
@@ -314,6 +357,9 @@ export default function usePurchaseReturnForm({ returnId, initialData, onSuccess
       "product_id"
     );
     setForm((prev) => recalcFooter({ ...prev, items: newItems }, "items"));
+
+    // Clear lock if this was the offending row and conflict is now resolved
+    if (dupBlock?.rowIndex === index) setDupBlock(null);
 
     if (!selected?.id) { setBatches([]); return; }
 
@@ -344,7 +390,7 @@ export default function usePurchaseReturnForm({ returnId, initialData, onSuccess
             ...upd[index],
             batch: "",
             expiry: uniqueExpiry,
-            pack_size: pickedPackSize,
+            pack_size: toNum(pickedPackSize),
             pack_purchased_quantity: toNum(totalPacks),
             pack_purchase_price: toNum(avgPackPrice),
             unit_purchase_price: toNum(avgUnitPrice),
@@ -392,6 +438,17 @@ export default function usePurchaseReturnForm({ returnId, initialData, onSuccess
         ? valueObjOrString
         : valueObjOrString?.value ?? valueObjOrString?.batch ?? valueObjOrString?.batch_number ?? "";
 
+    // Check if the selected batch already exists for the same product in other rows
+    const hasSameBatch = form.items.some((item, i) =>
+      i !== index && item.product_id === rowItem.product_id && item.batch === batchNumber
+    );
+
+    if (hasSameBatch) {
+      const name = productNameById(rowItem.product_id);
+      triggerDupBlock(index, rowItem.product_id, name, batchNumber);
+      return; // don't apply duplicate batch
+    }
+
     if (!batchNumber) {
       const itemsForProduct = invoiceItemsForProduct(rowItem.product_id);
       const batchOpts = buildBatchOptions(itemsForProduct);
@@ -418,7 +475,7 @@ export default function usePurchaseReturnForm({ returnId, initialData, onSuccess
         );
       }
       setForm((prev) => recalcFooter({ ...prev, items: upd }, "items"));
-      focusOnField("pack_quantity", index);
+      // if user cleared batch on the locked row, keep lock until they fix conflict (product duplicate without batch is invalid)
       return;
     }
 
@@ -448,6 +505,10 @@ export default function usePurchaseReturnForm({ returnId, initialData, onSuccess
       "batch_selected"
     );
     setForm((prev) => recalcFooter({ ...prev, items: upd }, "items"));
+
+    // If this resolves the conflict, clear lock
+    if (dupBlock?.rowIndex === index) setDupBlock(null);
+
     focusOnField("pack_quantity", index);
   };
 
@@ -514,6 +575,7 @@ export default function usePurchaseReturnForm({ returnId, initialData, onSuccess
     const newItems = form.items.filter((_, i) => i !== index);
     const newForm = recalcFooter({ ...form, items: newItems }, "items");
     setForm(newForm);
+    if (dupBlock?.rowIndex === index) setDupBlock(null);
   };
 
   // -------- availability lookups (open return) --------
@@ -551,10 +613,34 @@ export default function usePurchaseReturnForm({ returnId, initialData, onSuccess
   // -------- submit with validations --------
   const handleSubmit = async () => {
     try {
+      if (dupBlock) {
+        toast.error("Resolve duplicate selection first.");
+        return;
+      }
+
       if (!form.supplier_id) {
         toast.error("Please select a supplier");
         supplierSelectRef.current?.focus?.();
         return;
+      }
+
+      // Check for duplicate product+batch combinations
+      const seenCombinations = new Set();
+      for (let i = 0; i < form.items.length; i++) {
+        const it = form.items[i];
+        if (!it.product_id) continue;
+
+        const combinationKey = `${it.product_id}:${it.batch || ""}`;
+
+        if (seenCombinations.has(combinationKey)) {
+          if (!it.batch) {
+            toast.error(`Row ${i + 1}: Duplicate product without batch.`);
+          } else {
+            toast.error(`Row ${i + 1}: Duplicate product with same batch.`);
+          }
+          return;
+        }
+        seenCombinations.add(combinationKey);
       }
 
       // 1) Validations
@@ -581,7 +667,6 @@ export default function usePurchaseReturnForm({ returnId, initialData, onSuccess
           const available = await fetchAvailableUnits(it.product_id, it.batch);
           if (retUnits > available) {
             toast.error(`Row ${i + 1}: Return Unit Qty (${retUnits}) exceeds available (${available}).`);
-            // focus unit quantity input (reuse packQuantityRefs if you have a ref; otherwise leave cursor)
             return;
           }
         }
@@ -629,6 +714,7 @@ export default function usePurchaseReturnForm({ returnId, initialData, onSuccess
     batches,            // [{batch_number, expiry, pack_quantity, pack_size, pack_purchase_price, unit_purchase_price, item_discount_percentage}]
     currentField,
     currentRowIndex,
+    dupBlock,           // NEW: expose duplicate lock
 
     // refs
     supplierSelectRef,
