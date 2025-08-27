@@ -20,6 +20,7 @@ Route::apiResource('customers', CustomerController::class);
 Route::apiResource('categories', CategoryController::class);
 Route::apiResource('brands', BrandController::class);
 Route::get('products/new-code', [ProductController::class, 'generateNewCode']);
+Route::get('/products/available-quantity', [ProductController::class, 'availableQuantity']);
 Route::apiResource('products', ProductController::class);
 Route::get('products/{product}/batches', [BatchController::class, 'index']);
 Route::get('/purchase-invoices/check-unique', [PurchaseInvoiceController::class, 'checkUnique']);

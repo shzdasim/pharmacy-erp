@@ -36,6 +36,38 @@ public function generateNewCode()
 }
 
 
+public function availableQuantity(\Illuminate\Http\Request $request)
+{
+    $productId = $request->query('product_id');
+    $batch     = $request->query('batch');
+
+    if (!$productId) {
+        return response()->json(['message' => 'product_id is required'], 422);
+    }
+
+    // Prefer batch-level quantity when a batch is provided.
+    $available = 0;
+
+    if ($batch) {
+        // If you track stock per batch:
+        $record = \App\Models\Batch::where('product_id', $productId)
+            ->where('batch', $batch)
+            ->first();
+        $available = (int) ($record->available_quantity ?? $record->quantity ?? 0);
+    } else {
+        // Fallback: product-level on-hand quantity
+        $product = \App\Models\Product::find($productId);
+        $available = (int) ($product->available_quantity ?? $product->quantity ?? 0);
+    }
+
+    return response()->json([
+        'product_id'      => (int) $productId,
+        'batch'           => $batch,
+        'available_units' => $available,
+    ]);
+}
+
+
 
     public function index()
     {
