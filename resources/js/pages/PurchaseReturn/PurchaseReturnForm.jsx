@@ -109,6 +109,22 @@ export default function PurchaseReturnForm({ returnId, initialData, onSuccess })
     return p?.name || `#${pid}`;
   };
 
+  // Robustly resolve a product id from various shapes
+  const resolveProductId = (obj) => {
+    if (obj === null || obj === undefined) return "";
+    if (typeof obj === "number") return obj;
+    if (typeof obj === "string") return obj.trim();
+    if (typeof obj === "object") {
+      const cand = [
+        obj.product_id, obj.id, obj.value, obj.ProductId, obj.productId,
+        obj.product?.id, obj.product?.ProductId, obj?.data?.id
+      ].find((v) => v !== undefined && v !== null && String(v).trim() !== "");
+      return cand ?? "";
+    }
+    return "";
+  };
+
+
   const focusProductSearch = (row) => {
     setTimeout(() => {
       productSearchRefs.current[row]?.querySelector("input")?.focus?.();
@@ -243,28 +259,6 @@ export default function PurchaseReturnForm({ returnId, initialData, onSuccess })
     return opts;
   };
 
-  // ===== duplicate helpers =====
-  const hasDuplicateProductOnOpenReturn = (rowIndex, productId) =>
-    form.items.some((it, i) => i !== rowIndex && eqPid(it.product_id, productId));
-
-  const otherRowSameProductWithNoBatch = (rowIndex, productId) =>
-    form.items.some(
-      (it, i) =>
-        i !== rowIndex &&
-        eqPid(it.product_id, productId) &&
-        !String(it.batch ?? "").trim()
-    );
-
-  const hasDuplicateProductBatchOnInvoice = (rowIndex, productId, batchNumber) => {
-    const bn = String(batchNumber ?? "").trim();
-    return form.items.some(
-      (it, i) =>
-        i !== rowIndex &&
-        eqPid(it.product_id, productId) &&
-        String(it.batch ?? "").trim() === bn
-    );
-  };
-
   // ===== handlers =====
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -286,7 +280,10 @@ export default function PurchaseReturnForm({ returnId, initialData, onSuccess })
       setForm((prev) => {
         const items = prev.items.map((it) => ({
           ...it,
-          product_id: "",
+            product_id: it.product_id ?? it.id ?? "",
+            batch: it.batch && String(it.batch).trim() !== "" ? String(it.batch).trim() : null,
+            expiry: it.expiry && String(it.expiry).trim() !== "" ? it.expiry : null,
+            product_id: "",
           batch: "",
           expiry: "",
           pack_size: 0,
@@ -327,64 +324,52 @@ export default function PurchaseReturnForm({ returnId, initialData, onSuccess })
   };
 
   const handleProductSelect = async (index, productIdOrObj) => {
-    const pid =
-      typeof productIdOrObj === "object"
-        ? (productIdOrObj?.id ?? productIdOrObj?.value)
-        : productIdOrObj;
-
-    const selected =
-      products.find((p) => eqPid(firstDefined(p.id, p.value), pid)) ||
-      catalogProducts.find((p) => eqPid(firstDefined(p.id, p.value), pid));
-
-    const selectedId = selected?.id ?? pid;
-    const isInvoiceMode = !!form.purchase_invoice_id;
-
-    // Duplicate validation at selection time
-    if (!isInvoiceMode) {
-      if (hasDuplicateProductOnOpenReturn(index, selectedId)) {
-        toast.error(`Product "${selected?.name || productNameById(selectedId)}" is already selected in another row.`);
-        focusProductSearch(index);
-        return;
-      }
-    } else {
-      if (otherRowSameProductWithNoBatch(index, selectedId)) {
-        toast.error(`Product "${selected?.name || productNameById(selectedId)}" exists without batch in another row. Set a batch there or change product.`);
-        focusProductSearch(index);
-        return;
-      }
-      // If same product exists with batches, that's allowed; batch uniqueness is enforced below.
+    const pidRaw = resolveProductId(productIdOrObj);
+    const pidStr = String(pidRaw || "").trim();
+    if (!pidStr) {
+      return;
     }
 
-    // Allowed path — set product and reset dependent fields
+    const selFrom = (arr, id) =>
+      arr.find((p) => String(p.id ?? p.value ?? "") === id);
+    const selected =
+      selFrom(products, pidStr) || selFrom(catalogProducts, pidStr) || productIdOrObj;
+    const selectedId = resolveProductId(selected);
+
+    // Set product early and reset dependent fields
     const newItems = [...form.items];
-    newItems[index] = recalcItem(
-      {
-        ...newItems[index],
-        product_id: selectedId,
-        pack_size: toNum(firstDefined(selected?.pack_size, newItems[index].pack_size)),
-        pack_purchase_price: toNum(firstDefined(selected?.pack_purchase_price, newItems[index].pack_purchase_price)),
-        unit_purchase_price: toNum(firstDefined(selected?.unit_purchase_price, newItems[index].unit_purchase_price)),
-        batch: "",
-        expiry: "",
-        pack_purchased_quantity: 0,
-        return_pack_quantity: 0,
-        return_unit_quantity: 0,
-        item_discount_percentage: 0,
-      },
-      "product_id"
-    );
+    const base = {
+      ...newItems[index],
+      product_id: selectedId,
+      batch: "",
+      expiry: "",
+      pack_size: toNum(firstDefined(selected?.pack_size, newItems[index].pack_size)),
+      pack_purchase_price: toNum(firstDefined(selected?.pack_purchase_price, newItems[index].pack_purchase_price)),
+      unit_purchase_price: toNum(firstDefined(selected?.unit_purchase_price, newItems[index].unit_purchase_price)),
+      pack_purchased_quantity: 0,
+      return_pack_quantity: 0,
+      return_unit_quantity: 0,
+      item_discount_percentage: 0,
+    };
+
+    let updated = recalcItem(base, "product_id");
+    // Re-assert product id in case calc overwrote
+    updated.product_id = selectedId;
+
+    newItems[index] = updated;
     setForm((prev) => recalcFooter({ ...prev, items: newItems }, "items"));
 
-    if (!isInvoiceMode || !selected?.id) { setBatches([]); return; }
+    const isInvoiceMode = !!form.purchase_invoice_id;
+    if (!isInvoiceMode || !selectedId) { setBatches([]); return; }
 
-    // Invoice mode → prepare batch options and possibly autofill
-    const itemsForProduct = invoiceItemsForProduct(selected.id);
+    const itemsForProduct = invoiceItemsForProduct(selectedId);
     const batchOpts = buildBatchOptions(itemsForProduct);
     setBatches(batchOpts);
 
     if (batchOpts.length === 0) {
+      // No batches: fill from invoice aggregates
       const totalPacks = sumBy(itemsForProduct, (it) => it.pack_quantity);
-      const pickedPackSize = toNum(mostCommon(itemsForProduct, "pack_size")) || toNum(newItems[index].pack_size) || 0;
+      const pickedPackSize = toNum(mostCommon(itemsForProduct, "pack_size")) || toNum(updated.pack_size) || 0;
       let avgPackPrice = weightedAvg(itemsForProduct, "pack_purchase_price");
       let avgUnitPrice = weightedAvg(itemsForProduct, "unit_purchase_price");
       const avgDiscPct = weightedAvg(itemsForProduct, "item_discount_percentage");
@@ -396,10 +381,11 @@ export default function PurchaseReturnForm({ returnId, initialData, onSuccess })
         return set.size === 1 ? Array.from(set)[0] : "";
       })();
 
-      const upd = [...form.items];
-      upd[index] = recalcItem(
+      const upd2 = [...form.items];
+      upd2[index] = recalcItem(
         {
-          ...upd[index],
+          ...upd2[index],
+          product_id: selectedId,
           batch: "",
           expiry: uniqueExpiry,
           pack_size: toNum(pickedPackSize),
@@ -410,33 +396,31 @@ export default function PurchaseReturnForm({ returnId, initialData, onSuccess })
         },
         "auto_no_batch_fill"
       );
-      setForm((prev) => recalcFooter({ ...prev, items: upd }, "items"));
+      upd2[index].product_id = selectedId;
+      setForm((prev) => recalcFooter({ ...prev, items: upd2 }, "items"));
       focusOnField("pack_quantity", index);
       return;
     }
 
     if (batchOpts.length === 1) {
       const b = batchOpts[0];
-      if (hasDuplicateProductBatchOnInvoice(index, selected.id, b.batch_number)) {
-        toast.error(`Product "${selected?.name || productNameById(selected.id)}" with batch "${b.batch_number}" already exists in another row.`);
-        return;
-      }
-
-      const upd = [...form.items];
-      upd[index] = recalcItem(
+      const upd3 = [...form.items];
+      upd3[index] = recalcItem(
         {
-          ...upd[index],
+          ...upd3[index],
+          product_id: selectedId,
           batch: b.batch_number,
           expiry: b.expiry || "",
-          pack_size: toNum(firstDefined(b.pack_size, upd[index].pack_size)),
+          pack_size: toNum(firstDefined(b.pack_size, upd3[index].pack_size)),
           pack_purchased_quantity: toNum(b.pack_quantity),
-          pack_purchase_price: toNum(firstDefined(b.pack_purchase_price, upd[index].pack_purchase_price)),
-          unit_purchase_price: toNum(firstDefined(b.unit_purchase_price, upd[index].unit_purchase_price)),
+          pack_purchase_price: toNum(firstDefined(b.pack_purchase_price, upd3[index].pack_purchase_price)),
+          unit_purchase_price: toNum(firstDefined(b.unit_purchase_price, upd3[index].unit_purchase_price)),
           item_discount_percentage: toNum(b.item_discount_percentage),
         },
         "batch_auto_apply"
       );
-      setForm((prev) => recalcFooter({ ...prev, items: upd }, "items"));
+      upd3[index].product_id = selectedId;
+      setForm((prev) => recalcFooter({ ...prev, items: upd3 }, "items"));
       focusOnField("pack_quantity", index);
       return;
     }
@@ -444,11 +428,11 @@ export default function PurchaseReturnForm({ returnId, initialData, onSuccess })
     // Multiple batches available → user must choose a batch
     setCurrentField("batch");
     setCurrentRowIndex(index);
-  };
+};
 
   const handleBatchSelect = (index, valueObjOrString) => {
     const rowItem = form.items[index];
-    if (!rowItem?.product_id) return;
+    let ensurePid = rowItem?.product_id;
 
     const batchNumber =
       typeof valueObjOrString === "string"
@@ -457,12 +441,14 @@ export default function PurchaseReturnForm({ returnId, initialData, onSuccess })
 
     const bn = String(batchNumber ?? "").trim();
 
+    if ((!ensurePid || String(ensurePid).trim() === "") && form.purchase_invoice_id) {
+      const matches = invoiceItems.filter((it) => String(it.batch ?? "") === bn);
+      const uniquePids = Array.from(new Set(matches.map((m) => m.product_id))).filter((x) => x !== undefined && x !== null);
+      if (uniquePids.length === 1) { ensurePid = uniquePids[0]; }
+    }
+
+
     if (!bn) {
-      // Clearing batch: block if any other row has same product with empty batch already
-      if (otherRowSameProductWithNoBatch(index, rowItem.product_id)) {
-        toast.error(`Product "${productNameById(rowItem.product_id)}" without batch already exists in another row.`);
-        return;
-      }
       // Clear batch and dependent fields
       const itemsForProduct = invoiceItemsForProduct(rowItem.product_id);
       const batchOpts = buildBatchOptions(itemsForProduct);
@@ -474,6 +460,7 @@ export default function PurchaseReturnForm({ returnId, initialData, onSuccess })
         upd[index] = recalcItem(
           {
             ...upd[index],
+        product_id: ensurePid,
             batch: "",
             expiry: "",
             pack_size: pickedPackSize,
@@ -484,7 +471,8 @@ export default function PurchaseReturnForm({ returnId, initialData, onSuccess })
         );
       } else {
         upd[index] = recalcItem(
-          { ...upd[index], batch: "", expiry: "", pack_purchased_quantity: 0, item_discount_percentage: 0 },
+          { ...upd[index],
+        product_id: ensurePid, batch: "", expiry: "", pack_purchased_quantity: 0, item_discount_percentage: 0 },
           "batch_clear"
         );
       }
@@ -493,13 +481,9 @@ export default function PurchaseReturnForm({ returnId, initialData, onSuccess })
     }
 
     // Block same product + same batch in another row
-    if (hasDuplicateProductBatchOnInvoice(index, rowItem.product_id, bn)) {
-      toast.error(`Product "${productNameById(rowItem.product_id)}" with batch "${bn}" already exists in another row.`);
-      return;
-    }
 
     const matched = invoiceItems.find(
-      (it) => eqPid(it.product_id, rowItem.product_id) && String(it.batch ?? "") === bn
+      (it) => eqPid(it.product_id, ensurePid) && String(it.batch ?? "") === bn
     );
 
     if (!matched) {
@@ -511,6 +495,7 @@ export default function PurchaseReturnForm({ returnId, initialData, onSuccess })
     upd[index] = recalcItem(
       {
         ...upd[index],
+        product_id: ensurePid,
         batch: bn,
         expiry: matched.expiry || "",
         pack_size: toNum(firstDefined(matched.pack_size, upd[index].pack_size)),
@@ -629,21 +614,6 @@ export default function PurchaseReturnForm({ returnId, initialData, onSuccess })
         return;
       }
 
-      // Final duplicate safety: product + batch combo must be unique
-      const seen = new Set();
-      for (let i = 0; i < form.items.length; i++) {
-        const it = form.items[i];
-        if (!it.product_id) continue;
-        const key = `${String(it.product_id)}:${String(it.batch || "").trim()}`;
-        if (seen.has(key)) {
-          const name = productNameById(it.product_id);
-          if (!it.batch) toast.error(`Row ${i + 1}: Duplicate product "${name}" without batch.`);
-          else toast.error(`Row ${i + 1}: Duplicate product "${name}" with same batch "${it.batch}".`);
-          return;
-        }
-        seen.add(key);
-      }
-
       // Quantity validations
       if (form.purchase_invoice_id) {
         // With invoice: Return Pack Qty ≤ Pack Purchased Qty
@@ -674,6 +644,8 @@ export default function PurchaseReturnForm({ returnId, initialData, onSuccess })
       // Build payload and save
       const payload = {
         ...form,
+        purchase_invoice_id:
+          form.purchase_invoice_id && String(form.purchase_invoice_id).trim() !== "" ? form.purchase_invoice_id : null,
         items: form.items
           .filter((it) => it.product_id)
           .map((it) => ({
@@ -889,7 +861,6 @@ export default function PurchaseReturnForm({ returnId, initialData, onSuccess })
                       }}
                       value={item.batch}
                       batches={batches}
-                      usedBatches={form.items.filter((_, rowIdx) => rowIdx !== i).map((r) => r.batch)}
                       onChange={(batchNumber) => handleBatchSelect(i, { value: batchNumber })}
                       onKeyDown={(e) => {
                         if (e.key === "Enter" && item.batch) {
