@@ -211,6 +211,7 @@ export default function ProductForm({ initialData = null, onSubmitSuccess }) {
             <input
               type="text"
               name="name"
+              autoFocus
               value={form.name || ""}
               onChange={handleChange}
               className="border w-full px-2 py-1 rounded"

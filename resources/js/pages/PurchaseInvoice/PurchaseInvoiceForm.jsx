@@ -134,29 +134,29 @@ const sanitizeNumberInput = (value, allowDecimal = false) => {
 
 const handleChange = (e) => {
   const { name, value } = e.target;
-  let newValue = value;
 
-  const numericFields = [
+  // Fields that should accept decimals as the user types
+  const decimalFields = new Set([
     "invoice_amount",
     "tax_percentage",
     "tax_amount",
     "discount_percentage",
-    "discount_amount"
-  ];
+    "discount_amount",
+  ]);
 
-  if (numericFields.includes(name)) {
-    newValue = sanitizeNumberInput(value, true);
-  }
+  // Sanitize while preserving typing like ".", "12.", ".5"
+  const newValue = decimalFields.has(name)
+    ? sanitizeNumberInput(value, true)
+    : value;
 
-  let newForm = { ...form, [name]: newValue };
+  // Build a temp form with the raw typed value
+  const tempForm = { ...form, [name]: newValue };
 
-  if (
-    ["tax_percentage", "tax_amount", "discount_percentage", "discount_amount"].includes(name)
-  ) {
-    newForm = recalcFooter(newForm, name);
-  }
+  // Recalculate totals, but DO NOT overwrite the field the user is typing
+  let nextForm = recalcFooter(tempForm, name);
+  nextForm[name] = newValue;
 
-  setForm(newForm);
+  setForm(nextForm);
 };
 
 
@@ -514,6 +514,7 @@ const handleSubmit = async (e) => {
                 <label className="block text-[10px]">Posted Number</label>
                 <input
                   type="text"
+                  inputMode="decimal"
                   name="posted_number"
                   readOnly
                   value={form.posted_number || ""}
@@ -951,7 +952,7 @@ const handleSubmit = async (e) => {
                 <input
                   type="text"
                   name="tax_percentage"
-                  value={form.tax_percentage === 0 ? "" : form.tax_percentage}
+                  value={form.tax_percentage ?? ""}
                   onChange={handleChange}
                   className="border rounded w-full p-1 h-7 text-xs"
                 />
@@ -961,7 +962,7 @@ const handleSubmit = async (e) => {
                 <input
                   type="text"
                   name="tax_amount"
-                  value={form.tax_amount === 0 ? "" : form.tax_amount}
+                  value={form.tax_amount ?? ""}
                   onChange={handleChange}
                   className="border rounded w-full p-1 h-7 text-xs"
                 />
@@ -971,7 +972,7 @@ const handleSubmit = async (e) => {
                 <input
                   type="text"
                   name="discount_percentage"
-                  value={form.discount_percentage === 0 ? "" : form.discount_percentage}
+                  value={form.discount_percentage ?? ""}
                   onChange={handleChange}
                   className="border rounded w-full p-1 h-7 text-xs"
                 />
@@ -981,7 +982,7 @@ const handleSubmit = async (e) => {
                 <input
                   type="text"
                   name="discount_amount"
-                  value={form.discount_amount === 0 ? "" : form.discount_amount} 
+                  value={form.discount_amount ?? ""} 
                   onChange={handleChange}
                   className="border rounded w-full p-1 h-7 text-xs"
                 />
