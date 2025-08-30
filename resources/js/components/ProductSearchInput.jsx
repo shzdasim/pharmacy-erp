@@ -7,12 +7,39 @@ import React, {
   useImperativeHandle,
 } from "react";
 
-const ProductSearchInput = forwardRef(({ value, onChange, products }, ref) => {
+const ProductSearchInput = forwardRef(({ value, onChange, products, onRefreshProducts }, ref) => {
   const [query, setQuery] = useState("");
   const [showDropdown, setShowDropdown] = useState(false);
   const [highlightIndex, setHighlightIndex] = useState(0);
   const wrapperRef = useRef(null);
   const inputRef = useRef(null);
+
+  // 🔄 Refresh products when dropdown opens (once per open), and when a new product is created elsewhere.
+  const didRefreshRef = useRef(false);
+
+  useEffect(() => {
+    if (showDropdown && onRefreshProducts && !didRefreshRef.current) {
+      didRefreshRef.current = true;
+      Promise.resolve(onRefreshProducts()).catch(() => {});
+    }
+    if (!showDropdown) {
+      didRefreshRef.current = false;
+    }
+  }, [showDropdown, onRefreshProducts]);
+
+  useEffect(() => {
+    const handleProductCreated = () => {
+      if (onRefreshProducts) onRefreshProducts();
+    };
+    window.addEventListener('product:created', handleProductCreated);
+    return () => window.removeEventListener('product:created', handleProductCreated);
+  }, [onRefreshProducts]);
+
+  useImperativeHandle(ref, () => ({
+    focus: () => inputRef.current?.focus(),
+    refresh: () => onRefreshProducts?.(),
+  }));
+
 
   // ✅ Expose methods to parent
   useImperativeHandle(ref, () => ({

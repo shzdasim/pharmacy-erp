@@ -726,6 +726,7 @@ const handleSubmit = async (e) => {
 
                     onKeyDown={(e) => handleProductKeyDown(e, i)}
                     products={products}
+                    onRefreshProducts={fetchProducts}
                     />
                   </div>
                 </td>
