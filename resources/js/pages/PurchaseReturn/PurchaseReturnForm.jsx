@@ -292,7 +292,8 @@ export default function PurchaseReturnForm({ returnId, initialData, onSuccess })
       await fetchPurchaseInvoices(v);
       setInvoiceItems([]);
       setBatches([]);
-      setProducts(catalogProducts); // allow full catalog until invoice chosen
+      // Open return default: allow full catalog until invoice chosen
+      setProducts(catalogProducts);
       setForm((prev) => {
         const items = prev.items.map((it) => ({
           ...it,
@@ -315,7 +316,13 @@ export default function PurchaseReturnForm({ returnId, initialData, onSuccess })
 
     if (field === "purchase_invoice_id") {
       setForm((prev) => ({ ...prev, purchase_invoice_id: v }));
-      if (v) await loadInvoice(v);
+      if (v) {
+        await loadInvoice(v);
+      } else {
+        // Open return: no invoice selected → show all products
+        setInvoiceItems([]);
+        setProducts(catalogProducts);
+      }
       setBatches([]);
       setForm((prev) => {
         const items = prev.items.map((it) => ({
@@ -403,9 +410,26 @@ export default function PurchaseReturnForm({ returnId, initialData, onSuccess })
     newItems[index] = updated;
     setForm((prev) => recalcFooter({ ...prev, items: newItems }, "items"));
 
-    if (!isInvoiceMode || !selectedId) { setBatches([]); return; }
-
-    setBatches(batchOpts);
+    
+if (!isInvoiceMode || !selectedId) {
+    // Open return: show available quantity in packs
+    try {
+      const available = await fetchAvailableUnits(selectedId, "");
+      const packSize = toNum(updated.pack_size);
+      const packsAvail = packSize ? (available / packSize) : 0;
+      newItems[index] = recalcItem(
+        { ...newItems[index], pack_purchased_quantity: toNum(packsAvail) },
+        "open_pack_purchased_qty"
+      );
+      setForm((prev) => recalcFooter({ ...prev, items: newItems }, "items"));
+    } catch (_) {
+      setForm((prev) => recalcFooter({ ...prev, items: newItems }, "items"));
+    }
+    setBatches([]);
+    focusOnField("pack_quantity", index);
+    return;
+  }
+setBatches(batchOpts);
 
     if (batchOpts.length === 0) {
       // No batches: fill from invoice aggregates (and keep product unique already enforced above)
@@ -835,7 +859,7 @@ export default function PurchaseReturnForm({ returnId, initialData, onSuccess })
                 </td>
 
                 <td className="border p-1 w-1/3">
-                  <label className="block text-[10px]">Purchase Invoice *</label>
+                  <label className="block text-[10px]">Purchase Invoice (optional)</label>
                   <Select
                     ref={purchaseInvoiceRef}
                     options={purchaseInvoices.map((inv) => ({
@@ -849,7 +873,7 @@ export default function PurchaseReturnForm({ returnId, initialData, onSuccess })
                     }
                     onChange={(val) => handleSelectChange("purchase_invoice_id", val)}
                     onKeyDown={(e) => {
-                      if (e.key === "Enter" && form.purchase_invoice_id) {
+                      if (e.key === "Enter") {
                         e.preventDefault();
                         setTimeout(() => {
                           productSearchRefs.current[0]?.querySelector("input")?.focus();

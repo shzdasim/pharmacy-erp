@@ -15,6 +15,7 @@ class PurchaseReturnItem extends Model
         'batch',
         'expiry',
         'pack_size',
+        'pack_purchased_quantity',
         'return_pack_quantity',
         'return_unit_quantity',
         'pack_purchase_price',

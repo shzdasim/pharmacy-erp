@@ -5,9 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\PurchaseReturn;
 use App\Models\PurchaseReturnItem;
 use Illuminate\Http\Request;
-use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Validator;
 
 class PurchaseReturnController extends Controller
 {
@@ -18,165 +16,192 @@ class PurchaseReturnController extends Controller
             ->get();
     }
 
-    /**
-     * Normalize:
-     * - turn empty strings into nulls for nullable fields
-     * - coerce purchase_invoice_id "" -> null
-     */
-    private function normalizePayload(array $data): array
+    public function show($id)
     {
-        // top-level
-        if (!isset($data['purchase_invoice_id']) || trim((string)$data['purchase_invoice_id']) === '') {
-            $data['purchase_invoice_id'] = null;
-        }
-
-        // items
-        $items = $data['items'] ?? [];
-        $data['items'] = array_map(function ($it) {
-            $it['batch']  = isset($it['batch'])  && trim((string)$it['batch']) !== '' ? trim((string)$it['batch']) : null;
-            $it['expiry'] = isset($it['expiry']) && trim((string)$it['expiry']) !== '' ? $it['expiry'] : null;
-            return $it;
-        }, $items);
-
-        return $data;
-    }
-
-    private function baseRules(): array
-    {
-        return [
-            'supplier_id'           => 'required|exists:suppliers,id',
-            'posted_number'         => 'required|unique:purchase_returns,posted_number',
-            'date'                  => 'required|date',
-            // Open return allowed
-            'purchase_invoice_id'   => 'nullable|exists:purchase_invoices,id',
-            'gross_total'           => 'required|numeric',
-            'discount_percentage'   => 'nullable|numeric',
-            'tax_percentage'        => 'nullable|numeric',
-            'discount_amount'       => 'nullable|numeric',
-            'tax_amount'            => 'nullable|numeric',
-            'total'                 => 'required|numeric',
-
-            'items'                           => 'required|array|min:1',
-            'items.*.product_id'              => 'required|exists:products,id',
-            'items.*.batch'                   => 'nullable|string',
-            'items.*.expiry'                  => 'nullable|date',
-            'items.*.pack_size'               => 'required|integer',
-            'items.*.pack_purchased_quantity' => 'nullable|integer',
-            'items.*.return_pack_quantity'    => 'required|integer',
-            'items.*.return_unit_quantity'    => 'required|integer',
-            'items.*.pack_purchase_price'     => 'required|numeric',
-            'items.*.unit_purchase_price'     => 'required|numeric',
-            'items.*.item_discount_percentage'=> 'nullable|numeric',
-            'items.*.sub_total'               => 'required|numeric',
-        ];
-    }
-
-    /**
-     * Build a map: product_id => requireBatch (true only if ALL lines on the invoice had a batch)
-     */
-    private function productRequireBatchMap(?int $purchaseInvoiceId): array
-    {
-        if (!$purchaseInvoiceId) return [];
-
-        $rows = DB::table('purchase_invoice_items')
-            ->where('purchase_invoice_id', $purchaseInvoiceId)
-            ->select('product_id', 'batch')
-            ->get();
-
-        // For each product, track whether any line had an empty batch
-        $info = []; // product_id => ['has_batch'=>bool, 'has_empty'=>bool]
-        foreach ($rows as $r) {
-            $pid = $r->product_id;
-            $hasBatch = $r->batch !== null && trim((string)$r->batch) !== '';
-            if (!isset($info[$pid])) $info[$pid] = ['has_batch' => false, 'has_empty' => false];
-            if ($hasBatch) $info[$pid]['has_batch'] = true; else $info[$pid]['has_empty'] = true;
-        }
-
-        // Require batch only if ALL lines for that product on that invoice had batch (i.e., no empty)
-        $require = [];
-        foreach ($info as $pid => $flags) {
-            $require[$pid] = $flags['has_batch'] && !$flags['has_empty'];
-        }
-        return $require;
-    }
-
-    public function store(Request $request)
-    {
-        $payload = $this->normalizePayload($request->all());
-        $v = Validator::make($payload, $this->baseRules());
-
-        $v->after(function ($validator) use ($payload) {
-            // Only enforce from invoice context
-            $requireMap = $this->productRequireBatchMap($payload['purchase_invoice_id'] ?? null);
-            if (!$requireMap) return;
-
-            foreach (($payload['items'] ?? []) as $idx => $it) {
-                $pid = $it['product_id'] ?? null;
-                if (!$pid) continue;
-                $mustHave = (bool)($requireMap[$pid] ?? false);
-                if ($mustHave && (empty($it['batch']) || trim((string)$it['batch']) === '')) {
-                    $validator->errors()->add("items.$idx.batch", 'Batch is required for this product.');
-                }
-            }
-        });
-
-        $data = $v->validate();
-
-        return DB::transaction(function () use ($data) {
-            $pr = PurchaseReturn::create(Arr::except($data, ['items']));
-            $pr->items()->createMany($data['items']);
-            return response()->json($pr->load('items.product'), 201);
-        });
-    }
-
-    public function show(PurchaseReturn $purchaseReturn)
-    {
-        return $purchaseReturn->load(['supplier', 'purchaseInvoice', 'items.product']);
-    }
-
-    public function update(Request $request, PurchaseReturn $purchaseReturn)
-    {
-        $payload = $this->normalizePayload($request->all());
-
-        $rules = $this->baseRules();
-        $rules['posted_number'] = 'required|unique:purchase_returns,posted_number,' . $purchaseReturn->id;
-        $v = Validator::make($payload, $rules);
-
-        $v->after(function ($validator) use ($payload) {
-            $requireMap = $this->productRequireBatchMap($payload['purchase_invoice_id'] ?? null);
-            if (!$requireMap) return;
-
-            foreach (($payload['items'] ?? []) as $idx => $it) {
-                $pid = $it['product_id'] ?? null;
-                if (!$pid) continue;
-                $mustHave = (bool)($requireMap[$pid] ?? false);
-                if ($mustHave && (empty($it['batch']) || trim((string)$it['batch']) === '')) {
-                    $validator->errors()->add("items.$idx.batch", 'Batch is required for this product.');
-                }
-            }
-        });
-
-        $data = $v->validate();
-
-        return DB::transaction(function () use ($purchaseReturn, $data) {
-            $purchaseReturn->update(Arr::except($data, ['items']));
-            $purchaseReturn->items()->delete();
-            $purchaseReturn->items()->createMany($data['items']);
-            return response()->json($purchaseReturn->load('items.product'));
-        });
-    }
-
-    public function destroy(PurchaseReturn $purchaseReturn)
-    {
-        $purchaseReturn->items()->delete();
-        $purchaseReturn->delete();
-        return response()->json(null, 204);
+        return PurchaseReturn::with(['supplier', 'purchaseInvoice', 'items.product'])->findOrFail($id);
     }
 
     public function generateNewCode()
     {
-        $latest = PurchaseReturn::latest()->first();
-        $code = 'PR-' . str_pad(($latest ? $latest->id + 1 : 1), 5, '0', STR_PAD_LEFT);
-        return response()->json(['code' => $code]);
+        $next = (PurchaseReturn::max('id') ?? 0) + 1;
+        $code = 'PR-' . str_pad((string)$next, 6, '0', STR_PAD_LEFT);
+        return response()->json(['posted_number' => $code]);
+    }
+
+    public function store(Request $request)
+    {
+        $validated = $this->validatePayload($request);
+        $data = $this->normalizePayload($validated);
+
+        return DB::transaction(function () use ($data) {
+            $pr = new PurchaseReturn();
+            $pr->supplier_id         = $data['supplier_id'];
+            $pr->purchase_invoice_id = $data['purchase_invoice_id'] ?? null;
+            $pr->posted_number       = $data['posted_number'] ?? $this->makeCode();
+            $pr->date                = $data['date'];
+            $pr->remarks             = $data['remarks'] ?? null;
+            $pr->gross_total         = $data['gross_total'] ?? 0;
+            $pr->discount_percentage = $data['discount_percentage'] ?? 0;
+            $pr->discount_amount     = $data['discount_amount'] ?? 0;
+            $pr->tax_percentage      = $data['tax_percentage'] ?? 0;
+            $pr->tax_amount          = $data['tax_amount'] ?? 0;
+            $pr->total               = $data['total'] ?? 0;
+            $pr->save();
+
+            foreach ($data['items'] as $it) {
+                $item = new PurchaseReturnItem();
+                $item->purchase_return_id      = $pr->id;
+                $item->product_id              = $it['product_id'];
+                $item->batch                   = $it['batch'] ?? null;
+                $item->expiry                  = $it['expiry'] ?? null;
+                $item->pack_size               = $it['pack_size'] ?? 0;
+                $item->pack_purchased_quantity = $it['pack_purchased_quantity'] ?? 0;
+                $item->return_pack_quantity    = $it['return_pack_quantity'] ?? 0;
+                $item->return_unit_quantity    = $it['return_unit_quantity'] ?? 0;
+                $item->pack_purchase_price     = $it['pack_purchase_price'] ?? 0;
+                $item->unit_purchase_price     = $it['unit_purchase_price'] ?? 0;
+                $item->item_discount_percentage= $it['item_discount_percentage'] ?? 0;
+                $item->sub_total               = $it['sub_total'] ?? 0;
+                $item->save();
+            }
+
+            return PurchaseReturn::with(['supplier', 'purchaseInvoice', 'items.product'])->find($pr->id);
+        });
+    }
+
+    public function update(Request $request, $id)
+    {
+        $validated = $this->validatePayload($request, updating: true);
+        $data = $this->normalizePayload($validated);
+
+        return DB::transaction(function () use ($data, $id) {
+            $pr = PurchaseReturn::findOrFail($id);
+            $pr->supplier_id         = $data['supplier_id'];
+            $pr->purchase_invoice_id = $data['purchase_invoice_id'] ?? null;
+            $pr->posted_number       = $data['posted_number'] ?? $pr->posted_number ?? $this->makeCode();
+            $pr->date                = $data['date'];
+            $pr->remarks             = $data['remarks'] ?? null;
+            $pr->gross_total         = $data['gross_total'] ?? 0;
+            $pr->discount_percentage = $data['discount_percentage'] ?? 0;
+            $pr->discount_amount     = $data['discount_amount'] ?? 0;
+            $pr->tax_percentage      = $data['tax_percentage'] ?? 0;
+            $pr->tax_amount          = $data['tax_amount'] ?? 0;
+            $pr->total               = $data['total'] ?? 0;
+            $pr->save();
+
+            $pr->items()->delete();
+            foreach ($data['items'] as $it) {
+                $item = new PurchaseReturnItem();
+                $item->purchase_return_id      = $pr->id;
+                $item->product_id              = $it['product_id'];
+                $item->batch                   = $it['batch'] ?? null;
+                $item->expiry                  = $it['expiry'] ?? null;
+                $item->pack_size               = $it['pack_size'] ?? 0;
+                $item->pack_purchased_quantity = $it['pack_purchased_quantity'] ?? 0;
+                $item->return_pack_quantity    = $it['return_pack_quantity'] ?? 0;
+                $item->return_unit_quantity    = $it['return_unit_quantity'] ?? 0;
+                $item->pack_purchase_price     = $it['pack_purchase_price'] ?? 0;
+                $item->unit_purchase_price     = $it['unit_purchase_price'] ?? 0;
+                $item->item_discount_percentage= $it['item_discount_percentage'] ?? 0;
+                $item->sub_total               = $it['sub_total'] ?? 0;
+                $item->save();
+            }
+
+            return PurchaseReturn::with(['supplier', 'purchaseInvoice', 'items.product'])->find($pr->id);
+        });
+    }
+
+    private function validatePayload(Request $request, bool $updating = false): array
+    {
+        $data = $request->validate([
+            'supplier_id'          => ['required', 'integer', 'exists:suppliers,id'],
+            'purchase_invoice_id'  => ['nullable', 'integer', 'exists:purchase_invoices,id'],
+            'posted_number'        => ['nullable', 'string', 'max:50'],
+            'date'                 => ['required', 'date'],
+            'remarks'              => ['nullable', 'string'],
+            'gross_total'          => ['nullable', 'numeric'],
+            'discount_percentage'  => ['nullable', 'numeric'],
+            'discount_amount'      => ['nullable', 'numeric'],
+            'tax_percentage'       => ['nullable', 'numeric'],
+            'tax_amount'           => ['nullable', 'numeric'],
+            'total'                => ['nullable', 'numeric'],
+
+            'items'                        => ['required', 'array', 'min:1'],
+            'items.*.product_id'           => ['required', 'integer', 'exists:products,id'],
+            'items.*.batch'                => ['nullable', 'string', 'max:100'],
+            'items.*.expiry'               => ['nullable', 'date'], // DATE in schema; enforce valid date if given
+            'items.*.pack_size'            => ['nullable', 'numeric'],
+            'items.*.pack_purchased_quantity' => ['nullable', 'numeric'],
+            'items.*.return_pack_quantity' => ['nullable', 'numeric'],
+            'items.*.return_unit_quantity' => ['nullable', 'numeric'],
+            'items.*.pack_purchase_price'  => ['nullable', 'numeric'],
+            'items.*.unit_purchase_price'  => ['nullable', 'numeric'],
+            'items.*.item_discount_percentage' => ['nullable', 'numeric'],
+            'items.*.sub_total'            => ['nullable', 'numeric'],
+        ]);
+
+        // Logical validations (open return vs invoice return)
+        $hasInvoice = !empty($data['purchase_invoice_id']);
+
+        $seen = [];
+        foreach ($data['items'] as $idx => $it) {
+            $pid = (string)($it['product_id'] ?? '');
+            $batch = (string)($it['batch'] ?? '');
+
+            if ($hasInvoice) {
+                // With invoice: keep each (product+batch) unique.
+                $key = $pid.'::'.($batch ?: '__NO_BATCH__');
+                if (isset($seen[$key])) {
+                    abort(422, "Duplicate row for product/batch at rows ".($seen[$key]+1)." and ".($idx+1));
+                }
+                $seen[$key] = $idx;
+
+                // Guard: Return packs must not exceed purchased packs
+                $retPacks = (float)($it['return_pack_quantity'] ?? 0);
+                $purchasedPacks = (float)($it['pack_purchased_quantity'] ?? 0);
+                if ($retPacks > $purchasedPacks) {
+                    abort(422, "Row ".($idx+1).": Return Pack Qty cannot exceed Pack Purchased Qty.");
+                }
+            } else {
+                // Open return: same product can't repeat (no batch context)
+                if (isset($seen[$pid])) {
+                    abort(422, "Duplicate product in open return at rows ".($seen[$pid]+1)." and ".($idx+1));
+                }
+                $seen[$pid] = $idx;
+            }
+        }
+
+        return $data;
+    }
+
+    private function normalizePayload(array $data): array
+    {
+        // Normalize empty strings to null & numerics to 0 where needed
+        if (empty($data['purchase_invoice_id'])) {
+            $data['purchase_invoice_id'] = null;
+        }
+
+        if (isset($data['items']) && is_array($data['items'])) {
+            foreach ($data['items'] as &$it) {
+                if (empty($it['batch'])) {
+                    $it['batch'] = null;
+                }
+                if (empty($it['expiry'])) {
+                    $it['expiry'] = null;
+                }
+                foreach (['pack_size','pack_purchased_quantity','return_pack_quantity','return_unit_quantity','pack_purchase_price','unit_purchase_price','item_discount_percentage','sub_total'] as $k) {
+                    if (!isset($it[$k]) || $it[$k] === '') $it[$k] = 0;
+                }
+            }
+            unset($it);
+        }
+
+        return $data;
+    }
+
+    private function makeCode(): string
+    {
+        $next = (PurchaseReturn::max('id') ?? 0) + 1;
+        return 'PR-' . str_pad((string)$next, 6, '0', STR_PAD_LEFT);
     }
 }

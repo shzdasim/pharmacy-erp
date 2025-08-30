@@ -11,15 +11,20 @@ class PurchaseReturn extends Model
 
     protected $fillable = [
         'supplier_id',
+        'purchase_invoice_id',
         'posted_number',
         'date',
-        'purchase_invoice_id',
+        'remarks',
         'gross_total',
         'discount_percentage',
-        'tax_percentage',
         'discount_amount',
+        'tax_percentage',
         'tax_amount',
         'total',
+    ];
+
+    protected $casts = [
+        'date' => 'date',
     ];
 
     public function supplier()

@@ -13,16 +13,30 @@ return new class extends Migration
     {
         Schema::create('purchase_returns', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('supplier_id')->constrained()->onDelete('cascade');
+
+            // Supplier (required)
+            $table->foreignId('supplier_id')->constrained()->cascadeOnDelete();
+
+            // Document fields
             $table->string('posted_number')->unique();
             $table->date('date');
-            $table->foreignId('purchase_invoice_id')->constrained()->onDelete('cascade');
+
+            // Invoice is OPTIONAL to support Open Return
+            $table->foreignId('purchase_invoice_id')
+                  ->nullable()
+                  ->constrained()
+                  ->nullOnDelete();
+
+            // Totals
             $table->decimal('gross_total', 15, 2)->default(0);
             $table->decimal('discount_percentage', 5, 2)->default(0)->nullable();
             $table->decimal('tax_percentage', 5, 2)->default(0)->nullable();
             $table->decimal('discount_amount', 15, 2)->default(0)->nullable();
             $table->decimal('tax_amount', 15, 2)->default(0)->nullable();
             $table->decimal('total', 15, 2)->default(0);
+
+            $table->text('remarks')->nullable();
+
             $table->timestamps();
         });
     }
