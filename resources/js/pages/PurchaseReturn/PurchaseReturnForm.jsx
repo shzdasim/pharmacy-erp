@@ -18,7 +18,10 @@ export default function PurchaseReturnForm({ returnId, initialData, onSuccess })
     batch: "",
     expiry: "",
     pack_size: 0,
+    // kept for reference; not used in validation
     pack_purchased_quantity: 0,
+    // used for display/validation
+    available_units: 0,
     return_pack_quantity: 0,
     return_unit_quantity: 0,
     pack_purchase_price: 0,
@@ -49,7 +52,8 @@ export default function PurchaseReturnForm({ returnId, initialData, onSuccess })
   const [purchaseInvoices, setPurchaseInvoices] = useState([]);
 
   const [invoiceItems, setInvoiceItems] = useState([]);
-  const [batches, setBatches] = useState([]);
+  // Per-row batch options to avoid cross-row interference
+  const [rowBatches, setRowBatches] = useState([]);
 
   const [currentField, setCurrentField] = useState(null);
   const [currentRowIndex, setCurrentRowIndex] = useState(0);
@@ -62,6 +66,9 @@ export default function PurchaseReturnForm({ returnId, initialData, onSuccess })
   const packPurchasePriceRefs = useRef([]);
   const itemDiscountRefs = useRef([]);
 
+  // OPEN RETURN: cache of product → list of batches fetched from server
+  const productBatchCache = useRef(new Map()); // Map<string(productId), Array<{batch_number, expiry, available_units, pack_size?}>
+
   useEffect(() => {
     productSearchRefs.current = productSearchRefs.current.slice(0, form.items.length);
     packQuantityRefs.current = packQuantityRefs.current.slice(0, form.items.length);
@@ -69,10 +76,27 @@ export default function PurchaseReturnForm({ returnId, initialData, onSuccess })
     itemDiscountRefs.current = itemDiscountRefs.current.slice(0, form.items.length);
   }, [form.items.length]);
 
+  // keep rowBatches aligned with items length
+  useEffect(() => {
+    setRowBatches((prev) => {
+      const next = prev.slice(0, form.items.length);
+      while (next.length < form.items.length) next.push([]);
+      return next;
+    });
+  }, [form.items.length]);
+
   // ===== helpers =====
   const toNum = (v) => (v === undefined || v === null || v === "" ? 0 : Number(v));
   const firstDefined = (...vals) => vals.find((v) => v !== undefined && v !== null);
   const eqPid = (a, b) => String(a ?? "") === String(b ?? "");
+
+  const setBatchesForRow = (rowIndex, list) => {
+    setRowBatches((prev) => {
+      const next = prev.slice();
+      next[rowIndex] = Array.isArray(list) ? list : [];
+      return next;
+    });
+  };
 
   // === duplicate helpers ===
   const findDuplicateProductIndex = (pid, exceptIndex = -1) =>
@@ -160,10 +184,14 @@ export default function PurchaseReturnForm({ returnId, initialData, onSuccess })
     return opts;
   };
 
+  // productHasBatches must work in both modes
   const productHasBatches = (pid) => {
-    if (!form.purchase_invoice_id) return false;
-    const opts = buildBatchOptions(invoiceItemsForProduct(pid));
-    return opts.length > 0;
+    if (form.purchase_invoice_id) {
+      const opts = buildBatchOptions(invoiceItemsForProduct(pid));
+      return opts.length > 0;
+    }
+    const cached = productBatchCache.current.get(String(pid));
+    return Array.isArray(cached) && cached.length > 0;
   };
 
   const focusProductSearch = (row) => {
@@ -275,6 +303,78 @@ export default function PurchaseReturnForm({ returnId, initialData, onSuccess })
     }
   };
 
+  // ===== OPEN RETURN: batch fetcher =====
+  const normalizeOpenBatch = (src) => ({
+    batch_number: String(firstDefined(src?.batch_number, src?.batch, src?.code, src?.number, "")).trim(),
+    expiry: firstDefined(src?.expiry, src?.expiration_date, src?.expiry_date, "") || "",
+    available_units: toNum(firstDefined(src?.available_units, src?.quantity, src?.available_quantity, src?.units)),
+    pack_size: toNum(firstDefined(src?.pack_size, src?.product?.pack_size, 0)),
+  });
+
+  const fetchBatchesForOpenReturn = async (productId) => {
+    try {
+      const res = await axios.get(`/api/products/${productId}/batches`);
+      const list = Array.isArray(res.data) ? res.data.map(normalizeOpenBatch).filter(b => b.batch_number) : [];
+      productBatchCache.current.set(String(productId), list);
+      return list;
+    } catch (e) {
+      productBatchCache.current.set(String(productId), []);
+      return [];
+    }
+  };
+
+  // -------- availability lookups --------
+  const availabilityCache = useRef(new Map()); // key = `${productId}::${batch|ALL}` → units
+  const fetchAvailableUnits = async (productId, batchOrNull, fallbackFromCatalog = true) => {
+    const key = `${productId}::${batchOrNull ? String(batchOrNull) : "ALL"}`;
+    if (availabilityCache.current.has(key)) return availabilityCache.current.get(key);
+
+    if (fallbackFromCatalog && !batchOrNull) {
+      // prefer product-level availability from cached product object
+      const prod =
+        products.find((p) => eqPid(firstDefined(p.id, p.value), productId)) ||
+        catalogProducts.find((p) => eqPid(firstDefined(p.id, p.value), productId));
+      if (prod?.available_units || prod?.available_units === 0) {
+        const units = toNum(prod.available_units);
+        availabilityCache.current.set(key, units);
+        return units;
+      }
+    }
+
+    try {
+      const params = batchOrNull ? { product_id: productId, batch: batchOrNull } : { product_id: productId };
+      const res = await axios.get("/api/products/available-quantity", { params });
+      const units = toNum(res?.data?.available_units);
+      availabilityCache.current.set(key, units);
+      return units;
+    } catch (e) {
+      availabilityCache.current.set(key, 0);
+      return 0;
+    }
+  };
+
+  // Prefer batch list -> fallback to /available-quantity (usable in both modes)
+  const getBatchAvailability = async (productId, batchNumber) => {
+    const pid = String(productId);
+    let list = productBatchCache.current.get(pid);
+
+    if (!Array.isArray(list)) {
+      // try to fetch using the same endpoint as open returns
+      list = await fetchBatchesForOpenReturn(productId);
+    }
+
+    const found = Array.isArray(list)
+      ? list.find((b) => String(b.batch_number) === String(batchNumber))
+      : null;
+
+    if (found && (found.available_units || found.available_units === 0)) {
+      return toNum(found.available_units);
+    }
+
+    // fallback
+    return await fetchAvailableUnits(productId, batchNumber);
+  };
+
   // ===== handlers =====
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -291,7 +391,8 @@ export default function PurchaseReturnForm({ returnId, initialData, onSuccess })
       setForm((prev) => ({ ...prev, supplier_id: v, purchase_invoice_id: "" }));
       await fetchPurchaseInvoices(v);
       setInvoiceItems([]);
-      setBatches([]);
+      productBatchCache.current = new Map(); // reset open-mode cache
+      setRowBatches([]);
       // Open return default: allow full catalog until invoice chosen
       setProducts(catalogProducts);
       setForm((prev) => {
@@ -302,6 +403,7 @@ export default function PurchaseReturnForm({ returnId, initialData, onSuccess })
           expiry: "",
           pack_size: 0,
           pack_purchased_quantity: 0,
+          available_units: 0,
           return_pack_quantity: 0,
           return_unit_quantity: 0,
           pack_purchase_price: 0,
@@ -323,13 +425,15 @@ export default function PurchaseReturnForm({ returnId, initialData, onSuccess })
         setInvoiceItems([]);
         setProducts(catalogProducts);
       }
-      setBatches([]);
+      productBatchCache.current = new Map(); // switching modes resets batch cache
+      setRowBatches([]);
       setForm((prev) => {
         const items = prev.items.map((it) => ({
           ...it,
           batch: "",
           expiry: "",
           pack_purchased_quantity: 0,
+          available_units: 0,
           return_pack_quantity: 0,
           return_unit_quantity: 0,
           item_discount_percentage: 0,
@@ -356,38 +460,7 @@ export default function PurchaseReturnForm({ returnId, initialData, onSuccess })
 
     const isInvoiceMode = !!form.purchase_invoice_id;
     const itemsForProduct = isInvoiceMode ? invoiceItemsForProduct(selectedId) : [];
-    const batchOpts = isInvoiceMode ? buildBatchOptions(itemsForProduct) : [];
-
-    // Duplicates policy:
-    // - If product has NO batches (batchOpts.length === 0), product must be unique.
-    // - If product has batches (>=1), allow multiple rows for same product,
-    //   but later enforce uniqueness by (product + batch) when batch is chosen.
-    if (!isInvoiceMode || batchOpts.length === 0) {
-      const dupIndex = findDuplicateProductIndex(selectedId, index);
-      if (selectedId && dupIndex !== -1) {
-        toast.error(`Product "${productNameById(selectedId)}" already used in row ${dupIndex + 1}. Duplicate not allowed when no batches.`);
-        // Clear and refocus
-        const cleared = {
-          ...form.items[index],
-          product_id: "",
-          batch: "",
-          expiry: "",
-          pack_size: 0,
-          pack_purchased_quantity: 0,
-          return_pack_quantity: 0,
-          return_unit_quantity: 0,
-          pack_purchase_price: 0,
-          unit_purchase_price: 0,
-          item_discount_percentage: 0,
-          sub_total: 0,
-        };
-        const itemsCopy = [...form.items];
-        itemsCopy[index] = recalcItem(cleared, "duplicate_product_clear_no_batch");
-        setForm((prev) => recalcFooter({ ...prev, items: itemsCopy }, "duplicate_product"));
-        focusProductSearch(index);
-        return;
-      }
-    }
+    const batchOptsInvoice = isInvoiceMode ? buildBatchOptions(itemsForProduct) : [];
 
     // Set product early and reset dependent fields
     const newItems = [...form.items];
@@ -400,6 +473,7 @@ export default function PurchaseReturnForm({ returnId, initialData, onSuccess })
       pack_purchase_price: toNum(firstDefined(selected?.pack_purchase_price, newItems[index].pack_purchase_price)),
       unit_purchase_price: toNum(firstDefined(selected?.unit_purchase_price, newItems[index].unit_purchase_price)),
       pack_purchased_quantity: 0,
+      available_units: 0,
       return_pack_quantity: 0,
       return_unit_quantity: 0,
       item_discount_percentage: 0,
@@ -410,90 +484,85 @@ export default function PurchaseReturnForm({ returnId, initialData, onSuccess })
     newItems[index] = updated;
     setForm((prev) => recalcFooter({ ...prev, items: newItems }, "items"));
 
-    
-if (!isInvoiceMode || !selectedId) {
-    // Open return: show available quantity in packs
-    try {
-      const available = await fetchAvailableUnits(selectedId, "");
-      const packSize = toNum(updated.pack_size);
-      const packsAvail = packSize ? (available / packSize) : 0;
-      newItems[index] = recalcItem(
-        { ...newItems[index], pack_purchased_quantity: toNum(packsAvail) },
-        "open_pack_purchased_qty"
-      );
+    if (!isInvoiceMode) {
+      // OPEN RETURN
+      const openBatches = await fetchBatchesForOpenReturn(selectedId);
+
+      if (openBatches.length === 0) {
+        // No batches → product-level availability
+        const totalAvail = await fetchAvailableUnits(selectedId, null);
+        newItems[index] = recalcItem(
+          { ...newItems[index], available_units: toNum(totalAvail) },
+          "set_available_units_no_batch_open"
+        );
+        setBatchesForRow(index, []);
+        setForm((prev) => recalcFooter({ ...prev, items: newItems }, "items"));
+        focusOnField("pack_quantity", index);
+        return;
+      }
+
+      // Has batches in open mode
+      setBatchesForRow(index, openBatches);
+      if (openBatches.length === 1) {
+        // auto-apply single batch — use batch list's available_units first
+        const b = openBatches[0];
+        const dupPB = findDuplicateProductBatchIndex(selectedId, b.batch_number, index);
+        if (dupPB !== -1) {
+          toast.error(`Row ${dupPB + 1} already has "${productNameById(selectedId)}" with batch "${b.batch_number}".`);
+          focusProductSearch(index);
+          return;
+        }
+        const availUnits = toNum(firstDefined(b.available_units, await fetchAvailableUnits(selectedId, b.batch_number)));
+        newItems[index] = recalcItem(
+          {
+            ...newItems[index],
+            product_id: selectedId,
+            batch: b.batch_number,
+            expiry: b.expiry || "",
+            pack_size: toNum(firstDefined(newItems[index].pack_size, b.pack_size, 0)),
+            available_units: availUnits,
+          },
+          "open_batch_auto_apply"
+        );
+        setForm((prev) => recalcFooter({ ...prev, items: newItems }, "items"));
+        focusOnField("pack_quantity", index);
+        return;
+      }
+
+      // Multiple batches → require a batch; show 0 until picked
+      newItems[index] = recalcItem({ ...newItems[index], available_units: 0 }, "open_multi_batches_wait");
       setForm((prev) => recalcFooter({ ...prev, items: newItems }, "items"));
-    } catch (_) {
-      setForm((prev) => recalcFooter({ ...prev, items: newItems }, "items"));
+      setCurrentField("batch");
+      setCurrentRowIndex(index);
+      return;
     }
-    setBatches([]);
-    focusOnField("pack_quantity", index);
-    return;
-  }
-setBatches(batchOpts);
 
-    if (batchOpts.length === 0) {
-      // No batches: fill from invoice aggregates (and keep product unique already enforced above)
-      const totalPacks = sumBy(itemsForProduct, (it) => it.pack_quantity);
-      const pickedPackSize = toNum(mostCommon(itemsForProduct, "pack_size")) || toNum(updated.pack_size) || 0;
-      let avgPackPrice = weightedAvg(itemsForProduct, "pack_purchase_price");
-      let avgUnitPrice = weightedAvg(itemsForProduct, "unit_purchase_price");
-      const avgDiscPct = weightedAvg(itemsForProduct, "item_discount_percentage");
-      if (!avgUnitPrice && pickedPackSize) avgUnitPrice = avgPackPrice / pickedPackSize;
-      if (!avgPackPrice && pickedPackSize) avgPackPrice = avgUnitPrice * pickedPackSize;
-
-      const uniqueExpiry = (() => {
-        const set = new Set(itemsForProduct.map((it) => (it.expiry || "").toString()));
-        return set.size === 1 ? Array.from(set)[0] : "";
-      })();
-
-      const upd2 = [...form.items];
-      upd2[index] = recalcItem(
-        {
-          ...upd2[index],
-          product_id: selectedId,
-          batch: "",
-          expiry: uniqueExpiry,
-          pack_size: toNum(pickedPackSize),
-          pack_purchased_quantity: toNum(totalPacks),
-          pack_purchase_price: toNum(avgPackPrice),
-          unit_purchase_price: toNum(avgUnitPrice),
-          item_discount_percentage: toNum(avgDiscPct),
-        },
-        "auto_no_batch_fill"
+    // INVOICE MODE
+    if (batchOptsInvoice.length === 0) {
+      // No batches for this product on invoice → product-level availability
+      const totalAvail = await fetchAvailableUnits(selectedId, null);
+      newItems[index] = recalcItem(
+        { ...newItems[index], available_units: toNum(totalAvail) },
+        "set_available_units_no_batch_invoice"
       );
-      upd2[index].product_id = selectedId;
-      setForm((prev) => recalcFooter({ ...prev, items: upd2 }, "items"));
+      setBatchesForRow(index, []);
+      setForm((prev) => recalcFooter({ ...prev, items: newItems }, "items"));
       focusOnField("pack_quantity", index);
       return;
     }
 
-    if (batchOpts.length === 1) {
-      const b = batchOpts[0];
-      // If another row already has same (product+batch), block here.
+    setBatchesForRow(index, batchOptsInvoice);
+
+    if (batchOptsInvoice.length === 1) {
+      const b = batchOptsInvoice[0];
       const dupPB = findDuplicateProductBatchIndex(selectedId, b.batch_number, index);
       if (dupPB !== -1) {
         toast.error(`Row ${dupPB + 1} already has product "${productNameById(selectedId)}" with batch "${b.batch_number}". Choose a different row or batch.`);
-        const cleared = {
-          ...form.items[index],
-          product_id: "",
-          batch: "",
-          expiry: "",
-          pack_size: 0,
-          pack_purchased_quantity: 0,
-          return_pack_quantity: 0,
-          return_unit_quantity: 0,
-          pack_purchase_price: 0,
-          unit_purchase_price: 0,
-          item_discount_percentage: 0,
-          sub_total: 0,
-        };
-        const itemsCopy = [...form.items];
-        itemsCopy[index] = recalcItem(cleared, "duplicate_product_batch_auto");
-        setForm((prev) => recalcFooter({ ...prev, items: itemsCopy }, "duplicate_product_batch"));
         focusProductSearch(index);
         return;
       }
 
+      const avail = await getBatchAvailability(selectedId, b.batch_number);
       const upd3 = [...form.items];
       upd3[index] = recalcItem(
         {
@@ -502,25 +571,27 @@ setBatches(batchOpts);
           batch: b.batch_number,
           expiry: b.expiry || "",
           pack_size: toNum(firstDefined(b.pack_size, upd3[index].pack_size)),
-          pack_purchased_quantity: toNum(b.pack_quantity),
+          pack_purchased_quantity: toNum(b.pack_quantity), // reference only
+          available_units: toNum(avail),                    // used for validation
           pack_purchase_price: toNum(firstDefined(b.pack_purchase_price, upd3[index].pack_purchase_price)),
           unit_purchase_price: toNum(firstDefined(b.unit_purchase_price, upd3[index].unit_purchase_price)),
           item_discount_percentage: toNum(b.item_discount_percentage),
         },
-        "batch_auto_apply"
+        "batch_auto_apply_invoice"
       );
-      upd3[index].product_id = selectedId;
       setForm((prev) => recalcFooter({ ...prev, items: upd3 }, "items"));
       focusOnField("pack_quantity", index);
       return;
     }
 
-    // Multiple batches available → user must choose a batch
+    // Multiple batches on invoice → require batch; show 0 until picked
+    newItems[index] = recalcItem({ ...newItems[index], available_units: 0 }, "invoice_multi_batches_wait");
+    setForm((prev) => recalcFooter({ ...prev, items: newItems }, "items"));
     setCurrentField("batch");
     setCurrentRowIndex(index);
   };
 
-  const handleBatchSelect = (index, valueObjOrString) => {
+  const handleBatchSelect = async (index, valueObjOrString) => {
     const rowItem = form.items[index];
     let ensurePid = rowItem?.product_id;
 
@@ -542,10 +613,9 @@ setBatches(batchOpts);
       const dupIndex2 = findDuplicateProductBatchIndex(ensurePid, bn, index);
       if (dupIndex2 !== -1) {
         toast.error(`Duplicate (product + batch) in row ${dupIndex2 + 1}. Use a unique batch for the same product.`);
-        // Keep product, clear batch
         const updDup = [...form.items];
         updDup[index] = recalcItem(
-          { ...updDup[index], batch: "", expiry: "" },
+          { ...updDup[index], batch: "", expiry: "", available_units: 0 },
           "duplicate_product_batch_from_batch"
         );
         setForm((prev) => recalcFooter({ ...prev, items: updDup }, "items"));
@@ -556,61 +626,78 @@ setBatches(batchOpts);
     }
 
     if (!bn) {
-      // Clear batch and dependent fields
-      const itemsForProduct = invoiceItemsForProduct(rowItem.product_id);
-      const batchOpts = buildBatchOptions(itemsForProduct);
+      // Clearing batch
       const upd = [...form.items];
-      if (batchOpts.length === 0) {
-        const totalPacks = sumBy(itemsForProduct, (it) => it.pack_quantity);
-        const pickedPackSize = toNum(mostCommon(itemsForProduct, "pack_size")) || toNum(upd[index].pack_size) || 0;
-        const avgDiscPct = weightedAvg(itemsForProduct, "item_discount_percentage");
-        upd[index] = recalcItem(
-          {
-            ...upd[index],
-            product_id: ensurePid,
-            batch: "",
-            expiry: "",
-            pack_size: pickedPackSize,
-            pack_purchased_quantity: toNum(totalPacks),
-            item_discount_percentage: toNum(avgDiscPct),
-          },
-          "batch_clear_no_batches"
-        );
+      if (form.purchase_invoice_id) {
+        // invoice mode: if product truly has no batches → product-level availability; else 0 until chosen
+        const hasB = productHasBatches(ensurePid);
+        if (hasB) {
+          upd[index] = recalcItem({ ...upd[index], batch: "", expiry: "", available_units: 0 }, "batch_cleared_invoice_has_batches");
+        } else {
+          const totalAvail = await fetchAvailableUnits(ensurePid, null);
+          upd[index] = recalcItem({ ...upd[index], batch: "", expiry: "", available_units: toNum(totalAvail) }, "batch_cleared_invoice_no_batches");
+        }
       } else {
-        upd[index] = recalcItem(
-          { ...upd[index], product_id: ensurePid, batch: "", expiry: "", pack_purchased_quantity: 0, item_discount_percentage: 0 },
-          "batch_clear"
-        );
+        // open mode: rely on cache to decide
+        const cached = productBatchCache.current.get(String(ensurePid)) || [];
+        if (cached.length > 0) {
+          upd[index] = recalcItem({ ...upd[index], batch: "", expiry: "", available_units: 0 }, "batch_cleared_open_has_batches");
+        } else {
+          const totalAvail = await fetchAvailableUnits(ensurePid, null);
+          upd[index] = recalcItem({ ...upd[index], batch: "", expiry: "", available_units: toNum(totalAvail) }, "batch_cleared_open_no_batches");
+        }
       }
       setForm((prev) => recalcFooter({ ...prev, items: upd }, "items"));
       return;
     }
 
-    // Validate that the chosen batch exists on the invoice for that product
-    const matched = invoiceItems.find(
-      (it) => eqPid(it.product_id, ensurePid) && String(it.batch ?? "") === bn
-    );
-
-    if (!matched) {
-      toast.error("Selected batch not found on this invoice.");
-      return;
-    }
-
+    // ===== After picking a batch: always show batch-level availability =====
     const upd = [...form.items];
-    upd[index] = recalcItem(
-      {
-        ...upd[index],
-        product_id: ensurePid,
-        batch: bn,
-        expiry: matched.expiry || "",
-        pack_size: toNum(firstDefined(matched.pack_size, upd[index].pack_size)),
-        pack_purchased_quantity: toNum(matched.pack_quantity),
-        pack_purchase_price: toNum(firstDefined(matched.pack_purchase_price, upd[index].pack_purchase_price)),
-        unit_purchase_price: toNum(firstDefined(matched.unit_purchase_price, upd[index].unit_purchase_price)),
-        item_discount_percentage: toNum(firstDefined(matched.item_discount_percentage, 0)),
-      },
-      "batch_selected"
-    );
+    if (form.purchase_invoice_id) {
+      const matched = invoiceItems.find(
+        (it) => eqPid(it.product_id, ensurePid) && String(it.batch ?? "") === bn
+      );
+      if (!matched) {
+        toast.error("Selected batch not found on this invoice.");
+        return;
+      }
+      const avail = await getBatchAvailability(ensurePid, bn);
+      upd[index] = recalcItem(
+        {
+          ...upd[index],
+          product_id: ensurePid,
+          batch: bn,
+          expiry: matched.expiry || "",
+          pack_size: toNum(firstDefined(matched.pack_size, upd[index].pack_size)),
+          pack_purchased_quantity: toNum(matched.pack_quantity),
+          available_units: toNum(avail),
+          pack_purchase_price: toNum(firstDefined(matched.pack_purchase_price, upd[index].pack_purchase_price)),
+          unit_purchase_price: toNum(firstDefined(matched.unit_purchase_price, upd[index].unit_purchase_price)),
+          item_discount_percentage: toNum(firstDefined(matched.item_discount_percentage, 0)),
+        },
+        "batch_selected_invoice"
+      );
+    } else {
+      // open mode — prefer batch list's available_units
+      const cached = productBatchCache.current.get(String(ensurePid)) || [];
+      const matchedOpen = cached.find((b) => String(b.batch_number) === bn) || null;
+      if (!matchedOpen) {
+        toast.error("Selected batch not found for this product.");
+        return;
+      }
+      const avail = toNum(firstDefined(matchedOpen.available_units, await fetchAvailableUnits(ensurePid, bn)));
+      upd[index] = recalcItem(
+        {
+          ...upd[index],
+          product_id: ensurePid,
+          batch: bn,
+          expiry: matchedOpen.expiry || "",
+          pack_size: toNum(firstDefined(upd[index]?.pack_size, matchedOpen.pack_size, 0)),
+          available_units: avail,
+        },
+        "batch_selected_open"
+      );
+    }
     setForm((prev) => recalcFooter({ ...prev, items: upd }, "items"));
     focusOnField("pack_quantity", index);
   };
@@ -680,36 +767,6 @@ setBatches(batchOpts);
     setForm(newForm);
   };
 
-  // -------- availability lookups (open return) --------
-  const availabilityCache = useRef(new Map()); // key = `${productId}::${batch||""}` → units
-  const fetchAvailableUnits = async (productId, batch, fallbackFromCatalog = true) => {
-    const key = `${productId}::${batch || ""}`;
-    if (availabilityCache.current.has(key)) return availabilityCache.current.get(key);
-
-    if (fallbackFromCatalog) {
-      const prod =
-        products.find((p) => eqPid(firstDefined(p.id, p.value), productId)) ||
-        catalogProducts.find((p) => eqPid(firstDefined(p.id, p.value), productId));
-      if (prod?.available_units || prod?.available_units === 0) {
-        const units = toNum(prod.available_units);
-        availabilityCache.current.set(key, units);
-        return units;
-      }
-    }
-
-    try {
-      const res = await axios.get("/api/products/available-quantity", {
-        params: { product_id: productId, batch: batch || "" },
-      });
-      const units = toNum(res?.data?.available_units);
-      availabilityCache.current.set(key, units);
-      return units;
-    } catch (e) {
-      availabilityCache.current.set(key, 0);
-      return 0;
-    }
-  };
-
   // -------- submit with validations --------
   const handleSubmit = async () => {
     try {
@@ -746,30 +803,32 @@ setBatches(batchOpts);
         }
       }
 
-      // Quantity validations
-      if (form.purchase_invoice_id) {
-        // With invoice: Return Pack Qty ≤ Pack Purchased Qty
-        for (let i = 0; i < form.items.length; i++) {
-          const it = form.items[i];
-          if (!it.product_id) continue;
-          if (toNum(it.return_pack_quantity) > toNum(it.pack_purchased_quantity)) {
-            toast.error(`Row ${i + 1}: Return Pack Qty cannot exceed Pack Purchased Qty.`);
-            packQuantityRefs.current[i]?.focus?.();
+      // Unified quantity validation (Returned units = Unit.Q)
+      for (let i = 0; i < form.items.length; i++) {
+        const it = form.items[i];
+        if (!it.product_id) continue;
+
+        const returnedUnits = toNum(it.return_unit_quantity);
+
+        let available = toNum(it.available_units);
+        if (productHasBatches(it.product_id)) {
+          if (!it.batch) {
+            toast.error(`Row ${i + 1}: Please pick a batch for this product.`);
+            setCurrentField("batch"); setCurrentRowIndex(i);
             return;
+          }
+          if (!available) {
+            available = await getBatchAvailability(it.product_id, it.batch);
+          }
+        } else {
+          if (!available) {
+            available = await fetchAvailableUnits(it.product_id, null);
           }
         }
-      } else {
-        // Open return: Return Unit Qty ≤ available units
-        for (let i = 0; i < form.items.length; i++) {
-          const it = form.items[i];
-          if (!it.product_id) continue;
-          const retUnits = toNum(it.return_unit_quantity);
-          if (!retUnits) continue;
-          const available = await fetchAvailableUnits(it.product_id, it.batch);
-          if (retUnits > available) {
-            toast.error(`Row ${i + 1}: Return Unit Qty (${retUnits}) exceeds available (${available}).`);
-            return;
-          }
+
+        if (returnedUnits > toNum(available)) {
+          toast.error(`Row ${i + 1}: Returned units (${returnedUnits}) exceed available (${available}).`);
+          return;
         }
       }
 
@@ -784,6 +843,7 @@ setBatches(batchOpts);
             ...it,
             pack_size: toNum(it.pack_size),
             pack_purchased_quantity: toNum(it.pack_purchased_quantity),
+            available_units: toNum(it.available_units),
             return_pack_quantity: toNum(it.return_pack_quantity),
             return_unit_quantity: toNum(it.return_unit_quantity),
             pack_purchase_price: toNum(it.pack_purchase_price),
@@ -927,7 +987,7 @@ setBatches(batchOpts);
               <tr>
                 <th rowSpan={2} className="border w-6">#</th>
                 <th rowSpan={2} colSpan={1} className="border w-[80px]">Product</th>
-                <th colSpan={4} className="border">Pack Size / Batch / Expiry / Pack Purchased Qty</th>
+                <th colSpan={4} className="border">Pack Size / Batch / Expiry / Available Qty</th>
                 <th colSpan={2} className="border">Return Qty (Pack / Unit)</th>
                 <th colSpan={2} className="border">Purchase Price (P / U)</th>
                 <th colSpan={1} className="border">Disc %</th>
@@ -938,7 +998,7 @@ setBatches(batchOpts);
                 <th className="border w-14">PSize</th>
                 <th className="border w-16">Batch</th>
                 <th className="border w-20">Exp</th>
-                <th className="border w-16">Pack Purchased Qty</th>
+                <th className="border w-20">Avail.Q (Units)</th>
                 <th className="border w-12">Pack.Q</th>
                 <th className="border w-12">Unit.Q</th>
                 <th className="border w-14">Pack.P</th>
@@ -992,7 +1052,7 @@ setBatches(batchOpts);
                         }
                       }}
                       value={item.batch}
-                      batches={batches}
+                      batches={rowBatches[i] || []}
                       onChange={(batchNumber) => handleBatchSelect(i, { value: batchNumber })}
                       onKeyDown={(e) => {
                         if (e.key === "Enter" && item.batch) {
@@ -1012,12 +1072,12 @@ setBatches(batchOpts);
                     />
                   </td>
 
-                  {/* Pack Purchased Qty */}
-                  <td className="border w-16">
+                  {/* Available Units */}
+                  <td className="border w-20">
                     <input
                       type="number"
                       readOnly
-                      value={item.pack_purchased_quantity || ""}
+                      value={item.available_units || 0}
                       className="border bg-gray-100 w-full h-6 text-[11px] px-1"
                     />
                   </td>
