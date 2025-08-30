@@ -411,7 +411,7 @@ function handleItemChange(index, field, rawValue) {
         addItem(); // Add a new row if currently on the last row
         setTimeout(() => {
           // Focus on the same field in the new row
-          focusOnField(field, rowIndex + 1);
+          focusProductSearch(rowIndex + 1);
         }, 200);
       } else {
         const nextRowIndex = rowIndex + 1;
