@@ -111,6 +111,32 @@ class PurchaseReturnController extends Controller
         });
     }
 
+    public function destroy($id)
+    {
+        try {
+            return DB::transaction(function () use ($id) {
+                $pr = PurchaseReturn::with('items')->findOrFail($id);
+
+                // Delete children first (even though FK cascades; this makes intent explicit)
+                $pr->items()->delete();
+
+                // Delete parent
+                $pr->delete();
+
+                return response()->json(['message' => 'Purchase return deleted'], 200);
+            });
+        } catch (\Throwable $e) {
+            // If something else references this return, surface a cleaner error
+            $code = method_exists($e, 'getCode') ? $e->getCode() : 0;
+            $msg  = $e->getMessage();
+            return response()->json([
+                'message' => 'Unable to delete purchase return',
+                'error'   => $msg,
+                'code'    => $code,
+            ], 409);
+        }
+    }
+
     private function validatePayload(Request $request, bool $updating = false): array
     {
         $data = $request->validate([
@@ -129,7 +155,7 @@ class PurchaseReturnController extends Controller
             'items'                        => ['required', 'array', 'min:1'],
             'items.*.product_id'           => ['required', 'integer', 'exists:products,id'],
             'items.*.batch'                => ['nullable', 'string', 'max:100'],
-            'items.*.expiry'               => ['nullable', 'date'], // DATE in schema; enforce valid date if given
+            'items.*.expiry'               => ['nullable', 'date'],
             'items.*.pack_size'            => ['nullable', 'numeric'],
             'items.*.pack_purchased_quantity' => ['nullable', 'numeric'],
             'items.*.return_pack_quantity' => ['nullable', 'numeric'],
@@ -140,7 +166,6 @@ class PurchaseReturnController extends Controller
             'items.*.sub_total'            => ['nullable', 'numeric'],
         ]);
 
-        // Logical validations (open return vs invoice return)
         $hasInvoice = !empty($data['purchase_invoice_id']);
 
         $seen = [];
@@ -149,21 +174,18 @@ class PurchaseReturnController extends Controller
             $batch = (string)($it['batch'] ?? '');
 
             if ($hasInvoice) {
-                // With invoice: keep each (product+batch) unique.
                 $key = $pid.'::'.($batch ?: '__NO_BATCH__');
                 if (isset($seen[$key])) {
                     abort(422, "Duplicate row for product/batch at rows ".($seen[$key]+1)." and ".($idx+1));
                 }
                 $seen[$key] = $idx;
 
-                // Guard: Return packs must not exceed purchased packs
                 $retPacks = (float)($it['return_pack_quantity'] ?? 0);
                 $purchasedPacks = (float)($it['pack_purchased_quantity'] ?? 0);
                 if ($retPacks > $purchasedPacks) {
                     abort(422, "Row ".($idx+1).": Return Pack Qty cannot exceed Pack Purchased Qty.");
                 }
             } else {
-                // Open return: same product can't repeat (no batch context)
                 if (isset($seen[$pid])) {
                     abort(422, "Duplicate product in open return at rows ".($seen[$pid]+1)." and ".($idx+1));
                 }
@@ -176,7 +198,6 @@ class PurchaseReturnController extends Controller
 
     private function normalizePayload(array $data): array
     {
-        // Normalize empty strings to null & numerics to 0 where needed
         if (empty($data['purchase_invoice_id'])) {
             $data['purchase_invoice_id'] = null;
         }
