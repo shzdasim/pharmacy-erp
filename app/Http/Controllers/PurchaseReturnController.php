@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Product;
+use App\Models\Batch;
 use App\Models\PurchaseReturn;
 use App\Models\PurchaseReturnItem;
 use Illuminate\Http\Request;
@@ -9,220 +11,242 @@ use Illuminate\Support\Facades\DB;
 
 class PurchaseReturnController extends Controller
 {
+    // ===== Helpers =====
+    private function i($v): int { return (int)($v ?? 0); }
+    private function f($v): float { return (float)($v ?? 0.0); }
+
+    // IMPORTANT: units are ALREADY precomputed on the client.
+    private function unitsFromArray(array $item): int
+    {
+        return $this->i($item['return_unit_quantity'] ?? 0);
+    }
+
+    private function unitsFromModel(PurchaseReturnItem $item): int
+    {
+        return $this->i($item->return_unit_quantity ?? 0);
+    }
+
+    /**
+     * Apply delta to Batch first; then apply the *actual* applied delta to Product.
+     * $deltaUnits: negative = reduce (creating a return), positive = revert (on update/delete).
+     */
+    private function applyStockDeltaSmart(int $productId, ?string $batchNo, ?string $expiry, int $deltaUnits): void
+    {
+        $batchNo = trim((string)($batchNo ?? ''));
+        $expiry  = trim((string)($expiry ?? ''));
+
+        $actualApplied = $deltaUnits; // default if batch not found
+
+        $batch = null;
+        if ($batchNo !== '' && $expiry !== '') {
+            $batch = Batch::where('product_id', $productId)
+                ->where(function ($q) use ($batchNo) {
+                    $q->where('batch_number', $batchNo)->orWhere('batch', $batchNo);
+                })
+                ->where(function ($q) use ($expiry) {
+                    $q->where('expiry_date', $expiry)->orWhere('expiry', $expiry);
+                })
+                ->first();
+        }
+
+        if ($batch) {
+            $before = $this->i($batch->quantity);
+            $after  = $before + $deltaUnits;
+            if ($after < 0) $after = 0;                // never go below zero
+            $actualApplied = $after - $before;         // what really changed
+            $batch->quantity = $after;
+            $batch->save();
+        }
+
+        if ($product = Product::find($productId)) {
+            $pBefore = $this->i($product->quantity);
+            $pAfter  = $pBefore + $actualApplied;
+            if ($pAfter < 0) $pAfter = 0;
+            $product->quantity = $pAfter;
+            $product->save();
+        }
+    }
+
+    private function createItemsAndReduce(PurchaseReturn $pr, array $items): void
+    {
+        foreach ($items as $raw) {
+            $payload = [
+                'product_id'                => $raw['product_id'],
+                'batch'                     => $raw['batch'] ?? null,
+                'expiry'                    => $raw['expiry'] ?? null,
+                'pack_size'                 => $this->i($raw['pack_size'] ?? 0),
+                'pack_purchased_quantity'   => $this->i($raw['pack_purchased_quantity'] ?? 0),
+                'return_pack_quantity'      => $this->i($raw['return_pack_quantity'] ?? 0),
+                'return_unit_quantity'      => $this->i($raw['return_unit_quantity'] ?? 0), // ← already final units
+                'pack_purchase_price'       => $this->f($raw['pack_purchase_price'] ?? 0),
+                'unit_purchase_price'       => $this->f($raw['unit_purchase_price'] ?? 0),
+                'item_discount_percentage'  => $this->f($raw['item_discount_percentage'] ?? 0),
+                'sub_total'                 => $this->f($raw['sub_total'] ?? 0),
+            ];
+
+            $units = $this->unitsFromArray($payload);
+            $payload['quantity'] = $units; // harmless if column absent
+
+            /** @var PurchaseReturnItem $item */
+            $item = $pr->items()->create($payload);
+
+            // Returns reduce stock by exactly the units provided
+            $this->applyStockDeltaSmart($item->product_id, $item->batch, $item->expiry, -$units);
+        }
+    }
+
+    private function revertItems(PurchaseReturn $pr): void
+    {
+        $pr->load('items');
+        foreach ($pr->items as $item) {
+            $units = $this->unitsFromModel($item);
+            $this->applyStockDeltaSmart($item->product_id, $item->batch, $item->expiry, +$units);
+        }
+    }
+
+    // ===== Endpoints =====
+
     public function index()
     {
-        return PurchaseReturn::with(['supplier', 'purchaseInvoice', 'items.product'])
-            ->latest()
-            ->get();
+        return PurchaseReturn::with(['supplier', 'purchaseInvoice', 'items.product'])->latest()->get();
     }
 
-    public function show($id)
+    public function show(PurchaseReturn $purchaseReturn)
     {
-        return PurchaseReturn::with(['supplier', 'purchaseInvoice', 'items.product'])->findOrFail($id);
-    }
-
-    public function generateNewCode()
-    {
-        $next = (PurchaseReturn::max('id') ?? 0) + 1;
-        $code = 'PR-' . str_pad((string)$next, 6, '0', STR_PAD_LEFT);
-        return response()->json(['posted_number' => $code]);
+        return $purchaseReturn->load(['supplier', 'purchaseInvoice', 'items.product']);
     }
 
     public function store(Request $request)
     {
-        $validated = $this->validatePayload($request);
-        $data = $this->normalizePayload($validated);
-
-        return DB::transaction(function () use ($data) {
-            $pr = new PurchaseReturn();
-            $pr->supplier_id         = $data['supplier_id'];
-            $pr->purchase_invoice_id = $data['purchase_invoice_id'] ?? null;
-            $pr->posted_number       = $data['posted_number'] ?? $this->makeCode();
-            $pr->date                = $data['date'];
-            $pr->remarks             = $data['remarks'] ?? null;
-            $pr->gross_total         = $data['gross_total'] ?? 0;
-            $pr->discount_percentage = $data['discount_percentage'] ?? 0;
-            $pr->discount_amount     = $data['discount_amount'] ?? 0;
-            $pr->tax_percentage      = $data['tax_percentage'] ?? 0;
-            $pr->tax_amount          = $data['tax_amount'] ?? 0;
-            $pr->total               = $data['total'] ?? 0;
-            $pr->save();
-
-            foreach ($data['items'] as $it) {
-                $item = new PurchaseReturnItem();
-                $item->purchase_return_id      = $pr->id;
-                $item->product_id              = $it['product_id'];
-                $item->batch                   = $it['batch'] ?? null;
-                $item->expiry                  = $it['expiry'] ?? null;
-                $item->pack_size               = $it['pack_size'] ?? 0;
-                $item->pack_purchased_quantity = $it['pack_purchased_quantity'] ?? 0;
-                $item->return_pack_quantity    = $it['return_pack_quantity'] ?? 0;
-                $item->return_unit_quantity    = $it['return_unit_quantity'] ?? 0;
-                $item->pack_purchase_price     = $it['pack_purchase_price'] ?? 0;
-                $item->unit_purchase_price     = $it['unit_purchase_price'] ?? 0;
-                $item->item_discount_percentage= $it['item_discount_percentage'] ?? 0;
-                $item->sub_total               = $it['sub_total'] ?? 0;
-                $item->save();
-            }
-
-            return PurchaseReturn::with(['supplier', 'purchaseInvoice', 'items.product'])->find($pr->id);
-        });
-    }
-
-    public function update(Request $request, $id)
-    {
-        $validated = $this->validatePayload($request, updating: true);
-        $data = $this->normalizePayload($validated);
-
-        return DB::transaction(function () use ($data, $id) {
-            $pr = PurchaseReturn::findOrFail($id);
-            $pr->supplier_id         = $data['supplier_id'];
-            $pr->purchase_invoice_id = $data['purchase_invoice_id'] ?? null;
-            $pr->posted_number       = $data['posted_number'] ?? $pr->posted_number ?? $this->makeCode();
-            $pr->date                = $data['date'];
-            $pr->remarks             = $data['remarks'] ?? null;
-            $pr->gross_total         = $data['gross_total'] ?? 0;
-            $pr->discount_percentage = $data['discount_percentage'] ?? 0;
-            $pr->discount_amount     = $data['discount_amount'] ?? 0;
-            $pr->tax_percentage      = $data['tax_percentage'] ?? 0;
-            $pr->tax_amount          = $data['tax_amount'] ?? 0;
-            $pr->total               = $data['total'] ?? 0;
-            $pr->save();
-
-            $pr->items()->delete();
-            foreach ($data['items'] as $it) {
-                $item = new PurchaseReturnItem();
-                $item->purchase_return_id      = $pr->id;
-                $item->product_id              = $it['product_id'];
-                $item->batch                   = $it['batch'] ?? null;
-                $item->expiry                  = $it['expiry'] ?? null;
-                $item->pack_size               = $it['pack_size'] ?? 0;
-                $item->pack_purchased_quantity = $it['pack_purchased_quantity'] ?? 0;
-                $item->return_pack_quantity    = $it['return_pack_quantity'] ?? 0;
-                $item->return_unit_quantity    = $it['return_unit_quantity'] ?? 0;
-                $item->pack_purchase_price     = $it['pack_purchase_price'] ?? 0;
-                $item->unit_purchase_price     = $it['unit_purchase_price'] ?? 0;
-                $item->item_discount_percentage= $it['item_discount_percentage'] ?? 0;
-                $item->sub_total               = $it['sub_total'] ?? 0;
-                $item->save();
-            }
-
-            return PurchaseReturn::with(['supplier', 'purchaseInvoice', 'items.product'])->find($pr->id);
-        });
-    }
-
-    public function destroy($id)
-    {
-        try {
-            return DB::transaction(function () use ($id) {
-                $pr = PurchaseReturn::with('items')->findOrFail($id);
-
-                // Delete children first (even though FK cascades; this makes intent explicit)
-                $pr->items()->delete();
-
-                // Delete parent
-                $pr->delete();
-
-                return response()->json(['message' => 'Purchase return deleted'], 200);
-            });
-        } catch (\Throwable $e) {
-            // If something else references this return, surface a cleaner error
-            $code = method_exists($e, 'getCode') ? $e->getCode() : 0;
-            $msg  = $e->getMessage();
-            return response()->json([
-                'message' => 'Unable to delete purchase return',
-                'error'   => $msg,
-                'code'    => $code,
-            ], 409);
-        }
-    }
-
-    private function validatePayload(Request $request, bool $updating = false): array
-    {
         $data = $request->validate([
-            'supplier_id'          => ['required', 'integer', 'exists:suppliers,id'],
-            'purchase_invoice_id'  => ['nullable', 'integer', 'exists:purchase_invoices,id'],
-            'posted_number'        => ['nullable', 'string', 'max:50'],
-            'date'                 => ['required', 'date'],
-            'remarks'              => ['nullable', 'string'],
-            'gross_total'          => ['nullable', 'numeric'],
-            'discount_percentage'  => ['nullable', 'numeric'],
-            'discount_amount'      => ['nullable', 'numeric'],
-            'tax_percentage'       => ['nullable', 'numeric'],
-            'tax_amount'           => ['nullable', 'numeric'],
-            'total'                => ['nullable', 'numeric'],
+            'supplier_id'           => 'required|exists:suppliers,id',
+            'posted_number'         => 'required|string',
+            'date'                  => 'required|date',
+            'purchase_invoice_id'   => 'nullable|exists:purchase_invoices,id',
+            'remarks'               => 'nullable|string',
 
-            'items'                        => ['required', 'array', 'min:1'],
-            'items.*.product_id'           => ['required', 'integer', 'exists:products,id'],
-            'items.*.batch'                => ['nullable', 'string', 'max:100'],
-            'items.*.expiry'               => ['nullable', 'date'],
-            'items.*.pack_size'            => ['nullable', 'numeric'],
-            'items.*.pack_purchased_quantity' => ['nullable', 'numeric'],
-            'items.*.return_pack_quantity' => ['nullable', 'numeric'],
-            'items.*.return_unit_quantity' => ['nullable', 'numeric'],
-            'items.*.pack_purchase_price'  => ['nullable', 'numeric'],
-            'items.*.unit_purchase_price'  => ['nullable', 'numeric'],
-            'items.*.item_discount_percentage' => ['nullable', 'numeric'],
-            'items.*.sub_total'            => ['nullable', 'numeric'],
+            'gross_total'           => 'nullable|numeric',
+            'discount_percentage'   => 'nullable|numeric',
+            'discount_amount'       => 'nullable|numeric',
+            'tax_percentage'        => 'nullable|numeric',
+            'tax_amount'            => 'nullable|numeric',
+            'total'                 => 'required|numeric',
+
+            'items'                                 => 'required|array|min:1',
+            'items.*.product_id'                    => 'required|exists:products,id',
+            'items.*.pack_size'                     => 'nullable|integer',
+            'items.*.batch'                         => 'nullable|string',
+            'items.*.expiry'                        => 'nullable|string',
+            'items.*.pack_purchased_quantity'       => 'nullable|integer',
+            'items.*.return_pack_quantity'          => 'nullable|integer',
+            'items.*.return_unit_quantity'          => 'required|integer|min:0', // ← trust this
+            'items.*.pack_purchase_price'           => 'nullable|numeric',
+            'items.*.unit_purchase_price'           => 'nullable|numeric',
+            'items.*.item_discount_percentage'      => 'nullable|numeric',
+            'items.*.sub_total'                     => 'nullable|numeric',
         ]);
 
-        $hasInvoice = !empty($data['purchase_invoice_id']);
+        return DB::transaction(function () use ($data) {
+            $pr = PurchaseReturn::create([
+                'supplier_id'         => $data['supplier_id'],
+                'posted_number'       => $data['posted_number'],
+                'date'                => $data['date'],
+                'purchase_invoice_id' => $data['purchase_invoice_id'] ?? null,
+                'remarks'             => $data['remarks'] ?? null,
+                'gross_total'         => $data['gross_total'] ?? 0,
+                'discount_percentage' => $data['discount_percentage'] ?? 0,
+                'discount_amount'     => $data['discount_amount'] ?? 0,
+                'tax_percentage'      => $data['tax_percentage'] ?? 0,
+                'tax_amount'          => $data['tax_amount'] ?? 0,
+                'total'               => $data['total'],
+            ]);
 
-        $seen = [];
-        foreach ($data['items'] as $idx => $it) {
-            $pid = (string)($it['product_id'] ?? '');
-            $batch = (string)($it['batch'] ?? '');
+            $this->createItemsAndReduce($pr, $data['items']);
 
-            if ($hasInvoice) {
-                $key = $pid.'::'.($batch ?: '__NO_BATCH__');
-                if (isset($seen[$key])) {
-                    abort(422, "Duplicate row for product/batch at rows ".($seen[$key]+1)." and ".($idx+1));
-                }
-                $seen[$key] = $idx;
-
-                $retPacks = (float)($it['return_pack_quantity'] ?? 0);
-                $purchasedPacks = (float)($it['pack_purchased_quantity'] ?? 0);
-                if ($retPacks > $purchasedPacks) {
-                    abort(422, "Row ".($idx+1).": Return Pack Qty cannot exceed Pack Purchased Qty.");
-                }
-            } else {
-                if (isset($seen[$pid])) {
-                    abort(422, "Duplicate product in open return at rows ".($seen[$pid]+1)." and ".($idx+1));
-                }
-                $seen[$pid] = $idx;
-            }
-        }
-
-        return $data;
+            return $pr->load(['supplier', 'purchaseInvoice', 'items.product']);
+        });
     }
 
-    private function normalizePayload(array $data): array
+    public function update(Request $request, PurchaseReturn $purchaseReturn)
     {
-        if (empty($data['purchase_invoice_id'])) {
-            $data['purchase_invoice_id'] = null;
-        }
+        $data = $request->validate([
+            'supplier_id'           => 'required|exists:suppliers,id',
+            'posted_number'         => 'required|string',
+            'date'                  => 'required|date',
+            'purchase_invoice_id'   => 'nullable|exists:purchase_invoices,id',
+            'remarks'               => 'nullable|string',
 
-        if (isset($data['items']) && is_array($data['items'])) {
-            foreach ($data['items'] as &$it) {
-                if (empty($it['batch'])) {
-                    $it['batch'] = null;
-                }
-                if (empty($it['expiry'])) {
-                    $it['expiry'] = null;
-                }
-                foreach (['pack_size','pack_purchased_quantity','return_pack_quantity','return_unit_quantity','pack_purchase_price','unit_purchase_price','item_discount_percentage','sub_total'] as $k) {
-                    if (!isset($it[$k]) || $it[$k] === '') $it[$k] = 0;
-                }
-            }
-            unset($it);
-        }
+            'gross_total'           => 'nullable|numeric',
+            'discount_percentage'   => 'nullable|numeric',
+            'discount_amount'       => 'nullable|numeric',
+            'tax_percentage'        => 'nullable|numeric',
+            'tax_amount'            => 'nullable|numeric',
+            'total'                 => 'required|numeric',
 
-        return $data;
+            'items'                                 => 'required|array|min:1',
+            'items.*.product_id'                    => 'required|exists:products,id',
+            'items.*.pack_size'                     => 'nullable|integer',
+            'items.*.batch'                         => 'nullable|string',
+            'items.*.expiry'                        => 'nullable|string',
+            'items.*.pack_purchased_quantity'       => 'nullable|integer',
+            'items.*.return_pack_quantity'          => 'nullable|integer',
+            'items.*.return_unit_quantity'          => 'required|integer|min:0', // ← trust this
+            'items.*.pack_purchase_price'           => 'nullable|numeric',
+            'items.*.unit_purchase_price'           => 'nullable|numeric',
+            'items.*.item_discount_percentage'      => 'nullable|numeric',
+            'items.*.sub_total'                     => 'nullable|numeric',
+        ]);
+
+        return DB::transaction(function () use ($purchaseReturn, $data) {
+            // Revert previous stock effects
+            $this->revertItems($purchaseReturn);
+
+            // Replace items
+            $purchaseReturn->items()->delete();
+
+            // Update header
+            $purchaseReturn->update([
+                'supplier_id'         => $data['supplier_id'],
+                'posted_number'       => $data['posted_number'],
+                'date'                => $data['date'],
+                'purchase_invoice_id' => $data['purchase_invoice_id'] ?? null,
+                'remarks'             => $data['remarks'] ?? null,
+                'gross_total'         => $data['gross_total'] ?? 0,
+                'discount_percentage' => $data['discount_percentage'] ?? 0,
+                'discount_amount'     => $data['discount_amount'] ?? 0,
+                'tax_percentage'      => $data['tax_percentage'] ?? 0,
+                'tax_amount'          => $data['tax_amount'] ?? 0,
+                'total'               => $data['total'],
+            ]);
+
+            // Apply new items
+            $this->createItemsAndReduce($purchaseReturn, $data['items']);
+
+            return $purchaseReturn->load(['supplier', 'purchaseInvoice', 'items.product']);
+        });
     }
 
-    private function makeCode(): string
+    public function destroy(PurchaseReturn $purchaseReturn)
     {
-        $next = (PurchaseReturn::max('id') ?? 0) + 1;
-        return 'PR-' . str_pad((string)$next, 6, '0', STR_PAD_LEFT);
+        return DB::transaction(function () use ($purchaseReturn) {
+            $this->revertItems($purchaseReturn);
+            $purchaseReturn->items()->delete();
+            $purchaseReturn->delete();
+            return response()->json(null, 204);
+        });
+    }
+
+    public function generateNewCode()
+    {
+        $last = PurchaseReturn::orderBy('id', 'desc')->first();
+        $next = 1;
+        if ($last && !empty($last->posted_number)) {
+            if (preg_match('/PRRET-(\d+)/', $last->posted_number, $m)) {
+                $next = ((int)$m[1]) + 1;
+            } elseif (preg_match('/PR-(\d+)/', $last->posted_number, $m)) {
+                $next = ((int)$m[1]) + 1;
+            }
+        }
+        return response()->json(['posted_number' => 'PRRET-'.str_pad($next, 4, '0', STR_PAD_LEFT)]);
     }
 }
