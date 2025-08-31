@@ -36,6 +36,11 @@ export default function SaleInvoiceForm({ saleId, onSuccess }) {
       },
     ],
   });
+// near other useState hooks
+const [marginPct, setMarginPct] = useState("");
+
+// optional: clear when switching create/update
+useEffect(() => { setMarginPct(""); }, [saleId]);
 
   const [customers, setCustomers] = useState([]);
   const [products, setProducts] = useState([]);
@@ -58,10 +63,10 @@ export default function SaleInvoiceForm({ saleId, onSuccess }) {
         await fetchNewCode();
       }
       setTimeout(() => {
-        if (!focusedOnce.current) {
-          productRefs.current[0]?.querySelector?.("input")?.focus?.();
-          focusedOnce.current = true;
-        }
+        if (!focusedOnce.current && !saleId) {
+         productRefs.current[0]?.querySelector?.("input")?.focus?.();
+         focusedOnce.current = true;
+       }
       }, 80);
     })();
   }, [saleId]);
@@ -264,6 +269,9 @@ export default function SaleInvoiceForm({ saleId, onSuccess }) {
       (typeof productIdOrObj === "object" ? productIdOrObj : {}) ||
       {};
 
+
+    const rawMargin = selected?.margin ?? selected?.margin_percentage ?? selected?.default_margin ?? "";
+    setMarginPct(sanitizeNumberInput(String(rawMargin), true));
     const packSize = selected?.pack_size ?? "";
     const available = selected?.quantity ?? selected?.available_units ?? 0; // <-- use product.quantity
     const price = selected?.unit_sale_price ?? selected?.unit_purchase_price ?? "";
@@ -697,6 +705,17 @@ export default function SaleInvoiceForm({ saleId, onSuccess }) {
         <table className="w-full border-collapse text-xs">
           <tbody>
             <tr>
+              <td className="border p-1">
+              <label className="block text-[10px]">Margin %</label>
+              <input
+                type="text"
+                name="margin_percentage"
+                readOnly
+                value={marginPct}
+                onChange={(e) => setMarginPct(sanitizeNumberInput(e.target.value, true))}
+                className="border rounded w-full p-1 h-7 text-xs bg-gray-100"
+              />
+            </td>
               <td className="border p-1 w-1/8">
                 <label className="block text-[10px]">Tax %</label>
                 <input type="text" name="tax_percentage" value={form.tax_percentage ?? ""}
