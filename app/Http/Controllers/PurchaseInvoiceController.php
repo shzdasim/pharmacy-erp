@@ -255,42 +255,41 @@ class PurchaseInvoiceController extends Controller
      * Recalculate avg_price & margin from purchase history WITHOUT touching quantity.
      * Uses line-level avg_price so bonuses/discounts are included.
      */
-    private function recalcProductAverages(Product $product): void
-    {
-        $items = DB::table('purchase_invoice_items')
-            ->where('product_id', $product->id)
-            ->select('quantity', 'avg_price', 'unit_sale_price', 'pack_sale_price', 'id')
-            ->orderBy('id')
-            ->get();
+    /**
+ * Recalculate avg_price & margin from purchase history WITHOUT touching quantity
+ * or any sale/purchase price fields. Uses line-level avg_price (effective cost)
+ * so bonuses/discounts are included.
+ */
+private function recalcProductAverages(Product $product): void
+{
+    $items = DB::table('purchase_invoice_items')
+        ->where('product_id', $product->id)
+        ->select('quantity', 'avg_price', 'id')
+        ->orderBy('id')
+        ->get();
 
-        $totalQty  = 0;
-        $totalCost = 0.0;
+    $totalQty  = 0;
+    $totalCost = 0.0;
 
-        foreach ($items as $item) {
-            $q = (int) $item->quantity;
-            $totalQty  += $q;
-            $totalCost += $q * (float) $item->avg_price; // <-- effective cost
-        }
-
-        $avgPrice = $totalQty > 0 ? ($totalCost / $totalQty) : 0.0;
-
-        $product->avg_price = round($avgPrice, 2);
-
-        $last = $items->last();
-        if ($last) {
-            $product->unit_sale_price = round((float) $last->unit_sale_price, 2);
-            $product->pack_sale_price = round((float) $last->pack_sale_price, 2);
-            $product->margin = $product->unit_sale_price > 0
-                ? round((($product->unit_sale_price - $avgPrice) / $product->unit_sale_price) * 100, 2)
-                : 0;
-        } else {
-            $product->unit_sale_price = 0;
-            $product->pack_sale_price = 0;
-            $product->margin = 0;
-        }
-
-        $product->save();
+    foreach ($items as $item) {
+        $q = (int) $item->quantity;
+        $totalQty  += $q;
+        $totalCost += $q * (float) $item->avg_price; // effective cost captured per line
     }
+
+    $avgPrice = $totalQty > 0 ? ($totalCost / $totalQty) : 0.0;
+
+    // ✅ Only costing fields — DO NOT touch quantity or any sale/purchase price fields
+    $product->avg_price = round($avgPrice, 2);
+
+    // Recompute margin using whatever unit_sale_price the product already has
+    $product->margin = ($product->unit_sale_price > 0 && $avgPrice > 0)
+        ? round((($product->unit_sale_price - $avgPrice) / $product->unit_sale_price) * 100, 2)
+        : 0.0;
+
+    $product->save();
+}
+
 
     private function recalcProductsByIds(array $productIds): void
     {
