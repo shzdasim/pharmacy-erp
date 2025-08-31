@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import axios from "axios";
 import toast from "react-hot-toast";
 import Select from "react-select";
@@ -38,7 +39,7 @@ export default function SaleInvoiceForm({ saleId, onSuccess }) {
   });
 // near other useState hooks
 const [marginPct, setMarginPct] = useState("");
-
+const navigate = useNavigate();
 // optional: clear when switching create/update
 useEffect(() => { setMarginPct(""); }, [saleId]);
 
@@ -386,13 +387,20 @@ useEffect(() => { setMarginPct(""); }, [saleId]);
 
     try {
       if (saleId) {
-        await axios.put(`/api/sale-invoices/${saleId}`, form);
+        const res = await axios.put(`/api/sale-invoices/${saleId}`, form);
+        const id = res?.data?.id ?? saleId;
         toast.success("Sale invoice updated");
+        navigate(`/sale-invoices/${id}`);
       } else {
-        await axios.post("/api/sale-invoices", form);
+        const res = await axios.post("/api/sale-invoices", form);
+        const id = res?.data?.id; // expect backend to return the new ID
         toast.success("Sale invoice created");
+        if (id) {
+          navigate(`/sale-invoices/${id}`);
+          } else {
+            toast.error("Missing invoice ID from server response.");
+          }
       }
-      onSuccess?.();
     } catch {
       toast.error("Failed to save sale invoice");
     }

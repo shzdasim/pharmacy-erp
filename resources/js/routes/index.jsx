@@ -21,6 +21,7 @@ import EditPurchaseReturn from "../pages/PurchaseReturn/Edit.jsx";
 import IndexSaleInvoice from "../pages/SaleInvoice/index.jsx";
 import CreateSaleInvoice from "../pages/SaleInvoice/Create.jsx";
 import EditSaleInvoice from "../pages/SaleInvoice/Edit.jsx";
+import ShowSaleInvoice from "../pages/SaleInvoice/Show.jsx";
 
 function DashboardHome() {
   return <h1 className="text-2xl font-bold">Welcome to the Dashboard</h1>;
@@ -216,6 +217,16 @@ export default function AppRoutes() {
         <ProtectedRoute>
           <DashboardLayout>
             <EditSaleInvoice />
+          </DashboardLayout>
+        </ProtectedRoute>
+      }
+      />
+      <Route 
+      path="sale-invoices/:id"
+      element={
+        <ProtectedRoute>
+          <DashboardLayout>
+            <ShowSaleInvoice />
           </DashboardLayout>
         </ProtectedRoute>
       }

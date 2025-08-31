@@ -99,6 +99,12 @@ export default function SaleInvoicesIndex() {
                       >
                         Edit
                       </Link>
+                      <Link
+                        to={`/sale-invoices/${invoice.id}`}
+                        className="bg-blue-500 text-white px-3 py-1 rounded hover:bg-blue-600"
+                      >
+                        View
+                      </Link>
                       <button
                         onClick={() => handleDelete(invoice.id)}
                         className="bg-red-500 text-white px-3 py-1 rounded hover:bg-red-600"
