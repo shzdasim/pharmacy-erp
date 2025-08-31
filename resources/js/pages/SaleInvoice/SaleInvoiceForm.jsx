@@ -475,57 +475,109 @@ export default function SaleInvoiceForm({ saleId, onSuccess }) {
   return (
     <form className="flex flex-col" style={{ minHeight: "74vh", maxHeight: "80vh" }}>
       {/* Header */}
-      <div className="sticky top-0 bg-white shadow p-2 z-10">
-        <h2 className="text-sm font-bold mb-2">Sale Invoice (Enter → next field, Arrow ↑/↓ to move rows, Alt+S to save)</h2>
-        <table className="w-full border-collapse text-xs">
-          <tbody>
-            <tr>
-              <td className="border p-1 w-1/12">
-                <label className="block text-[10px]">Posted Number</label>
-                <input type="text" name="posted_number" readOnly value={form.posted_number || ""}
-                  className="bg-gray-100 border rounded w-full p-1 h-7 text-xs" />
-              </td>
-              <td className="border p-1 w-1/6">
-                <label className="block text-[10px]">Date</label>
-                <input type="date" name="date" value={form.date} onChange={handleHeaderChange}
-                  className="border rounded w-full p-1 h-7 text-xs" />
-              </td>
-              <td className="border p-1 w-1/3">
-                <label className="block text-[10px]">Customer *</label>
-                <Select
-                  options={customers.map((c) => ({ value: c.id, label: c.name }))}
-                  value={customers.map((c) => ({ value: c.id, label: c.name })).find((s) => s.value === form.customer_id) || null}
-                  onChange={(val) => setForm({ ...form, customer_id: val?.value || "" })}
-                  isSearchable
-                  className="text-xs"
-                  styles={{
-                    control: (base) => ({ ...base, minHeight: "28px", height: "28px", fontSize: "12px" }),
-                    valueContainer: (base) => ({ ...base, height: "28px", padding: "0 4px" }),
-                    input: (base) => ({ ...base, margin: 0, padding: 0 }),
-                  }}
-                />
-              </td>
-              <td className="border p-1 w-1/4">
-                <label className="block text-[10px]">Remarks</label>
-                <input type="text" name="remarks" value={form.remarks} onChange={handleHeaderChange}
-                  className="border rounded w-full p-1 h-7 text-xs" />
-              </td>
-            </tr>
-            <tr>
-              <td className="border p-1" colSpan="2">
-                <label className="block text-[10px]">Doctor Name</label>
-                <input type="text" name="doctor_name" value={form.doctor_name} onChange={handleHeaderChange}
-                  className="border rounded w-full p-1 h-7 text-xs" />
-              </td>
-              <td className="border p-1" colSpan="2">
-                <label className="block text-[10px]">Patient Name</label>
-                <input type="text" name="patient_name" value={form.patient_name} onChange={handleHeaderChange}
-                  className="border rounded w-full p-1 h-7 text-xs" />
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
+      {/* Header */}
+<div className="sticky top-0 bg-white shadow p-2 z-10">
+  <h2 className="text-sm font-bold mb-2">
+    Sale Invoice (Enter → next field, Arrow ↑/↓ to move rows, Alt+S to save)
+  </h2>
+
+  <table className="w-full border-collapse text-xs">
+    <tbody>
+      {/* Row 1: Posted #, Date, Customer, Doctor, Patient */}
+      <tr>
+        <td className="border p-1 w-24">
+          <label className="block text-[10px]">Posted Number</label>
+          <input
+            type="text"
+            name="posted_number"
+            readOnly
+            value={form.posted_number || ""}
+            className="bg-gray-100 border rounded w-full p-1 h-7 text-xs"
+          />
+        </td>
+
+        <td className="border p-1 w-40">
+          <label className="block text-[10px]">Date</label>
+          <input
+            type="date"
+            name="date"
+            value={form.date}
+            onChange={handleHeaderChange}
+            className="border rounded w-full p-1 h-7 text-xs"
+          />
+        </td>
+
+        <td className="border p-1 w-[28%]">
+          <label className="block text-[10px]">Customer *</label>
+          <Select
+            options={customers.map((c) => ({ value: c.id, label: c.name }))}
+            value={
+              customers
+                .map((c) => ({ value: c.id, label: c.name }))
+                .find((s) => s.value === form.customer_id) || null
+            }
+            onChange={(val) =>
+              setForm((prev) => ({ ...prev, customer_id: val?.value || "" }))
+            }
+            isSearchable
+            className="text-xs"
+            styles={{
+              control: (base) => ({
+                ...base,
+                minHeight: "28px",
+                height: "28px",
+                fontSize: "12px",
+              }),
+              valueContainer: (base) => ({
+                ...base,
+                height: "28px",
+                padding: "0 4px",
+              }),
+              input: (base) => ({ ...base, margin: 0, padding: 0 }),
+            }}
+          />
+        </td>
+
+        <td className="border p-1 w-[22%]">
+          <label className="block text-[10px]">Doctor Name</label>
+          <input
+            type="text"
+            name="doctor_name"
+            value={form.doctor_name}
+            onChange={handleHeaderChange}
+            className="border rounded w-full p-1 h-7 text-xs"
+          />
+        </td>
+
+        <td className="border p-1 w-[22%]">
+          <label className="block text-[10px]">Patient Name</label>
+          <input
+            type="text"
+            name="patient_name"
+            value={form.patient_name}
+            onChange={handleHeaderChange}
+            className="border rounded w-full p-1 h-7 text-xs"
+          />
+        </td>
+      </tr>
+
+      {/* Row 2: Remarks only (full width) */}
+      <tr>
+        <td className="border p-1" colSpan={5}>
+          <label className="block text-[10px]">Remarks</label>
+          <input
+            type="text"
+            name="remarks"
+            value={form.remarks}
+            onChange={handleHeaderChange}
+            className="border rounded w-full p-1 h-7 text-xs"
+          />
+        </td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
 
       {/* Items */}
       <div className="flex-1 overflow-auto p-1">
@@ -645,37 +697,37 @@ export default function SaleInvoiceForm({ saleId, onSuccess }) {
         <table className="w-full border-collapse text-xs">
           <tbody>
             <tr>
-              <td className="border p-1 w-1/6">
+              <td className="border p-1 w-1/8">
                 <label className="block text-[10px]">Tax %</label>
                 <input type="text" name="tax_percentage" value={form.tax_percentage ?? ""}
                   onChange={handleHeaderChange} className="border rounded w-full p-1 h-7 text-xs" />
               </td>
-              <td className="border p-1 w-1/6">
+              <td className="border p-1 w-1/8">
                 <label className="block text-[10px]">Tax Amount</label>
                 <input type="text" name="tax_amount" value={form.tax_amount ?? ""}
                   onChange={handleHeaderChange} className="border rounded w-full p-1 h-7 text-xs" />
               </td>
-              <td className="border p-1 w-1/6">
+              <td className="border p-1 w-1/8">
                 <label className="block text-[10px]">Discount %</label>
                 <input type="text" name="discount_percentage" value={form.discount_percentage ?? ""}
                   onChange={handleHeaderChange} className="border rounded w-full p-1 h-7 text-xs" />
               </td>
-              <td className="border p-1 w-1/6">
+              <td className="border p-1 w-1/8">
                 <label className="block text-[10px]">Discount Amount</label>
                 <input type="text" name="discount_amount" value={form.discount_amount ?? ""}
                   onChange={handleHeaderChange} className="border rounded w-full p-1 h-7 text-xs" />
               </td>
-              <td className="border p-1 w-1/6">
+              <td className="border p-1 w-1/8">
                 <label className="block text-[10px]">Gross Amount</label>
                 <input type="text" readOnly value={form.gross_amount ?? ""}
                   className="border rounded w-full p-1 h-7 text-xs bg-gray-100" />
               </td>
-              <td className="border p-1 w-1/6">
+              <td className="border p-1 w-1/8">
                 <label className="block text-[10px]">Total</label>
                 <input type="text" readOnly value={form.total ?? ""}
                   className="border rounded w-full p-1 h-7 text-xs bg-gray-100" />
               </td>
-              <td className="border p-1 text-center align-middle">
+              <td className="border p-1 w-1/6 text-center align-middle">
                 <button type="button" onClick={handleSubmit}
                   className="bg-green-600 text-white px-8 py-3 rounded text-sm hover:bg-green-700 transition duration-200">
                   {saleId ? "Update Sale" : "Create Sale"}
