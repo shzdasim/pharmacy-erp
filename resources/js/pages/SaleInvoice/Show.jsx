@@ -1,44 +1,131 @@
 import { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import axios from "axios";
+import toast from "react-hot-toast";
 
 export default function SaleInvoiceShow() {
   const { id } = useParams();
   const navigate = useNavigate();
   const [inv, setInv] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [deleting, setDeleting] = useState(false);
 
+  // Fetch invoice
   useEffect(() => {
     (async () => {
       try {
-        // Expect API to return invoice with items + customer (like your index/show uses)
         const res = await axios.get(`/api/sale-invoices/${id}`);
         setInv(res.data);
       } catch (e) {
-        // optionally toast
+        toast.error("Failed to load invoice");
       } finally {
         setLoading(false);
       }
     })();
   }, [id]);
 
-  // Keyboard shortcuts
+  // After delete: go to previous invoice (by id), else index
+  const goToPrevOrIndex = async (deletedId) => {
+    try {
+      // Your index endpoint returns invoices ordered by id desc (per controller)
+      const res = await axios.get("/api/sale-invoices");
+      const list = Array.isArray(res.data) ? res.data : [];
+
+      // Find the next older invoice (smaller id), pick the largest among those
+      const prev = list
+        .filter((x) => Number(x?.id) < Number(deletedId))
+        .sort((a, b) => Number(b?.id) - Number(a?.id))[0];
+
+      if (prev?.id) {
+        navigate(`/sale-invoices/${prev.id}`);
+      } else {
+        navigate("/sale-invoices");
+      }
+    } catch {
+      navigate("/sale-invoices");
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!inv) return;
+    try {
+      setDeleting(true);
+      await axios.delete(`/api/sale-invoices/${id}`);
+      toast.success("Sale invoice deleted");
+      await goToPrevOrIndex(id);
+    } catch (e) {
+      toast.error("Failed to delete invoice");
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  // Toast-based confirmation
+  const confirmDeleteToast = () => {
+    const label = inv?.posted_number ? ` ${inv.posted_number}` : "";
+    toast(
+      (t) => (
+        <div className="rounded border bg-white shadow p-3 text-sm max-w-[320px]">
+          <div className="font-semibold mb-1">
+            Delete this sale invoice{label}?
+          </div>
+          <div className="text-[12px] text-gray-600 mb-3">
+            This action cannot be undone.
+          </div>
+          <div className="flex gap-2 justify-end">
+            <button
+              className="px-3 py-1 rounded border text-gray-700"
+              onClick={() => toast.dismiss(t.id)}
+            >
+              Cancel
+            </button>
+            <button
+              className="px-3 py-1 rounded bg-red-600 text-white disabled:opacity-60"
+              disabled={deleting}
+              onClick={async () => {
+                toast.dismiss(t.id);
+                await handleDelete();
+              }}
+            >
+              Delete
+            </button>
+          </div>
+        </div>
+      ),
+      { duration: 10000, id: `confirm-del-${id}` }
+    );
+  };
+
+  // Keyboard shortcuts: Alt+N (new), Alt+B (back), Alt+P (print), Alt+D (delete confirm)
   useEffect(() => {
     const onKey = (e) => {
-      const k = e.key.toLowerCase();
       if (!e.altKey) return;
-      if (k === "n") { e.preventDefault(); navigate("/sale-invoices/create"); }
-      if (k === "b") { e.preventDefault(); navigate(-1); }
-      if (k === "p") { e.preventDefault(); window.print(); }
+      const k = e.key.toLowerCase();
+      if (k === "n") {
+        e.preventDefault();
+        navigate("/sale-invoices/create");
+      }
+      if (k === "b") {
+        e.preventDefault();
+        navigate(-1);
+      }
+      if (k === "p") {
+        e.preventDefault();
+        window.print();
+      }
+      if (k === "d") {
+        e.preventDefault();
+        confirmDeleteToast();
+      }
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [navigate]);
+  }, [navigate, inv, deleting]);
 
   if (loading) return <div className="p-4 text-sm">Loading…</div>;
   if (!inv) return <div className="p-4 text-sm">Invoice not found.</div>;
 
-  const fmt = (v) => (v ?? "") === "" ? "" : String(v);
+  const fmt = (v) => ((v ?? "") === "" ? "" : String(v));
 
   return (
     <div className="p-3 space-y-3">
@@ -51,7 +138,7 @@ export default function SaleInvoiceShow() {
 
       <h2 className="text-lg font-bold">Sale Invoice</h2>
 
-      {/* Header (read-only) */}
+      {/* Header */}
       <table className="w-full border-collapse text-xs">
         <tbody>
           <tr>
@@ -155,7 +242,15 @@ export default function SaleInvoiceShow() {
       </table>
 
       {/* Actions */}
-      <div className="no-print flex gap-2 justify-end pt-2">
+      <div className="no-print flex flex-wrap gap-2 justify-end pt-2">
+        <button
+          className="bg-red-600 text-white px-4 py-2 rounded text-sm disabled:opacity-60"
+          onClick={confirmDeleteToast}
+          disabled={deleting}
+          title="Alt+D"
+        >
+          🗑 Delete
+        </button>
         <button
           className="bg-blue-600 text-white px-4 py-2 rounded text-sm"
           onClick={() => navigate("/sale-invoices/create")}
