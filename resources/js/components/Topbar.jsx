@@ -27,8 +27,10 @@ export default function Topbar() {
             </button>
             <button
               onClick={() => {
+                fetch("/api/logout", { method: "POST", headers: { Authorization: `Bearer ${localStorage.getItem("token")}` } }).finally(() => {
                 logout();
                 navigate("/");
+                });
               }}
               className="block w-full px-4 py-2 text-left hover:bg-gray-100"
             >
