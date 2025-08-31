@@ -27,12 +27,14 @@ export function AuthProvider({ children }) {
     localStorage.setItem("token", tokenValue);
     localStorage.setItem("user", JSON.stringify(userData));
     setUser(userData);
+    axios.defaults.headers.common["Authorization"] = `Bearer ${tokenValue}`;
   };
 
   const logout = () => {
     localStorage.removeItem("token");
     localStorage.removeItem("user");
     setUser(null);
+    delete axios.defaults.headers.common["Authorization"];
   };
 
   return (

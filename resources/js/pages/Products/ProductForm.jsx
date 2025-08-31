@@ -211,6 +211,7 @@ export default function ProductForm({ initialData = null, onSubmitSuccess }) {
             <input
               type="text"
               name="name"
+              autoFocus
               value={form.name || ""}
               onChange={handleChange}
               className="border w-full px-2 py-1 rounded"
@@ -294,7 +295,17 @@ export default function ProductForm({ initialData = null, onSubmitSuccess }) {
         </div>
 
         {/* Row 6: Pricing + Margin + Discount + Narcotic */}
-        <div className="grid grid-cols-7 gap-2 items-end">
+        <div className="grid grid-cols-6 gap-2 items-end">
+          <label className="block font-medium">Total Quantity</label>
+          <input 
+          type="number"
+          name="quantity"
+          disabled
+          value={form.quantity || ""}
+          placeholder="Quantity"
+          className="border w-full px-2 py-1 rounded bg-gray-100"
+          />
+          <label className="block font-medium">Pack P.Price</label>
           <input
             type="number"
             name="pack_purchase_price"
@@ -303,6 +314,7 @@ export default function ProductForm({ initialData = null, onSubmitSuccess }) {
             placeholder="Pack Purchase Price"
             className="border w-full px-2 py-1 rounded bg-gray-100"
           />
+          <label className="block font-medium">Pack S.Price</label>
           <input
             type="number"
             name="pack_sale_price"
@@ -311,6 +323,7 @@ export default function ProductForm({ initialData = null, onSubmitSuccess }) {
             placeholder="Pack Sale Price"
             className="border w-full px-2 py-1 rounded bg-gray-100"
           />
+          <label className="block font-medium">Unit P.Price</label>
           <input
             type="number"
             name="unit_purchase_price"
@@ -319,6 +332,7 @@ export default function ProductForm({ initialData = null, onSubmitSuccess }) {
             placeholder="Unit Purchase Price"
             className="border w-full px-2 py-1 rounded bg-gray-100"
           />
+          <label className="block font-medium">Unit S.Price</label>
           <input
             type="number"
             name="unit_sale_price"
@@ -327,6 +341,7 @@ export default function ProductForm({ initialData = null, onSubmitSuccess }) {
             placeholder="Unit Sale Price"
             className="border w-full px-2 py-1 rounded bg-gray-100"
           />
+          <label className="block font-medium">Avg Price</label>
           <input
             type="number"
             name="avg_price"
@@ -335,6 +350,7 @@ export default function ProductForm({ initialData = null, onSubmitSuccess }) {
             placeholder="Avg Price"
             className="border w-full px-2 py-1 rounded bg-gray-100"
           />
+          <label className="block font-medium">Margin %</label>
           <input
             type="number"
             name="margin"
@@ -343,6 +359,7 @@ export default function ProductForm({ initialData = null, onSubmitSuccess }) {
             placeholder="Margin %"
             className="border w-full px-2 py-1 rounded bg-gray-100"
           />
+          <label className="block font-medium">Max Discount</label>
           <input
             type="number"
             name="max_discount"

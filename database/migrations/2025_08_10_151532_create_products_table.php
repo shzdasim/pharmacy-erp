@@ -25,6 +25,7 @@ return new class extends Migration
             $table->decimal('unit_purchase_price', 12, 2)->nullable();
             $table->decimal('unit_sale_price', 12, 2)->nullable();
             $table->decimal('avg_price', 12, 2)->nullable();
+            $table->decimal('margin', 12, 2)->nullable();
 
             $table->enum('narcotic', ['yes', 'no'])->default('no');
 

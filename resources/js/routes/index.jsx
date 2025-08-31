@@ -12,6 +12,16 @@ import Brands from "../pages/Brands.jsx";
 import ProductsIndex from "../pages/Products/index.jsx";
 import CreateProduct from "../pages/Products/Create.jsx";
 import EditProduct from "../pages/Products/Edit.jsx";
+import PurchaseInvoicesIndex from "../pages/PurchaseInvoice/index.jsx";
+import CreatePurchaseInvoice from "../pages/PurchaseInvoice/Create.jsx";
+import EditPurchaseInvoice from "../pages/PurchaseInvoice/Edit.jsx";
+import PurchaseReturnsIndex from "../pages/PurchaseReturn/index.jsx";
+import CreatePurchaseReturn from "../pages/PurchaseReturn/Create.jsx";
+import EditPurchaseReturn from "../pages/PurchaseReturn/Edit.jsx";
+import IndexSaleInvoice from "../pages/SaleInvoice/index.jsx";
+import CreateSaleInvoice from "../pages/SaleInvoice/Create.jsx";
+import EditSaleInvoice from "../pages/SaleInvoice/Edit.jsx";
+import ShowSaleInvoice from "../pages/SaleInvoice/Show.jsx";
 
 function DashboardHome() {
   return <h1 className="text-2xl font-bold">Welcome to the Dashboard</h1>;
@@ -119,6 +129,111 @@ export default function AppRoutes() {
     </ProtectedRoute>
   }
 />
+      {/* Purchase Invoices */}
+      <Route
+        path="/purchase-invoices"
+        element={
+          <ProtectedRoute>
+            <DashboardLayout>
+              <PurchaseInvoicesIndex />
+            </DashboardLayout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/purchase-invoices/create"
+        element={
+          <ProtectedRoute>
+            <DashboardLayout>
+              <CreatePurchaseInvoice />
+            </DashboardLayout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/purchase-invoices/:id/edit"
+        element={
+          <ProtectedRoute>
+            <DashboardLayout>
+              <EditPurchaseInvoice />
+            </DashboardLayout>
+          </ProtectedRoute>
+        }
+      />
+      {/* Purchase Returns */}
+      <Route
+        path="/purchase-returns"
+        element={
+          <ProtectedRoute>
+            <DashboardLayout>
+              <PurchaseReturnsIndex />
+            </DashboardLayout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/purchase-returns/create"
+        element={
+          <ProtectedRoute>
+            <DashboardLayout>
+              <CreatePurchaseReturn />
+            </DashboardLayout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/purchase-returns/:id/edit"
+        element={
+          <ProtectedRoute>
+            <DashboardLayout>
+              <EditPurchaseReturn />
+            </DashboardLayout>
+          </ProtectedRoute>
+        }
+      />
+      <Route 
+      path="sale-invoices"
+      element={
+        <ProtectedRoute>
+          <DashboardLayout>
+            <IndexSaleInvoice />
+          </DashboardLayout>
+        </ProtectedRoute>
+      }
+      />
+      <Route 
+      path="sale-invoices/create"
+      element={
+        <ProtectedRoute>
+          <DashboardLayout>
+            <CreateSaleInvoice />
+          </DashboardLayout>
+        </ProtectedRoute>
+      }
+      />
+      <Route
+      path="sale-invoices/:id/edit"
+      element={
+        <ProtectedRoute>
+          <DashboardLayout>
+            <EditSaleInvoice />
+          </DashboardLayout>
+        </ProtectedRoute>
+      }
+      />
+      <Route 
+      path="sale-invoices/:id"
+      element={
+        <ProtectedRoute>
+          <DashboardLayout>
+            <ShowSaleInvoice />
+          </DashboardLayout>
+        </ProtectedRoute>
+      }
+      />
+
+    
+  
 
 </Routes>
   );
