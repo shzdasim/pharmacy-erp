@@ -450,8 +450,25 @@ function handleItemChange(index, field, rawValue) {
 const handleSubmit = async (e) => {
   e.preventDefault();
 
-  // 1. Prevent negative margin
-  const negativeMarginItem = form.items.find((item) => Number(item.margin) < 0);
+  // 0) Block if any selected product has margin <= 0 (or not a number)
+  const badItem = form.items.find((item) => {
+    if (!item.product_id) return false; // ignore empty rows
+    const m = Number(item.margin);
+    return !Number.isFinite(m) || m <= 0;
+  });
+
+  if (badItem) {
+    const idx = form.items.indexOf(badItem);
+    const product = products.find((p) => p.id === badItem.product_id);
+    const productName = product?.name || `row ${idx + 1}`;
+    toast.error(`Margin must be greater than 0 for ${productName}`);
+    return;
+  }
+
+  // 1) (kept) Prevent negative margin (redundant now but harmless)
+  const negativeMarginItem = form.items.find(
+    (item) => item.product_id && Number(item.margin) < 0
+  );
   if (negativeMarginItem) {
     const product = products.find((p) => p.id === negativeMarginItem.product_id);
     const productName = product ? product.name : negativeMarginItem.product_id;
@@ -459,7 +476,7 @@ const handleSubmit = async (e) => {
     return;
   }
 
-  // 2. Validate invoice amount vs total amount
+  // 2) (kept) Validate invoice vs total
   const invoiceAmount = Number(form.invoice_amount || 0);
   const totalAmount = Number(form.total_amount || 0);
   if (Math.abs(invoiceAmount - totalAmount) > 5) {
@@ -470,12 +487,12 @@ const handleSubmit = async (e) => {
   }
 
   try {
-    // 3. Check for duplicate invoice number per supplier
+    // 3) (kept) Duplicate invoice number check
     const checkRes = await axios.get("/api/purchase-invoices/check-unique", {
       params: {
         supplier_id: form.supplier_id,
         invoice_number: form.invoice_number,
-        exclude_id: invoiceId || null, // allow editing same invoice
+        exclude_id: invoiceId || null,
       },
     });
 
@@ -486,7 +503,7 @@ const handleSubmit = async (e) => {
       return;
     }
 
-    // 4. Save invoice
+    // 4) (kept) Save
     if (invoiceId) {
       await axios.put(`/api/purchase-invoices/${invoiceId}`, form);
       toast.success("Invoice updated successfully");
@@ -500,6 +517,7 @@ const handleSubmit = async (e) => {
     toast.error("Failed to save invoice");
   }
 };
+
 
 
   return (
