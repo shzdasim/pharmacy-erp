@@ -10,6 +10,7 @@ use App\Http\Controllers\CustomerController;
 use App\Http\Controllers\ProductController;
 use App\Http\Controllers\PurchaseInvoiceController;
 use App\Http\Controllers\PurchaseReturnController;
+use App\Http\Controllers\SaleInvoiceController;
 use App\Http\Controllers\SupplierController;
 
 Route::post('/login', [AuthController::class, 'login']);
@@ -28,3 +29,6 @@ Route::get('purchase-invoices/new-code', [PurchaseInvoiceController::class, 'gen
 Route::apiResource('purchase-invoices', PurchaseInvoiceController::class);
 Route::get('purchase-returns/new-code', [PurchaseReturnController::class, 'generateNewCode']);
 Route::apiResource('purchase-returns', PurchaseReturnController::class);
+Route::get('sale-invoices/new-code', [SaleInvoiceController::class, 'generateNewCode']);
+Route::apiResource('sale-invoices', SaleInvoiceController::class);
+
