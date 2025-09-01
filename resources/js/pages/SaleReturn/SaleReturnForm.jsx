@@ -1,11 +1,13 @@
 // src/pages/sales-returns/SaleReturnForm.jsx
 // Unit-based Sale Return (open return & invoice return modes)
-// Tweaks applied:
-// 1) Hitting Enter inside Sale Invoice search now selects invoice (doesn't skip to product).
-// 2) In invoice-return mode, ProductSearchInput receives full product objects (not name-only),
-//    merged with invoice-line fields so it shows the same rich info as open return.
-// 3) In open-return mode, Unit Sale Qty shows available (on-hand) product quantity.
-// 4) Footer Discount%/Amt and Tax%/Amt inputs render blank when zero; empty is treated as 0.
+// Tweaks applied earlier + new ones:
+// A) Enter on invoice select respects open/close, prevents skipping.
+// B) Invoice mode keeps rich product data.
+// C) Open return shows Available Qty (and column title changes dynamically).
+// D) Footer fields blank-when-zero; empty treated as 0.
+// E) Prevent duplicate products across rows; prevent duplicate (product+batch) pairs.
+// F) Validate return qty <= allowed; highlight red; block save.
+// G) Arrow ↑/↓ navigation across rows for Product/Batch/Qty/Disc. ArrowDown on last row in Qty/Disc adds row and focuses next row Product.
 
 import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
@@ -19,6 +21,7 @@ import BatchSearchInput from "../../components/BatchSearchInput.jsx";
 // ===== helpers =====
 const toNum = (v) => (v === undefined || v === null || v === "" ? 0 : Number(v));
 const round2 = (n) => (Number.isFinite(Number(n)) ? Number(Number(n).toFixed(2)) : 0);
+const eqId = (a, b) => String(a ?? "") === String(b ?? "");
 
 // try multiple possible keys for unit price
 const extractUnitPrice = (obj) => {
@@ -69,10 +72,9 @@ const extractUnitSaleQty = (obj) => {
   return 0;
 };
 
-// batch qty extractor (for open-return available qty)
 const extractBatchQty = (b) =>
   toNum(
-    b?.available_quantity ?? b?.quantity_available ?? b?.on_hand ?? b?.stock ?? b?.balance ?? b?.qty ?? b?.quantity
+    b?.available_quantity ?? b?.quantity_available ?? b?.available_units ?? b?.on_hand ?? b?.stock ?? b?.balance ?? b?.qty ?? b?.quantity
   );
 
 // subtotal = qty * unit_price - (line discount %)
@@ -164,18 +166,22 @@ export default function SaleReturnForm({ returnId, initialData, onSuccess }) {
   const [invoiceItems, setInvoiceItems] = useState([]);
   const [rowBatches, setRowBatches] = useState([]);
 
-  const [invoiceMenuOpen, setInvoiceMenuOpen] = useState(false); // why: avoid intercepting Enter while selecting
+  const [invoiceMenuOpen, setInvoiceMenuOpen] = useState(false);
 
   const customerSelectRef = useRef(null);
   const saleInvoiceRef = useRef(null);
   const productRefs = useRef([]);
+  const batchRefs = useRef([]);
   const qtyRefs = useRef([]);
+  const discRefs = useRef([]);
 
   const productBatchCache = useRef(new Map()); // productId -> [{batch_number, expiry}]
 
   useEffect(() => {
     productRefs.current = productRefs.current.slice(0, form.items.length);
+    batchRefs.current = batchRefs.current.slice(0, form.items.length);
     qtyRefs.current = qtyRefs.current.slice(0, form.items.length);
+    discRefs.current = discRefs.current.slice(0, form.items.length);
     setRowBatches((prev) => {
       const next = prev.slice(0, form.items.length);
       while (next.length < form.items.length) next.push([]);
@@ -306,7 +312,6 @@ export default function SaleReturnForm({ returnId, initialData, onSuccess }) {
       }
       const invoiceProductsLite = Array.from(byId.values());
 
-      // Merge with catalog to preserve rich fields used by ProductSearchInput (why: show full product data)
       const catalogById = new Map(
         (catalogProducts || []).map((p) => [String(p.id ?? p.value ?? p.product_id ?? p?.data?.id), p])
       );
@@ -318,7 +323,7 @@ export default function SaleReturnForm({ returnId, initialData, onSuccess }) {
           name: base.name ?? p.name,
           unit_sale_price: p.unit_sale_price ?? extractUnitPrice(base),
           item_discount_percentage: p.item_discount_percentage ?? extractItemDiscPct(base),
-          unit_sale_quantity: p.unit_sale_quantity, // keep invoice line qty
+          unit_sale_quantity: p.unit_sale_quantity, // from invoice
         };
       });
 
@@ -338,6 +343,7 @@ export default function SaleReturnForm({ returnId, initialData, onSuccess }) {
         .map((b) => ({
           batch_number: String(b.batch_number ?? b.batch ?? b.code ?? "").trim(),
           expiry: String(b.expiry ?? b.expiry_date ?? "").trim(),
+          available_units: extractBatchQty(b),
         }))
         .filter((b) => b.batch_number);
       productBatchCache.current.set(String(productId), normalized);
@@ -371,6 +377,7 @@ export default function SaleReturnForm({ returnId, initialData, onSuccess }) {
       const cands = [
         d.available_quantity,
         d.quantity_available,
+        d.available_units,
         d.on_hand,
         d.stock,
         d.inventory,
@@ -382,23 +389,20 @@ export default function SaleReturnForm({ returnId, initialData, onSuccess }) {
         const n = toNum(c);
         if (n > 0) return n;
       }
-    } catch (e) {
-      // ignore
-    }
+    } catch (e) {}
     try {
       const res = await axios.get(`/api/products/${pid}/batches`);
       const rows = Array.isArray(res.data) ? res.data : [];
       const total = rows.reduce((s, b) => s + extractBatchQty(b), 0);
       if (total > 0) return total;
-    } catch (e) {
-      // ignore
-    }
+    } catch (e) {}
     const local =
       products.find((p) => String(p.id ?? p.value) === String(pid)) ||
       catalogProducts.find((p) => String(p.id ?? p.value) === String(pid));
     const localCands = [
       local?.available_quantity,
       local?.quantity_available,
+      local?.available_units,
       local?.on_hand,
       local?.stock,
       local?.inventory,
@@ -454,9 +458,26 @@ export default function SaleReturnForm({ returnId, initialData, onSuccess }) {
     return "";
   };
 
+  const resetRow = (row) => {
+    setForm((prev) => {
+      const items = [...prev.items];
+      items[row] = { ...defaultItem, id: items[row].id };
+      return recalcFooter({ ...prev, items });
+    });
+  };
+
   const handleProductSelect = async (row, productObj) => {
     const pid = resolveProductId(productObj);
     if (!pid) return;
+
+    // Prevent duplicate product across rows
+    const dupIndex = form.items.findIndex((it, idx) => idx !== row && eqId(it.product_id, pid));
+    if (dupIndex !== -1) {
+      toast.error(`Product already selected in row ${dupIndex + 1}. Each product can be used only once.`);
+      resetRow(row);
+      setTimeout(() => productRefs.current[row]?.querySelector("input")?.focus?.(), 40);
+      return;
+    }
 
     const newItems = [...form.items];
     let unit_sale_price = 0;
@@ -464,7 +485,6 @@ export default function SaleReturnForm({ returnId, initialData, onSuccess }) {
     let unit_sale_quantity = 0;
 
     if (form.sale_invoice_id) {
-      // invoice mode: use invoice line defaults
       const candidates = invoiceItems.filter((it) => String(it.product_id) === String(pid));
       if (candidates.length) {
         unit_sale_price = extractUnitPrice(candidates[0]);
@@ -474,10 +494,10 @@ export default function SaleReturnForm({ returnId, initialData, onSuccess }) {
         unit_sale_price = await fetchProductUnitPrice(pid);
       }
     } else {
-      // open mode: price from product; quantity is available (on hand)
+      // open mode
       unit_sale_price = await fetchProductUnitPrice(pid);
       item_discount_percentage = toNum(newItems[row]?.item_discount_percentage);
-      unit_sale_quantity = await fetchProductAvailableQty(pid);
+      unit_sale_quantity = await fetchProductAvailableQty(pid); // Available Qty
     }
 
     newItems[row] = recalcItem({
@@ -492,7 +512,6 @@ export default function SaleReturnForm({ returnId, initialData, onSuccess }) {
     });
     setForm((prev) => recalcFooter({ ...prev, items: newItems }));
 
-    // batches for UI
     const batches = await fetchBatchesForOpenReturn(pid);
     setRowBatches((prev) => {
       const next = prev.slice();
@@ -500,12 +519,39 @@ export default function SaleReturnForm({ returnId, initialData, onSuccess }) {
       return next;
     });
 
-    setTimeout(() => qtyRefs.current[row]?.focus?.(), 50);
+    setTimeout(() => {
+      // If there are batches, move to batch; else go to qty
+      if ((rowBatches[row] || batches).length) {
+        const el = batchRefs.current[row];
+        const inp = el?.querySelector?.("input");
+        inp?.focus?.();
+      } else {
+        qtyRefs.current[row]?.focus?.();
+      }
+    }, 50);
   };
 
   const handleBatchSelect = (row, batchVal) => {
-    const bn =
-      typeof batchVal === "string" ? batchVal : batchVal?.value ?? batchVal?.batch_number ?? "";
+    const bn = typeof batchVal === "string" ? batchVal : batchVal?.value ?? batchVal?.batch_number ?? "";
+
+    // Prevent duplicate product+batch pairs
+    if (bn) {
+      const duplicate = form.items.findIndex(
+        (it, idx) => idx !== row && eqId(it.product_id, form.items[row].product_id) && eqId(it.batch_number, bn)
+      );
+      if (duplicate !== -1) {
+        toast.error(`Same Product & Batch already used in row ${duplicate + 1}.`);
+        // clear batch in this row and refocus
+        setForm((prev) => {
+          const items = [...prev.items];
+          items[row] = { ...items[row], batch_number: "" };
+          return recalcFooter({ ...prev, items });
+        });
+        setTimeout(() => batchRefs.current[row]?.querySelector("input")?.focus?.(), 40);
+        return;
+      }
+    }
+
     const newItems = [...form.items];
     let expiry = "";
 
@@ -528,6 +574,12 @@ export default function SaleReturnForm({ returnId, initialData, onSuccess }) {
         unit_sale_price = extractUnitPrice(matchedInv) || unit_sale_price;
         item_discount_percentage = extractItemDiscPct(matchedInv);
       }
+    } else {
+      // open mode: if batch has available_units, prefer it for available quantity display
+      const matchedOpen2 = cached.find((b) => b.batch_number === bn);
+      if (matchedOpen2 && toNum(matchedOpen2.available_units) > 0) {
+        unit_sale_quantity = toNum(matchedOpen2.available_units);
+      }
     }
 
     newItems[row] = recalcItem({
@@ -544,6 +596,17 @@ export default function SaleReturnForm({ returnId, initialData, onSuccess }) {
   const handleItemChange = (row, field, raw) => {
     const v = raw === "" ? "" : Number(raw);
     const newItems = [...form.items];
+
+    // validation: qty cannot exceed allowed (unit_sale_quantity used for both modes)
+    if (field === "unit_return_quantity") {
+      const allowed = toNum(newItems[row].unit_sale_quantity);
+      const prevQty = toNum(newItems[row].unit_return_quantity);
+      const nextQty = toNum(v);
+      if (nextQty > allowed && prevQty <= allowed) {
+        toast.error(`Row ${row + 1}: Return qty exceeds allowed (${allowed}).`);
+      }
+    }
+
     newItems[row] = recalcItem({ ...newItems[row], [field]: v });
     setForm((prev) => recalcFooter({ ...prev, items: newItems }));
   };
@@ -582,6 +645,41 @@ export default function SaleReturnForm({ returnId, initialData, onSuccess }) {
         customerSelectRef.current?.focus?.();
         return;
       }
+
+      // Validations: duplicates & qty
+      const seenProducts = new Set();
+      const seenPairs = new Set();
+      for (let i = 0; i < form.items.length; i++) {
+        const it = form.items[i];
+        if (!it.product_id) continue; // skip empty rows
+
+        // duplicate product
+        const keyP = String(it.product_id);
+        if (seenProducts.has(keyP)) {
+          toast.error(`Duplicate product detected at row ${i + 1}. Each product only once.`);
+          return;
+        }
+        seenProducts.add(keyP);
+
+        // duplicate product+batch (only when batch present)
+        const bn = String(it.batch_number || "");
+        if (bn) {
+          const keyPB = `${keyP}__${bn}`;
+          if (seenPairs.has(keyPB)) {
+            toast.error(`Duplicate Product + Batch at row ${i + 1}.`);
+            return;
+          }
+          seenPairs.add(keyPB);
+        }
+
+        // qty > allowed
+        const allowed = toNum(it.unit_sale_quantity);
+        if (toNum(it.unit_return_quantity) > allowed) {
+          toast.error(`Row ${i + 1}: Return qty exceeds allowed (${allowed}).`);
+          return;
+        }
+      }
+
       const payload = {
         posted_number: form.posted_number,
         date: form.date,
@@ -624,13 +722,92 @@ export default function SaleReturnForm({ returnId, initialData, onSuccess }) {
   const navigate = useNavigate();
   const handleCancel = () => navigate("/sale-returns");
 
+  // ---------- Keyboard Navigation (similar to SaleInvoiceForm) ----------
+  const COLS = ["product", "batch", "quantity", "disc"];
+
+  const focusCell = (row, col) => {
+    const map = {
+      product: productRefs,
+      batch: batchRefs,
+      quantity: { current: qtyRefs.current },
+      disc: { current: discRefs.current },
+    };
+    const ref = map[col]?.current?.[row];
+    if (!ref) return;
+    const input = ref.querySelector?.("input");
+    if (input) {
+      input.focus();
+      input.select?.();
+    } else if (ref.focus) {
+      ref.focus();
+    }
+  };
+
+  const moveSameCol = (row, col, dir) => {
+    const lastIdx = form.items.length - 1;
+    if (dir === 1) {
+      if (row === lastIdx) {
+        addItem();
+        setTimeout(() => {
+          const targetCol = col === "quantity" || col === "disc" ? "product" : col;
+          focusCell(row + 1, targetCol);
+        }, 60);
+      } else {
+        focusCell(row + 1, col);
+      }
+    } else {
+      if (row > 0) focusCell(row - 1, col);
+    }
+  };
+
+  const moveNextCol = (row, col) => {
+    const i = COLS.indexOf(col);
+    if (i < 0) return;
+    if (i < COLS.length - 1) {
+      focusCell(row, COLS[i + 1]);
+    } else {
+      const lastIdx = form.items.length - 1;
+      if (row === lastIdx) {
+        addItem();
+        setTimeout(() => focusCell(row + 1, COLS[0]), 60);
+      } else {
+        focusCell(row + 1, COLS[0]);
+      }
+    }
+  };
+
+  const onKeyNav = (e, row, col) => {
+    // Allow Batch dropdown to handle its own Arrow keys (if it opens a menu)
+    if (col === "batch" && (e.key === "ArrowDown" || e.key === "ArrowUp")) return;
+    switch (e.key) {
+      case "ArrowDown":
+        e.preventDefault();
+        moveSameCol(row, col, 1);
+        break;
+      case "ArrowUp":
+        e.preventDefault();
+        moveSameCol(row, col, -1);
+        break;
+      case "Enter":
+        e.preventDefault();
+        if (col === "quantity") {
+          focusCell(row, "disc");
+        } else {
+          moveNextCol(row, col);
+        }
+        break;
+      default:
+        break;
+    }
+  };
+
   // ===== Render =====
   return (
     <div className="relative">
       <form className="flex flex-col" style={{ minHeight: "74vh", maxHeight: "80vh" }}>
         {/* HEADER */}
         <div className="sticky top-0 bg-white shadow p-2 z-10">
-          <h2 className="text-sm font-bold mb-2">Sale Return (Unit-based) — Enter to move, Alt+S to save</h2>
+          <h2 className="text-sm font-bold mb-2">Sale Return (Unit-based) — Enter to move, Arrow ↑/↓ to switch rows, Alt+S to save</h2>
           <table className="w-full border-collapse text-xs">
             <tbody>
               <tr>
@@ -689,7 +866,6 @@ export default function SaleReturnForm({ returnId, initialData, onSuccess }) {
                     onMenuClose={() => setInvoiceMenuOpen(false)}
                     onKeyDown={(e) => {
                       if (e.key === "Enter") {
-                        // Only treat Enter as "Open Return" when no selection AND the menu is closed.
                         if (!invoiceMenuOpen && !form.sale_invoice_id) {
                           e.preventDefault();
                           setInvoiceItems([]);
@@ -728,7 +904,7 @@ export default function SaleReturnForm({ returnId, initialData, onSuccess }) {
                 <th className="border">Product</th>
                 <th className="border w-20">Batch</th>
                 <th className="border w-20">Expiry</th>
-                <th className="border w-24">Unit Sale Qty</th>
+                <th className="border w-24">{form.sale_invoice_id ? "Unit Sale Qty" : "Available Qty"}</th>
                 <th className="border w-24">Unit Sale Price</th>
                 <th className="border w-24">Return Qty (Units)</th>
                 <th className="border w-16">Disc %</th>
@@ -737,106 +913,105 @@ export default function SaleReturnForm({ returnId, initialData, onSuccess }) {
               </tr>
             </thead>
             <tbody>
-              {form.items.map((item, i) => (
-                <tr key={item.id} className="text-center">
-                  <td className="border">
-                    <button
-                      type="button"
-                      onClick={() => removeItem(i)}
-                      className="bg-red-500 text-white px-1 rounded text-[10px]"
-                    >
-                      X
-                    </button>
-                  </td>
-                  <td className="border text-left w-[260px]">
-                    <div ref={(el) => (productRefs.current[i] = el)}>
-                      <ProductSearchInput
-                        value={item.product_id}
-                        onChange={(val) => handleProductSelect(i, val)}
-                        products={products}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") {
-                            e.preventDefault();
-                            qtyRefs.current[i]?.focus?.();
-                          }
-                        }}
+              {form.items.map((item, i) => {
+                const exceeds = toNum(item.unit_return_quantity) > toNum(item.unit_sale_quantity);
+                return (
+                  <tr key={item.id} className="text-center">
+                    <td className="border">
+                      <button
+                        type="button"
+                        onClick={() => removeItem(i)}
+                        className="bg-red-500 text-white px-1 rounded text-[10px]"
+                      >
+                        X
+                      </button>
+                    </td>
+                    <td className="border text-left w-[260px]">
+                      <div ref={(el) => (productRefs.current[i] = el)}>
+                        <ProductSearchInput
+                          value={item.product_id}
+                          onChange={(val) => handleProductSelect(i, val)}
+                          products={products}
+                          onKeyDown={(e) => onKeyNav(e, i, "product")}
+                        />
+                      </div>
+                    </td>
+                    <td className="border w-20">
+                      <div ref={(el) => (batchRefs.current[i] = el)}>
+                        <BatchSearchInput
+                          value={item.batch_number}
+                          batches={(rowBatches[i] || []).map((b) => ({ value: b.batch_number, label: b.batch_number }))}
+                          onChange={(v) => handleBatchSelect(i, v)}
+                          onKeyDown={(e) => onKeyNav(e, i, "batch")}
+                        />
+                      </div>
+                    </td>
+                    <td className="border w-20">
+                      <input
+                        type="text"
+                        readOnly
+                        value={item.expiry || ""}
+                        className="border bg-gray-100 w-full h-6 text-[11px] px-1"
                       />
-                    </div>
-                  </td>
-                  <td className="border w-20">
-                    <BatchSearchInput
-                      value={item.batch_number}
-                      batches={(rowBatches[i] || []).map((b) => ({ value: b.batch_number, label: b.batch_number }))}
-                      onChange={(v) => handleBatchSelect(i, v)}
-                    />
-                  </td>
-                  <td className="border w-20">
-                    <input
-                      type="text"
-                      readOnly
-                      value={item.expiry || ""}
-                      className="border bg-gray-100 w-full h-6 text-[11px] px-1"
-                    />
-                  </td>
-                  <td className="border w-24">
-                    <input
-                      type="number"
-                      readOnly
-                      value={item.unit_sale_quantity || 0}
-                      className="border bg-gray-100 w-full h-6 text-[11px] px-1"
-                    />
-                  </td>
-                  <td className="border w-24">
-                    <input
-                      type="number"
-                      readOnly
-                      value={item.unit_sale_price || 0}
-                      className="border bg-gray-100 w-full h-6 text-[11px] px-1"
-                    />
-                  </td>
-                  <td className="border w-24">
-                    <input
-                      ref={(el) => (qtyRefs.current[i] = el)}
-                      type="text"
-                      value={item.unit_return_quantity === 0 ? "" : item.unit_return_quantity}
-                      onChange={(e) => handleItemChange(i, "unit_return_quantity", e.target.value)}
-                      className="border w-full h-6 text-[11px] px-1"
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") {
-                          e.preventDefault();
-                          if (i === form.items.length - 1) addItem();
-                          else productRefs.current[i + 1]?.querySelector("input")?.focus?.();
+                    </td>
+                    <td className="border w-24">
+                      <input
+                        type="number"
+                        readOnly
+                        value={item.unit_sale_quantity || 0}
+                        className="border bg-gray-100 w-full h-6 text-[11px] px-1"
+                      />
+                    </td>
+                    <td className="border w-24">
+                      <input
+                        type="number"
+                        readOnly
+                        value={item.unit_sale_price || 0}
+                        className="border bg-gray-100 w-full h-6 text-[11px] px-1"
+                      />
+                    </td>
+                    <td className="border w-24">
+                      <input
+                        ref={(el) => (qtyRefs.current[i] = el)}
+                        type="text"
+                        value={item.unit_return_quantity === 0 ? "" : item.unit_return_quantity}
+                        onChange={(e) => handleItemChange(i, "unit_return_quantity", e.target.value)}
+                        className={
+                          "border w-full h-6 text-[11px] px-1 " + (exceeds ? "border-red-500 ring-1 ring-red-400" : "")
                         }
-                      }}
-                    />
-                  </td>
-                  <td className="border w-16">
-                    <input
-                      type="text"
-                      value={item.item_discount_percentage === 0 ? "" : item.item_discount_percentage}
-                      onChange={(e) => handleItemChange(i, "item_discount_percentage", e.target.value)}
-                      className="border w-full h-6 text-[11px] px-1"
-                    />
-                  </td>
-                  <td className="border w-20">
-                    <input
-                      type="number"
-                      readOnly
-                      value={(Number(item.sub_total) || 0).toFixed(2)}
-                      className="border bg-gray-100 w-full h-6 text-[11px] px-1"
-                    />
-                  </td>
-                  <td className="border">
-                    <button
-                      type="button"
-                      onClick={addItem}
-                      className="bg-blue-500 text-white px-1 rounded text-[10px]"
-                    >
-                      +
-                    </button>
-                  </td>
-                </tr>
-              ))}
+                        onKeyDown={(e) => onKeyNav(e, i, "quantity")}
+                      />
+                    </td>
+                    <td className="border w-16">
+                      <input
+                        ref={(el) => (discRefs.current[i] = el)}
+                        type="text"
+                        value={item.item_discount_percentage === 0 ? "" : item.item_discount_percentage}
+                        onChange={(e) => handleItemChange(i, "item_discount_percentage", e.target.value)}
+                        className="border w-full h-6 text-[11px] px-1"
+                        onKeyDown={(e) => onKeyNav(e, i, "disc")}
+                      />
+                    </td>
+                    <td className="border w-20">
+                      <input
+                        type="number"
+                        readOnly
+                        value={(Number(item.sub_total) || 0).toFixed(2)}
+                        className="border bg-gray-100 w-full h-6 text-[11px] px-1"
+                      />
+                    </td>
+                    <td className="border">
+                      <button
+                        type="button"
+                        onClick={addItem}
+                        className="bg-blue-500 text-white px-1 rounded text-[10px]"
+                      >
+                        +
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
