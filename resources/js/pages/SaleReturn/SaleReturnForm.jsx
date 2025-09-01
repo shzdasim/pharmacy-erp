@@ -1,5 +1,12 @@
-// SaleReturnForm.jsx (Unit-based, migration-aligned, includes unit_sale_quantity)
-// Robust unit_sale_price resolution: invoice mode (from invoice items) or open mode (from /api/products/:id)
+// src/pages/sales-returns/SaleReturnForm.jsx
+// Unit-based Sale Return (open return & invoice return modes)
+// Tweaks applied:
+// 1) Hitting Enter inside Sale Invoice search now selects invoice (doesn't skip to product).
+// 2) In invoice-return mode, ProductSearchInput receives full product objects (not name-only),
+//    merged with invoice-line fields so it shows the same rich info as open return.
+// 3) In open-return mode, Unit Sale Qty shows available (on-hand) product quantity.
+// 4) Footer Discount%/Amt and Tax%/Amt inputs render blank when zero; empty is treated as 0.
+
 import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
@@ -24,7 +31,6 @@ const extractUnitPrice = (obj) => {
     obj.price,
     obj.unitRate,
   ];
-  // if only pack price is present, try to derive
   const packPrice = obj.pack_sale_price ?? obj.pack_price;
   const packSize = obj.pack_size ?? obj.size ?? obj.units_per_pack;
   if ((packPrice ?? null) !== null && toNum(packPrice) > 0 && toNum(packSize) > 0) {
@@ -63,8 +69,14 @@ const extractUnitSaleQty = (obj) => {
   return 0;
 };
 
+// batch qty extractor (for open-return available qty)
+const extractBatchQty = (b) =>
+  toNum(
+    b?.available_quantity ?? b?.quantity_available ?? b?.on_hand ?? b?.stock ?? b?.balance ?? b?.qty ?? b?.quantity
+  );
+
 // subtotal = qty * unit_price - (line discount %)
-function recalcItem(item){
+function recalcItem(item) {
   const qty = toNum(item.unit_return_quantity);
   const price = toNum(item.unit_sale_price);
   const discPct = toNum(item.item_discount_percentage);
@@ -73,30 +85,59 @@ function recalcItem(item){
   return { ...item, sub_total: round2(gross - discAmt) };
 }
 
-function recalcFooter(form){
-  const gross = (form.items || []).reduce((s, it) => s + toNum(it.sub_total), 0);
-  const discPct = toNum(form.discount_percentage);
-  const discAmt = (gross * discPct) / 100;
+/**
+ * Recalculate footer totals.
+ * `source` controls which side is authoritative for discount/tax ("pct" or "amt").
+ */
+function recalcFooter(form, source = {}) {
+  const items = Array.isArray(form.items) ? form.items : [];
+  const gross = items.reduce((s, it) => s + toNum(it.sub_total), 0);
+
+  let discPct = toNum(form.discount_percentage);
+  let discAmt = toNum(form.discount_amount);
+
+  if (source.disc === "pct") {
+    discAmt = (gross * discPct) / 100;
+  } else if (source.disc === "amt") {
+    discPct = gross > 0 ? (discAmt / gross) * 100 : 0;
+  } else {
+    if (discPct !== 0) discAmt = (gross * discPct) / 100;
+    else discPct = gross > 0 ? (discAmt / gross) * 100 : 0;
+  }
+
   const taxable = gross - discAmt;
-  const taxPct = toNum(form.tax_percentage);
-  const taxAmt = (taxable * taxPct) / 100;
+
+  let taxPct = toNum(form.tax_percentage);
+  let taxAmt = toNum(form.tax_amount);
+
+  if (source.tax === "pct") {
+    taxAmt = (taxable * taxPct) / 100;
+  } else if (source.tax === "amt") {
+    taxPct = taxable > 0 ? (taxAmt / taxable) * 100 : 0;
+  } else {
+    if (taxPct !== 0) taxAmt = (taxable * taxPct) / 100;
+    else taxPct = taxable > 0 ? (taxAmt / taxable) * 100 : 0;
+  }
+
   return {
     ...form,
     gross_total: round2(gross),
+    discount_percentage: round2(discPct),
     discount_amount: round2(discAmt),
+    tax_percentage: round2(taxPct),
     tax_amount: round2(taxAmt),
     total: round2(taxable + taxAmt),
   };
 }
 
-export default function SaleReturnForm({ returnId, initialData, onSuccess }){
+export default function SaleReturnForm({ returnId, initialData, onSuccess }) {
   const defaultItem = {
     id: Date.now() + Math.random(),
     product_id: "",
     batch_number: "",
     expiry: "",
-    unit_sale_quantity: 0,    // READONLY, from invoice; 0 in open return
-    unit_sale_price: 0,       // READONLY, from invoice OR product
+    unit_sale_quantity: 0, // READONLY, from invoice; available qty in open return
+    unit_sale_price: 0, // READONLY, from invoice OR product
     unit_return_quantity: 0,
     item_discount_percentage: 0,
     sub_total: 0,
@@ -106,8 +147,7 @@ export default function SaleReturnForm({ returnId, initialData, onSuccess }){
     posted_number: "",
     date: new Date().toISOString().slice(0, 10),
     customer_id: "",
-    sale_invoice_id: "",      // optional
-    remarks: "",
+    sale_invoice_id: "", // optional
     items: [{ ...defaultItem }],
     discount_percentage: 0,
     discount_amount: 0,
@@ -123,6 +163,8 @@ export default function SaleReturnForm({ returnId, initialData, onSuccess }){
   const [saleInvoices, setSaleInvoices] = useState([]);
   const [invoiceItems, setInvoiceItems] = useState([]);
   const [rowBatches, setRowBatches] = useState([]);
+
+  const [invoiceMenuOpen, setInvoiceMenuOpen] = useState(false); // why: avoid intercepting Enter while selecting
 
   const customerSelectRef = useRef(null);
   const saleInvoiceRef = useRef(null);
@@ -150,18 +192,27 @@ export default function SaleReturnForm({ returnId, initialData, onSuccess }){
           axios.get("/api/products"),
           axios.get("/api/sale-returns/new-code"),
         ]);
-        const customers = Array.isArray(custRes.data) ? custRes.data : [];
-        setCustomers(customers);
+        const customersArr = Array.isArray(custRes.data) ? custRes.data : [];
+        setCustomers(customersArr);
 
         const catalog = Array.isArray(prodRes.data) ? prodRes.data : [];
         setCatalogProducts(catalog);
         setProducts(catalog);
 
         setForm((prev) => ({ ...prev, posted_number: codeRes?.data?.posted_number || "" }));
+
+        if (customersArr.length) {
+          const firstId = customersArr[0]?.id;
+          setForm((prev) => ({ ...prev, customer_id: firstId }));
+          await fetchSaleInvoices(firstId);
+        }
+
+        if (!returnId) setTimeout(() => saleInvoiceRef.current?.focus?.(), 50);
       } catch (e) {
         console.error(e);
       }
     })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // If editing, normalize incoming data to unit-based fields
@@ -177,7 +228,6 @@ export default function SaleReturnForm({ returnId, initialData, onSuccess }){
           date: data.date || new Date().toISOString().slice(0, 10),
           customer_id: data.customer_id || "",
           sale_invoice_id: data.sale_invoice_id || "",
-          remarks: data.remarks || "",
           items: items.length
             ? items.map((it) => ({
                 ...defaultItem,
@@ -208,6 +258,7 @@ export default function SaleReturnForm({ returnId, initialData, onSuccess }){
         console.error(e);
       }
     })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [returnId]);
 
   // Alt+S quick save
@@ -220,10 +271,14 @@ export default function SaleReturnForm({ returnId, initialData, onSuccess }){
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [form]);
 
   const fetchSaleInvoices = async (customerId) => {
-    if (!customerId) { setSaleInvoices([]); return; }
+    if (!customerId) {
+      setSaleInvoices([]);
+      return;
+    }
     try {
       const res = await axios.get(`/api/sale-invoices?customer_id=${customerId}`);
       setSaleInvoices(Array.isArray(res.data) ? res.data : []);
@@ -238,7 +293,7 @@ export default function SaleReturnForm({ returnId, initialData, onSuccess }){
       const items = Array.isArray(res.data?.items) ? res.data.items : [];
       setInvoiceItems(items);
 
-      // reduce product list to only invoice items
+      // Reduce product list to only invoice items, merging with full catalog product object.
       const byId = new Map();
       for (const it of items) {
         const pid = Number(it?.product_id || it?.product?.id || it?.id);
@@ -249,8 +304,25 @@ export default function SaleReturnForm({ returnId, initialData, onSuccess }){
         const unit_sale_quantity = extractUnitSaleQty(it);
         byId.set(pid, { id: pid, name, unit_sale_price, item_discount_percentage, unit_sale_quantity });
       }
-      const invoiceProducts = Array.from(byId.values());
-      setProducts(invoiceProducts.length ? invoiceProducts : catalogProducts);
+      const invoiceProductsLite = Array.from(byId.values());
+
+      // Merge with catalog to preserve rich fields used by ProductSearchInput (why: show full product data)
+      const catalogById = new Map(
+        (catalogProducts || []).map((p) => [String(p.id ?? p.value ?? p.product_id ?? p?.data?.id), p])
+      );
+      const merged = invoiceProductsLite.map((p) => {
+        const base = catalogById.get(String(p.id)) || {};
+        return {
+          ...base,
+          id: p.id,
+          name: base.name ?? p.name,
+          unit_sale_price: p.unit_sale_price ?? extractUnitPrice(base),
+          item_discount_percentage: p.item_discount_percentage ?? extractItemDiscPct(base),
+          unit_sale_quantity: p.unit_sale_quantity, // keep invoice line qty
+        };
+      });
+
+      setProducts(merged.length ? merged : catalogProducts);
     } catch (e) {
       console.error(e);
       setInvoiceItems([]);
@@ -283,12 +355,62 @@ export default function SaleReturnForm({ returnId, initialData, onSuccess }){
       const fromApi = extractUnitPrice(data);
       if (fromApi > 0) return fromApi;
     } catch (e) {
-      // ignore, we'll fallback
+      // ignore
     }
     const local =
       extractUnitPrice(products.find((p) => String(p.id ?? p.value) === String(pid))) ||
       extractUnitPrice(catalogProducts.find((p) => String(p.id ?? p.value) === String(pid)));
     return toNum(local);
+  };
+
+  // available qty (best-effort): try product API, then sum batches, then local cache
+  const fetchProductAvailableQty = async (pid) => {
+    try {
+      const res = await axios.get(`/api/products/${pid}`);
+      const d = res.data || {};
+      const cands = [
+        d.available_quantity,
+        d.quantity_available,
+        d.on_hand,
+        d.stock,
+        d.inventory,
+        d.balance,
+        d.qty,
+        d.quantity,
+      ];
+      for (const c of cands) {
+        const n = toNum(c);
+        if (n > 0) return n;
+      }
+    } catch (e) {
+      // ignore
+    }
+    try {
+      const res = await axios.get(`/api/products/${pid}/batches`);
+      const rows = Array.isArray(res.data) ? res.data : [];
+      const total = rows.reduce((s, b) => s + extractBatchQty(b), 0);
+      if (total > 0) return total;
+    } catch (e) {
+      // ignore
+    }
+    const local =
+      products.find((p) => String(p.id ?? p.value) === String(pid)) ||
+      catalogProducts.find((p) => String(p.id ?? p.value) === String(pid));
+    const localCands = [
+      local?.available_quantity,
+      local?.quantity_available,
+      local?.on_hand,
+      local?.stock,
+      local?.inventory,
+      local?.balance,
+      local?.qty,
+      local?.quantity,
+    ];
+    for (const c of localCands) {
+      const n = toNum(c);
+      if (n > 0) return n;
+    }
+    return 0;
   };
 
   const handleSelectChange = async (field, value) => {
@@ -300,17 +422,24 @@ export default function SaleReturnForm({ returnId, initialData, onSuccess }){
       setProducts(catalogProducts);
       productBatchCache.current = new Map();
       setRowBatches([]);
-      setForm((prev) => recalcFooter({ ...prev, items: prev.items.map(it => ({ ...defaultItem, id: it.id })) }));
+      setForm((prev) =>
+        recalcFooter({ ...prev, items: prev.items.map((it) => ({ ...defaultItem, id: it.id })) })
+      );
       setTimeout(() => saleInvoiceRef.current?.focus?.(), 50);
       return;
     }
     if (field === "sale_invoice_id") {
       setForm((prev) => ({ ...prev, sale_invoice_id: v }));
       if (v) await loadInvoice(v);
-      else { setInvoiceItems([]); setProducts(catalogProducts); }
+      else {
+        setInvoiceItems([]);
+        setProducts(catalogProducts);
+      }
       productBatchCache.current = new Map();
       setRowBatches([]);
-      setForm((prev) => recalcFooter({ ...prev, items: prev.items.map(it => ({ ...defaultItem, id: it.id })) }));
+      setForm((prev) =>
+        recalcFooter({ ...prev, items: prev.items.map((it) => ({ ...defaultItem, id: it.id })) })
+      );
       setTimeout(() => productRefs.current[0]?.querySelector("input")?.focus?.(), 50);
     }
   };
@@ -320,9 +449,7 @@ export default function SaleReturnForm({ returnId, initialData, onSuccess }){
     if (typeof obj === "number") return obj;
     if (typeof obj === "string") return obj.trim();
     if (typeof obj === "object") {
-      return (
-        obj.product_id ?? obj.id ?? obj.value ?? obj?.product?.id ?? obj?.data?.id ?? ""
-      );
+      return obj.product_id ?? obj.id ?? obj.value ?? obj?.product?.id ?? obj?.data?.id ?? "";
     }
     return "";
   };
@@ -337,22 +464,20 @@ export default function SaleReturnForm({ returnId, initialData, onSuccess }){
     let unit_sale_quantity = 0;
 
     if (form.sale_invoice_id) {
-      // invoice mode: try to find matching invoice line(s)
+      // invoice mode: use invoice line defaults
       const candidates = invoiceItems.filter((it) => String(it.product_id) === String(pid));
       if (candidates.length) {
-        // use the first for initial fill; batch selection will refine later
         unit_sale_price = extractUnitPrice(candidates[0]);
         item_discount_percentage = extractItemDiscPct(candidates[0]);
         unit_sale_quantity = extractUnitSaleQty(candidates[0]);
       } else {
-        // fallback to product API
         unit_sale_price = await fetchProductUnitPrice(pid);
       }
     } else {
-      // open mode: price from product record API; quantity is 0
+      // open mode: price from product; quantity is available (on hand)
       unit_sale_price = await fetchProductUnitPrice(pid);
-      item_discount_percentage = toNum(newItems[row]?.item_discount_percentage); // user-editable
-      unit_sale_quantity = 0;
+      item_discount_percentage = toNum(newItems[row]?.item_discount_percentage);
+      unit_sale_quantity = await fetchProductAvailableQty(pid);
     }
 
     newItems[row] = recalcItem({
@@ -367,7 +492,7 @@ export default function SaleReturnForm({ returnId, initialData, onSuccess }){
     });
     setForm((prev) => recalcFooter({ ...prev, items: newItems }));
 
-    // batches
+    // batches for UI
     const batches = await fetchBatchesForOpenReturn(pid);
     setRowBatches((prev) => {
       const next = prev.slice();
@@ -379,11 +504,11 @@ export default function SaleReturnForm({ returnId, initialData, onSuccess }){
   };
 
   const handleBatchSelect = (row, batchVal) => {
-    const bn = typeof batchVal === "string" ? batchVal : (batchVal?.value ?? batchVal?.batch_number ?? "");
+    const bn =
+      typeof batchVal === "string" ? batchVal : batchVal?.value ?? batchVal?.batch_number ?? "";
     const newItems = [...form.items];
     let expiry = "";
 
-    // set expiry from cache (open) and refine unit_sale_quantity and price from invoice item (invoice)
     const cached = productBatchCache.current.get(String(newItems[row].product_id)) || [];
     const matchedOpen = cached.find((b) => b.batch_number === bn);
     if (matchedOpen) expiry = matchedOpen.expiry || "";
@@ -424,8 +549,14 @@ export default function SaleReturnForm({ returnId, initialData, onSuccess }){
   };
 
   const addItem = () => {
-    setForm((prev) => ({ ...prev, items: [...prev.items, { ...defaultItem, id: Date.now() + Math.random() }] }));
-    setTimeout(() => productRefs.current[form.items.length]?.querySelector("input")?.focus?.(), 50);
+    setForm((prev) => ({
+      ...prev,
+      items: [...prev.items, { ...defaultItem, id: Date.now() + Math.random() }],
+    }));
+    setTimeout(
+      () => productRefs.current[form.items.length]?.querySelector("input")?.focus?.(),
+      50
+    );
   };
 
   const removeItem = (row) => {
@@ -433,6 +564,16 @@ export default function SaleReturnForm({ returnId, initialData, onSuccess }){
     const next = form.items.filter((_, i) => i !== row);
     setForm((prev) => recalcFooter({ ...prev, items: next }));
   };
+
+  // Header footer field handlers (bi-directional)
+  const onDiscountPctChange = (val) =>
+    setForm((prev) => recalcFooter({ ...prev, discount_percentage: val }, { disc: "pct" }));
+  const onDiscountAmtChange = (val) =>
+    setForm((prev) => recalcFooter({ ...prev, discount_amount: val }, { disc: "amt" }));
+  const onTaxPctChange = (val) =>
+    setForm((prev) => recalcFooter({ ...prev, tax_percentage: val }, { tax: "pct" }));
+  const onTaxAmtChange = (val) =>
+    setForm((prev) => recalcFooter({ ...prev, tax_amount: val }, { tax: "amt" }));
 
   const handleSubmit = async () => {
     try {
@@ -446,7 +587,6 @@ export default function SaleReturnForm({ returnId, initialData, onSuccess }){
         date: form.date,
         customer_id: form.customer_id,
         sale_invoice_id: form.sale_invoice_id || null,
-        remarks: form.remarks || null,
         discount_percentage: toNum(form.discount_percentage),
         discount_amount: toNum(form.discount_amount),
         tax_percentage: toNum(form.tax_percentage),
@@ -484,6 +624,7 @@ export default function SaleReturnForm({ returnId, initialData, onSuccess }){
   const navigate = useNavigate();
   const handleCancel = () => navigate("/sale-returns");
 
+  // ===== Render =====
   return (
     <div className="relative">
       <form className="flex flex-col" style={{ minHeight: "74vh", maxHeight: "80vh" }}>
@@ -495,22 +636,42 @@ export default function SaleReturnForm({ returnId, initialData, onSuccess }){
               <tr>
                 <td className="border p-1 w-1/12">
                   <label className="block text-[10px]">Posted Number</label>
-                  <input name="posted_number" type="text" readOnly value={form.posted_number || ""} className="bg-gray-100 border rounded w-full p-1 h-7 text-xs" />
+                  <input
+                    name="posted_number"
+                    type="text"
+                    readOnly
+                    value={form.posted_number || ""}
+                    className="bg-gray-100 border rounded w-full p-1 h-7 text-xs"
+                  />
                 </td>
                 <td className="border p-1 w-1/6">
                   <label className="block text-[10px]">Date</label>
-                  <input name="date" type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} className="border rounded w-full p-1 h-7 text-xs" />
+                  <input
+                    name="date"
+                    type="date"
+                    value={form.date}
+                    onChange={(e) => setForm({ ...form, date: e.target.value })}
+                    className="border rounded w-full p-1 h-7 text-xs"
+                  />
                 </td>
                 <td className="border p-1 w-1/3">
                   <label className="block text-[10px]">Customer *</label>
                   <Select
                     ref={customerSelectRef}
                     options={customers.map((c) => ({ value: c.id, label: c.name }))}
-                    value={customers.map((c) => ({ value: c.id, label: c.name })).find((c) => c.value === form.customer_id) || null}
+                    value={
+                      customers
+                        .map((c) => ({ value: c.id, label: c.name }))
+                        .find((c) => c.value === form.customer_id) || null
+                    }
                     onChange={(val) => handleSelectChange("customer_id", val)}
                     isSearchable
                     classNamePrefix="react-select"
-                    styles={{ control: (b) => ({ ...b, minHeight: "28px", height: "28px", fontSize: "12px" }), valueContainer: (b) => ({ ...b, height: "28px", padding: "0 4px" }), input: (b) => ({ ...b, margin: 0, padding: 0 }) }}
+                    styles={{
+                      control: (b) => ({ ...b, minHeight: "28px", height: "28px", fontSize: "12px" }),
+                      valueContainer: (b) => ({ ...b, height: "28px", padding: "0 4px" }),
+                      input: (b) => ({ ...b, margin: 0, padding: 0 }),
+                    }}
                   />
                 </td>
                 <td className="border p-1 w-1/3">
@@ -518,16 +679,39 @@ export default function SaleReturnForm({ returnId, initialData, onSuccess }){
                   <Select
                     ref={saleInvoiceRef}
                     options={saleInvoices.map((inv) => ({ value: inv.id, label: inv.posted_number }))}
-                    value={saleInvoices.map((inv) => ({ value: inv.id, label: inv.posted_number })).find((x) => x.value === form.sale_invoice_id) || null}
+                    value={
+                      saleInvoices
+                        .map((inv) => ({ value: inv.id, label: inv.posted_number }))
+                        .find((x) => x.value === form.sale_invoice_id) || null
+                    }
                     onChange={(val) => handleSelectChange("sale_invoice_id", val)}
+                    onMenuOpen={() => setInvoiceMenuOpen(true)}
+                    onMenuClose={() => setInvoiceMenuOpen(false)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        // Only treat Enter as "Open Return" when no selection AND the menu is closed.
+                        if (!invoiceMenuOpen && !form.sale_invoice_id) {
+                          e.preventDefault();
+                          setInvoiceItems([]);
+                          setProducts(catalogProducts);
+                          productBatchCache.current = new Map();
+                          setRowBatches([]);
+                          setForm((prev) => recalcFooter(prev));
+                          setTimeout(
+                            () => productRefs.current[0]?.querySelector("input")?.focus?.(),
+                            50
+                          );
+                        }
+                      }
+                    }}
                     isSearchable
                     classNamePrefix="react-select"
-                    styles={{ control: (b) => ({ ...b, minHeight: "28px", height: "28px", fontSize: "12px" }), valueContainer: (b) => ({ ...b, height: "28px", padding: "0 4px" }), input: (b) => ({ ...b, margin: 0, padding: 0 }) }}
+                    styles={{
+                      control: (b) => ({ ...b, minHeight: "28px", height: "28px", fontSize: "12px" }),
+                      valueContainer: (b) => ({ ...b, height: "28px", padding: "0 4px" }),
+                      input: (b) => ({ ...b, margin: 0, padding: 0 }),
+                    }}
                   />
-                </td>
-                <td className="border p-1 w-1/4">
-                  <label className="block text-[10px]">Remarks</label>
-                  <input name="remarks" type="text" value={form.remarks} onChange={(e) => setForm({ ...form, remarks: e.target.value })} className="border rounded w-full p-1 h-7 text-xs" />
                 </td>
               </tr>
             </tbody>
@@ -556,7 +740,13 @@ export default function SaleReturnForm({ returnId, initialData, onSuccess }){
               {form.items.map((item, i) => (
                 <tr key={item.id} className="text-center">
                   <td className="border">
-                    <button type="button" onClick={() => removeItem(i)} className="bg-red-500 text-white px-1 rounded text-[10px]">X</button>
+                    <button
+                      type="button"
+                      onClick={() => removeItem(i)}
+                      className="bg-red-500 text-white px-1 rounded text-[10px]"
+                    >
+                      X
+                    </button>
                   </td>
                   <td className="border text-left w-[260px]">
                     <div ref={(el) => (productRefs.current[i] = el)}>
@@ -565,7 +755,10 @@ export default function SaleReturnForm({ returnId, initialData, onSuccess }){
                         onChange={(val) => handleProductSelect(i, val)}
                         products={products}
                         onKeyDown={(e) => {
-                          if (e.key === "Enter") { e.preventDefault(); qtyRefs.current[i]?.focus?.(); }
+                          if (e.key === "Enter") {
+                            e.preventDefault();
+                            qtyRefs.current[i]?.focus?.();
+                          }
                         }}
                       />
                     </div>
@@ -578,13 +771,28 @@ export default function SaleReturnForm({ returnId, initialData, onSuccess }){
                     />
                   </td>
                   <td className="border w-20">
-                    <input type="text" readOnly value={item.expiry || ""} className="border bg-gray-100 w-full h-6 text-[11px] px-1" />
+                    <input
+                      type="text"
+                      readOnly
+                      value={item.expiry || ""}
+                      className="border bg-gray-100 w-full h-6 text-[11px] px-1"
+                    />
                   </td>
                   <td className="border w-24">
-                    <input type="number" readOnly value={item.unit_sale_quantity || 0} className="border bg-gray-100 w-full h-6 text-[11px] px-1" />
+                    <input
+                      type="number"
+                      readOnly
+                      value={item.unit_sale_quantity || 0}
+                      className="border bg-gray-100 w-full h-6 text-[11px] px-1"
+                    />
                   </td>
                   <td className="border w-24">
-                    <input type="number" readOnly value={item.unit_sale_price || 0} className="border bg-gray-100 w-full h-6 text-[11px] px-1" />
+                    <input
+                      type="number"
+                      readOnly
+                      value={item.unit_sale_price || 0}
+                      className="border bg-gray-100 w-full h-6 text-[11px] px-1"
+                    />
                   </td>
                   <td className="border w-24">
                     <input
@@ -611,10 +819,21 @@ export default function SaleReturnForm({ returnId, initialData, onSuccess }){
                     />
                   </td>
                   <td className="border w-20">
-                    <input type="number" readOnly value={(Number(item.sub_total) || 0).toFixed(2)} className="border bg-gray-100 w-full h-6 text-[11px] px-1" />
+                    <input
+                      type="number"
+                      readOnly
+                      value={(Number(item.sub_total) || 0).toFixed(2)}
+                      className="border bg-gray-100 w-full h-6 text-[11px] px-1"
+                    />
                   </td>
                   <td className="border">
-                    <button type="button" onClick={addItem} className="bg-blue-500 text-white px-1 rounded text-[10px]">+</button>
+                    <button
+                      type="button"
+                      onClick={addItem}
+                      className="bg-blue-500 text-white px-1 rounded text-[10px]"
+                    >
+                      +
+                    </button>
                   </td>
                 </tr>
               ))}
@@ -629,34 +848,74 @@ export default function SaleReturnForm({ returnId, initialData, onSuccess }){
               <tr>
                 <td className="border p-1 w-1/6">
                   <label className="block text-[10px]">Gross Total</label>
-                  <input type="number" readOnly value={(Number(form.gross_total) || 0).toFixed(2)} className="border rounded w-full p-1 h-7 text-xs bg-gray-100" />
+                  <input
+                    type="number"
+                    readOnly
+                    value={(Number(form.gross_total) || 0).toFixed(2)}
+                    className="border rounded w-full p-1 h-7 text-xs bg-gray-100"
+                  />
                 </td>
                 <td className="border p-1 w-1/6">
                   <label className="block text-[10px]">Discount %</label>
-                  <input type="number" value={form.discount_percentage} onChange={(e) => setForm((prev) => recalcFooter({ ...prev, discount_percentage: e.target.value }))} className="border rounded w-full p-1 h-7 text-xs" />
+                  <input
+                    type="number"
+                    value={form.discount_percentage === 0 ? "" : form.discount_percentage}
+                    onChange={(e) => onDiscountPctChange(e.target.value)}
+                    className="border rounded w-full p-1 h-7 text-xs"
+                  />
                 </td>
                 <td className="border p-1 w-1/6">
                   <label className="block text-[10px]">Discount Amount</label>
-                  <input type="number" readOnly value={(Number(form.discount_amount) || 0).toFixed(2)} className="border rounded w-full p-1 h-7 text-xs bg-gray-100" />
+                  <input
+                    type="number"
+                    value={form.discount_amount === 0 ? "" : form.discount_amount}
+                    onChange={(e) => onDiscountAmtChange(e.target.value)}
+                    className="border rounded w-full p-1 h-7 text-xs"
+                  />
                 </td>
                 <td className="border p-1 w-1/6">
                   <label className="block text-[10px]">Tax %</label>
-                  <input type="number" value={form.tax_percentage} onChange={(e) => setForm((prev) => recalcFooter({ ...prev, tax_percentage: e.target.value }))} className="border rounded w-full p-1 h-7 text-xs" />
+                  <input
+                    type="number"
+                    value={form.tax_percentage === 0 ? "" : form.tax_percentage}
+                    onChange={(e) => onTaxPctChange(e.target.value)}
+                    className="border rounded w-full p-1 h-7 text-xs"
+                  />
                 </td>
                 <td className="border p-1 w-1/6">
                   <label className="block text-[10px]">Tax Amount</label>
-                  <input type="number" readOnly value={(Number(form.tax_amount) || 0).toFixed(2)} className="border rounded w-full p-1 h-7 text-xs bg-gray-100" />
+                  <input
+                    type="number"
+                    value={form.tax_amount === 0 ? "" : form.tax_amount}
+                    onChange={(e) => onTaxAmtChange(e.target.value)}
+                    className="border rounded w-full p-1 h-7 text-xs"
+                  />
                 </td>
                 <td className="border p-1 w-1/6">
                   <label className="block text-[10px]">Total</label>
-                  <input type="number" readOnly value={(Number(form.total) || 0).toFixed(2)} className="border rounded w-full p-1 h-7 text-xs bg-gray-100" />
+                  <input
+                    type="number"
+                    readOnly
+                    value={(Number(form.total) || 0).toFixed(2)}
+                    className="border rounded w-full p-1 h-7 text-xs bg-gray-100"
+                  />
                 </td>
               </tr>
               <tr>
                 <td colSpan={6} className="p-2">
                   <div className="flex justify-end gap-2">
-                    <button type="button" onClick={handleCancel} className="px-6 py-3 rounded text-sm transition bg-gray-200 text-gray-800 hover:bg-gray-300">Cancel</button>
-                    <button type="button" onClick={handleSubmit} className="px-8 py-3 rounded text-sm transition bg-green-600 text-white hover:bg-green-700">
+                    <button
+                      type="button"
+                      onClick={handleCancel}
+                      className="px-6 py-3 rounded text-sm transition bg-gray-200 text-gray-800 hover:bg-gray-300"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleSubmit}
+                      className="px-8 py-3 rounded text-sm transition bg-green-600 text-white hover:bg-green-700"
+                    >
                       {returnId ? "Update Return" : "Create Return"}
                     </button>
                   </div>
