@@ -11,6 +11,7 @@ use App\Http\Controllers\ProductController;
 use App\Http\Controllers\PurchaseInvoiceController;
 use App\Http\Controllers\PurchaseReturnController;
 use App\Http\Controllers\SaleInvoiceController;
+use App\Http\Controllers\SaleReturnController;
 use App\Http\Controllers\SupplierController;
 
 Route::post('/login', [AuthController::class, 'login']);
@@ -42,4 +43,10 @@ Route::middleware('auth:sanctum')->group(function () {
     // Sales
     Route::get('sale-invoices/new-code', [SaleInvoiceController::class, 'generateNewCode']);
     Route::apiResource('sale-invoices', SaleInvoiceController::class);
+
+    // Sale Returns
+    Route::get('sale-returns/new-code', [SaleReturnController::class, 'generateNewCode']);
+    Route::apiResource('sale-returns', SaleReturnController::class);
 });
+
+

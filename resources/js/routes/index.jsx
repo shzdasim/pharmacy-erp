@@ -2,7 +2,7 @@ import React from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 
 import Login from "../pages/Login";
-import DashboardLayout from "../layouts/ DashboardLayout.jsx";
+import DashboardLayout from "../layouts/DashboardLayout.jsx";
 import ProtectedRoute from "../components/ProtectedRoute.jsx";
 import Profile from "../pages/Profile.jsx";
 import Suppliers from "../pages/Suppliers.jsx";
@@ -22,6 +22,10 @@ import IndexSaleInvoice from "../pages/SaleInvoice/index.jsx";
 import CreateSaleInvoice from "../pages/SaleInvoice/Create.jsx";
 import EditSaleInvoice from "../pages/SaleInvoice/Edit.jsx";
 import ShowSaleInvoice from "../pages/SaleInvoice/Show.jsx";
+import IndexSaleReturn from "../pages/SaleReturn/Index.jsx";
+import CreateSaleReturn from "../pages/SaleReturn/Create.jsx";
+import EditSaleReturn from "../pages/SaleReturn/Edit.jsx";
+
 
 function DashboardHome() {
   return <h1 className="text-2xl font-bold">Welcome to the Dashboard</h1>;
@@ -191,6 +195,7 @@ export default function AppRoutes() {
           </ProtectedRoute>
         }
       />
+      {/* Sale Invoice */}
       <Route 
       path="sale-invoices"
       element={
@@ -231,8 +236,38 @@ export default function AppRoutes() {
         </ProtectedRoute>
       }
       />
-
-    
+      {/* Sale Returns */}
+      <Route
+      path="sale-returns"
+      element= {
+        <ProtectedRoute>
+          <DashboardLayout>
+            <IndexSaleReturn />
+          </DashboardLayout>
+        </ProtectedRoute>
+      }
+      />
+      <Route
+      path="sale-returns/create"
+      element= {
+        <ProtectedRoute>
+          <DashboardLayout>
+            <CreateSaleReturn />
+          </DashboardLayout>
+        </ProtectedRoute>
+      }
+      />
+      <Route
+      path="sale-returns/:id/edit"
+      element= {
+        <ProtectedRoute>
+          <DashboardLayout>
+            <EditSaleReturn />
+          </DashboardLayout>
+        </ProtectedRoute>
+      }
+      />
+      
   
 
 </Routes>
