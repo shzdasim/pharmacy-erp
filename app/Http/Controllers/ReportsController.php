@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\PurchaseInvoice;
+use App\Models\SaleInvoice;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -301,5 +302,174 @@ class ReportsController extends Controller
 
         $filename = 'purchase-detail-' . ($meta['from'] ?: 'start') . '-to-' . ($meta['to'] ?: 'today') . '.pdf';
         return $pdf->stream($filename); // 'inline' disposition -> opens in new tab
+    }
+
+    /** GET /api/reports/sale-detail */
+    public function saleDetail(Request $req)
+    {
+        $from = $req->query('from');
+        $to   = $req->query('to');
+        $customerId = $req->query('customer_id');
+        $productId  = $req->query('product_id');
+
+        try { $fromDate = $from ? Carbon::parse($from)->startOfDay() : Carbon::now()->startOfMonth(); }
+        catch (\Throwable $e) { $fromDate = Carbon::now()->startOfMonth(); }
+        try { $toDate = $to ? Carbon::parse($to)->endOfDay() : Carbon::now()->endOfDay(); }
+        catch (\Throwable $e) { $toDate = Carbon::now()->endOfDay(); }
+        if ($fromDate->gt($toDate)) {
+            [$fromDate, $toDate] = [$toDate->copy()->startOfDay(), $fromDate->copy()->endOfDay()];
+        }
+
+        $invoices = SaleInvoice::with([
+                'customer:id,name',
+                'user:id,name',
+                'items' => function ($q) use ($productId) {
+                    if ($productId) $q->where('product_id', $productId);
+                    $q->with('product:id,name')
+                      ->select([
+                          'id','sale_invoice_id','product_id',
+                          'pack_size','batch_number','expiry',
+                          'current_quantity','quantity','price',
+                          'item_discount_percentage','sub_total',
+                      ]);
+                },
+            ])
+            // Sales filter by `date`
+            ->whereBetween('date', [$fromDate, $toDate])
+            ->when($customerId, fn($q) => $q->where('customer_id', $customerId))
+            ->when($productId, fn($q) => $q->whereHas('items', fn($iq) => $iq->where('product_id', $productId)))
+            ->orderBy('date', 'asc')
+            ->orderBy('id', 'asc')
+            ->get();
+
+        $rows = $invoices->map(function ($inv) {
+            return [
+                'id'             => $inv->id,
+                'posted_number'  => $inv->posted_number ?? null,
+                'invoice_date'   => optional($inv->date)->format('Y-m-d')
+                                    ?? (is_string($inv->date) ? substr($inv->date,0,10) : null),
+                'customer_name'  => $inv->customer->name ?? null,
+                'user_name'      => $inv->user->name ?? null,
+                'doctor_name'    => $inv->doctor_name ?? null,
+                'patient_name'   => $inv->patient_name ?? null,
+
+                // Footer (header totals on SaleInvoice)
+                'discount_percentage' => (float)($inv->discount_percentage ?? 0),
+                'discount_amount'     => (float)($inv->discount_amount ?? 0),
+                'tax_percentage'      => (float)($inv->tax_percentage ?? 0),
+                'tax_amount'          => (float)($inv->tax_amount ?? 0),
+                'item_discount'       => (float)($inv->item_discount ?? 0),
+                'gross_amount'        => (float)($inv->gross_amount ?? 0),
+                'total'               => (float)($inv->total ?? 0),
+
+                // Items
+                'items' => ($inv->items ?? collect())->map(function ($it) {
+                    return [
+                        'id'                        => $it->id,
+                        'product_id'                => $it->product_id,
+                        'product_name'              => $it->product->name ?? null,
+                        'pack_size'                 => (int)($it->pack_size ?? 0),
+                        'batch_number'              => $it->batch_number,
+                        'expiry'                    => $it->expiry,
+                        'current_quantity'          => (int)($it->current_quantity ?? 0),
+                        'quantity'                  => (int)($it->quantity ?? 0),
+                        'price'                     => (float)($it->price ?? 0),
+                        'item_discount_percentage'  => (float)($it->item_discount_percentage ?? 0),
+                        'sub_total'                 => (float)($it->sub_total ?? 0),
+                    ];
+                })->values(),
+            ];
+        })->values();
+
+        return response()->json($rows);
+    }
+
+    private function buildSaleDetailRows($from, $to, $customerId, $productId)
+    {
+        try { $fromDate = $from ? Carbon::parse($from)->startOfDay() : Carbon::now()->startOfMonth(); }
+        catch (\Throwable $e) { $fromDate = Carbon::now()->startOfMonth(); }
+        try { $toDate = $to ? Carbon::parse($to)->endOfDay() : Carbon::now()->endOfDay(); }
+        catch (\Throwable $e) { $toDate = Carbon::now()->endOfDay(); }
+        if ($fromDate->gt($toDate)) {
+            [$fromDate, $toDate] = [$toDate->copy()->startOfDay(), $fromDate->copy()->endOfDay()];
+        }
+
+        $invoices = SaleInvoice::with([
+                'customer:id,name',
+                'user:id,name',
+                'items' => function ($q) use ($productId) {
+                    if ($productId) $q->where('product_id', $productId);
+                    $q->with('product:id,name')
+                      ->select([
+                          'id','sale_invoice_id','product_id',
+                          'pack_size','batch_number','expiry',
+                          'current_quantity','quantity','price',
+                          'item_discount_percentage','sub_total',
+                      ]);
+                },
+            ])
+            ->whereBetween('date', [$fromDate, $toDate])
+            ->when($customerId, fn($q) => $q->where('customer_id', $customerId))
+            ->when($productId, fn($q) => $q->whereHas('items', fn($iq) => $iq->where('product_id', $productId)))
+            ->orderBy('date', 'asc')
+            ->orderBy('id', 'asc')
+            ->get();
+
+        return $invoices->map(function ($inv) {
+            return [
+                'posted_number'       => $inv->posted_number ?? null,
+                'invoice_date'        => optional($inv->date)->format('Y-m-d')
+                                         ?? (is_string($inv->date) ? substr($inv->date,0,10) : null),
+                'customer_name'       => $inv->customer->name ?? null,
+                'user_name'           => $inv->user->name ?? null,
+                'doctor_name'         => $inv->doctor_name ?? null,
+                'patient_name'        => $inv->patient_name ?? null,
+                'discount_percentage' => (float)($inv->discount_percentage ?? 0),
+                'discount_amount'     => (float)($inv->discount_amount ?? 0),
+                'tax_percentage'      => (float)($inv->tax_percentage ?? 0),
+                'tax_amount'          => (float)($inv->tax_amount ?? 0),
+                'item_discount'       => (float)($inv->item_discount ?? 0),
+                'gross_amount'        => (float)($inv->gross_amount ?? 0),
+                'total'               => (float)($inv->total ?? 0),
+                'items' => ($inv->items ?? collect())->map(function ($it) {
+                    return [
+                        'product_name'             => $it->product->name ?? null,
+                        'pack_size'                => (int)($it->pack_size ?? 0),
+                        'batch_number'             => $it->batch_number,
+                        'expiry'                   => $it->expiry,
+                        'current_quantity'         => (int)($it->current_quantity ?? 0),
+                        'quantity'                 => (int)($it->quantity ?? 0),
+                        'price'                    => (float)($it->price ?? 0),
+                        'item_discount_percentage' => (float)($it->item_discount_percentage ?? 0),
+                        'sub_total'                => (float)($it->sub_total ?? 0),
+                    ];
+                })->values(),
+            ];
+        })->values();
+    }
+
+    /** GET /api/reports/sale-detail/pdf */
+    public function saleDetailPdf(Request $req)
+    {
+        $rows = $this->buildSaleDetailRows(
+            $req->query('from'),
+            $req->query('to'),
+            $req->query('customer_id'),
+            $req->query('product_id'),
+        );
+
+        $meta = [
+            'from'        => $req->query('from'),
+            'to'          => $req->query('to'),
+            'generatedAt' => now()->format('Y-m-d H:i'),
+        ];
+
+        $pdf = Pdf::loadView('reports.sale_detail_pdf', [
+            'rows' => $rows,
+            'meta' => $meta,
+        ])->setPaper('a4', 'landscape');
+
+        $filename = 'sale-detail-' . ($meta['from'] ?: 'start') . '-to-' . ($meta['to'] ?: 'today') . '.pdf';
+        return $pdf->stream($filename);
     }
 }
