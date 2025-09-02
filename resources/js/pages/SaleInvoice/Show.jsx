@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import axios from "axios";
 import toast from "react-hot-toast";
@@ -10,6 +10,7 @@ export default function SaleInvoiceShow() {
   const [loading, setLoading] = useState(true);
   const [deleting, setDeleting] = useState(false);
   const [printerType, setPrinterType] = useState("a4"); // from Settings
+  const popupRef = useRef(null);
 
   // Fetch invoice
   useEffect(() => {
@@ -101,38 +102,83 @@ export default function SaleInvoiceShow() {
   };
 
   // Open server-rendered print preview (backend chooses template by Settings)
-  // ⬇️ replace your current handlePrint with this
 const handlePrint = () => {
   if (!id) return;
 
-  // If you serve SPA and Laravel on different origins, set VITE_BACKEND_WEB_BASE.
-  // If they are the same origin, keeping it empty will fall back to window.location.origin.
   const WEB_BASE =
     (import.meta.env.VITE_BACKEND_WEB_BASE || "").replace(/\/$/, "") ||
     window.location.origin;
 
-  // Let backend decide A4 vs Thermal by Settings (no ?type= needed)
   const url = `${WEB_BASE}/print/sale-invoices/${id}`;
 
-  const w = window.open(url, "_blank", "noopener,noreferrer");
-  if (!w) {
-    toast.error("Popup blocked. Allow popups to print.");
-    return;
+  // Reusable, centered popup
+  const width = 900;
+  const height = 700;
+  const left = Math.max(0, (window.screenX || window.screenLeft || 0) + (window.outerWidth - width) / 2);
+  const top = Math.max(0, (window.screenY || window.screenTop || 0) + (window.outerHeight - height) / 2);
+
+  const features = [
+    `width=${Math.round(width)}`,
+    `height=${Math.round(height)}`,
+    `left=${Math.round(left)}`,
+    `top=${Math.round(top)}`,
+    "menubar=no",
+    "toolbar=no",
+    "location=no",
+    "status=no",
+    "scrollbars=yes",
+    "resizable=yes",
+  ].join(",");
+
+  let w = popupRef.current;
+
+  // Open or reuse the popup window
+  if (!w || w.closed) {
+    w = window.open("about:blank", "salePrintWin", features);
+    if (!w) {
+      toast.error("Popup blocked. Please allow popups to print.");
+      return;
+    }
+    try { w.opener = null; } catch {}
+    popupRef.current = w;
+  } else {
+    try { w.focus(); } catch {}
   }
+
+  // Navigate popup to the print URL
+  try {
+    w.location.replace(url);
+  } catch {
+    // Cross-origin navigation could throw; open fresh
+    const w2 = window.open(url, "salePrintWin", features);
+    if (!w2) {
+      toast.error("Popup blocked. Please allow popups to print.");
+      return;
+    }
+    try { w2.opener = null; } catch {}
+    popupRef.current = w2;
+    w = w2;
+  }
+
+  // Auto-print when loaded (with a polling fallback)
   try {
     w.onload = () => {
       try { w.focus(); w.print(); } catch {}
     };
-    const timer = setInterval(() => {
-      try {
-        if (w.document?.readyState === "complete") {
-          w.focus(); w.print(); clearInterval(timer);
-        }
-      } catch {}
-      if (w.closed) clearInterval(timer);
-    }, 400);
   } catch {}
+
+  const timer = setInterval(() => {
+    try {
+      if (w.document?.readyState === "complete") {
+        w.focus(); w.print(); clearInterval(timer);
+      }
+    } catch {
+      // Ignore cross-origin access errors while it loads
+    }
+    if (w.closed) clearInterval(timer);
+  }, 400);
 };
+
 
 
   // Keyboard shortcuts: Alt+N (new), Alt+B (back), Alt+P (print), Alt+D (delete confirm), Alt+E (edit)
