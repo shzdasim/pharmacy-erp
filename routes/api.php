@@ -9,6 +9,7 @@ use App\Http\Controllers\CategoryController;
 use App\Http\Controllers\CustomerController;
 use App\Http\Controllers\ProductController;
 use App\Http\Controllers\PurchaseInvoiceController;
+use App\Http\Controllers\PurchaseOrderController;
 use App\Http\Controllers\PurchaseReturnController;
 use App\Http\Controllers\SaleInvoiceController;
 use App\Http\Controllers\SaleReturnController;
@@ -47,6 +48,9 @@ Route::middleware('auth:sanctum')->group(function () {
     // Sale Returns
     Route::get('sale-returns/new-code', [SaleReturnController::class, 'generateNewCode']);
     Route::apiResource('sale-returns', SaleReturnController::class);
+
+    // Purchase Orders
+    Route::get('/purchase-orders/forecast', [PurchaseOrderController::class, 'forecast']);
 });
 
 
