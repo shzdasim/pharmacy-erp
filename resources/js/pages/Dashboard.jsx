@@ -447,18 +447,24 @@ export default function Dashboard() {
               {/* Supplier select (react-select searchable) */}
               <div className="flex items-center gap-1 shrink-0" style={{ minWidth: 210 }}>
                 <span className="text-gray-700 text-sm">Supplier</span>
-                <div className="w-40">
+                <div className="w-40 relative z-50">
                   <Select
                     classNamePrefix="rs"
                     isSearchable
                     menuPlacement="auto"
+                    menuPosition="fixed"
+                    menuPortalTarget={document.body}
                     options={supplierOptions}
                     value={supplierValue}
                     onChange={(opt) => {
                       setSupplierValue(opt || { value: "", label: "All Suppliers" });
                       setSupplierId(opt?.value || "");
                     }}
-                    styles={smallSelectStyles}
+                    styles={{
+                      ...smallSelectStyles,
+                      menu: (base) => ({ ...base, zIndex: 9999 }),
+                      menuPortal: (base) => ({ ...base, zIndex: 9999 }),
+                    }}
                   />
                 </div>
               </div>
@@ -466,21 +472,28 @@ export default function Dashboard() {
               {/* Brand select (react-select searchable) */}
               <div className="flex items-center gap-1 shrink-0" style={{ minWidth: 190 }}>
                 <span className="text-gray-700 text-sm">Brand</span>
-                <div className="w-40">
+                <div className="w-40 relative z-50">
                   <Select
                     classNamePrefix="rs"
                     isSearchable
                     menuPlacement="auto"
+                    menuPosition="fixed"
+                    menuPortalTarget={document.body}
                     options={brandOptions}
                     value={brandValue}
                     onChange={(opt) => {
                       setBrandValue(opt || { value: "", label: "All Brands" });
                       setBrandId(opt?.value || "");
                     }}
-                    styles={smallSelectStyles}
+                    styles={{
+                      ...smallSelectStyles,
+                      menu: (base) => ({ ...base, zIndex: 9999 }),
+                      menuPortal: (base) => ({ ...base, zIndex: 9999 }),
+                    }}
                   />
                 </div>
               </div>
+
 
               <button
                 onClick={() => {
