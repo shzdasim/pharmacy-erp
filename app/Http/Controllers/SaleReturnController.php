@@ -111,10 +111,26 @@ class SaleReturnController extends Controller
 
     // ===== CRUD =====
 
-    public function index()
-    {
-        return SaleReturn::with(['customer'])->latest()->get();
+    // SaleReturnController@index
+public function index(Request $request)
+{
+    $qPosted   = trim((string) $request->query('posted'));
+    $qCustomer = trim((string) $request->query('customer'));
+
+    $query = \App\Models\SaleReturn::with(['customer'])->latest();
+
+    if ($qPosted !== '') {
+        $query->where('posted_number', 'like', '%' . $qPosted . '%');
     }
+    if ($qCustomer !== '') {
+        $query->whereHas('customer', function ($q) use ($qCustomer) {
+            $q->where('name', 'like', '%' . $qCustomer . '%');
+        });
+    }
+
+    return $query->get();
+}
+
 
     public function show(SaleReturn $saleReturn)
     {
