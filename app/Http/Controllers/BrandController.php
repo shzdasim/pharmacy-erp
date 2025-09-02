@@ -10,7 +10,10 @@ use Illuminate\Support\Facades\Storage;
 class BrandController extends Controller
 {
     public function index() {
-        return Brand::all();
+       // Return products_count so UI can disable Delete
+        return Brand::withCount('products')
+            ->orderBy('name')
+            ->get();
     }
 
     public function store(Request $request) {
@@ -52,6 +55,12 @@ class BrandController extends Controller
     }
 
     public function destroy(Brand $brand) {
+        // HARD GUARD: block delete if any product references this brand
+        if ($brand->products()->exists()) {
+            return response()->json([
+                'message' => 'Cannot delete: brand is used by one or more products.'
+            ], 422);
+        }
         if ($brand->image) {
             Storage::disk('public')->delete($brand->image);
         }
