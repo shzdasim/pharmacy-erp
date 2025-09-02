@@ -10,6 +10,9 @@ import {
   TagIcon,
   CubeIcon,
   DocumentTextIcon,
+  FolderMinusIcon,
+  DocumentCurrencyDollarIcon,
+  DocumentMinusIcon
 } from "@heroicons/react/24/outline";
 
 export default function Sidebar() {
@@ -26,9 +29,9 @@ export default function Sidebar() {
     { name: "Brands", path: "/brands", icon: <TagIcon className="w-6 h-6" /> },
     { name: "Products", path: "/products", icon: <CubeIcon className="w-6 h-6" /> },
     { name: "Purchase Invoice", path: "/purchase-invoices", icon: <DocumentTextIcon className="w-6 h-6" /> },
-    { name: "Purchase Return", path: "/purchase-returns", icon: <DocumentTextIcon className="w-6 h-6" /> },
-    { name: "Sale Invoice", path: "/sale-invoices", icon: <DocumentTextIcon className="w-6 h-6" /> },
-    { name: "Sale Return", path: "/sale-returns", icon: <DocumentTextIcon className="w-6 h-6" /> },
+    { name: "Purchase Return", path: "/purchase-returns", icon: <FolderMinusIcon className="w-6 h-6" /> },
+    { name: "Sale Invoice", path: "/sale-invoices", icon: <DocumentCurrencyDollarIcon className="w-6 h-6" /> },
+    { name: "Sale Return", path: "/sale-returns", icon: <DocumentMinusIcon className="w-6 h-6" /> },
     
 
   ];
