@@ -22,32 +22,56 @@
 <meta charset="utf-8"/>
 <title>Sale Invoice (Thermal) - {{ $posted }}</title>
 <style>
-  /* 80mm paper-ish receipt */
+  /* --- Page & print setup (78mm width, no browser headers/footers) --- */
+  @page { size: 78mm auto; margin: 0; }
   * { box-sizing: border-box; }
-  html, body { margin:0; padding:0; font-family:'Courier New', monospace; color:#111; }
+  html, body { margin:0; padding:0; color:#000; background:#fff; }
+  body { 
+    font-family: 'Courier New', monospace;
+    font-weight: 700;                /* all text bold for darker thermal output */
+    font-size: 13px;                 /* slightly larger for legibility */
+    line-height: 1.25;
+    -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+  }
+
   .print-actions { margin:8px; text-align:right; }
   .print-actions button { padding:6px 10px; cursor:pointer; }
   @media print { .print-actions { display:none; } }
 
-  .receipt { width:80mm; max-width:100%; margin:0 auto; padding:8px 10px; }
+  /* --- Receipt layout --- */
+  .receipt { width:78mm; max-width:100%; margin:0 auto; padding:0 6px 6px; } /* top padding 0 so logo is first pixel */
   .center { text-align:center; }
   .right { text-align:right; }
-  .muted { color:#666; }
-  .logo { max-width:48mm; max-height:32mm; object-fit:contain; display:block; margin:0 auto 6px; }
-  .hr { border-top:1px dashed #999; margin:6px 0; }
+  .logo { max-width:56mm; max-height:32mm; object-fit:contain; display:block; margin:0 auto 6px; }
+  .hr { border-top:1px dashed #000; margin:6px 0; }
 
-  .pair { display:flex; justify-content:space-between; font-size:12px; }
+  .pair { display:flex; justify-content:space-between; }
   .pair + .pair { margin-top:2px; }
 
-  table { width:100%; border-collapse:collapse; font-size:12px; }
-  thead th { text-align:left; padding:4px 0; border-bottom:1px dashed #999; }
+  /* --- Table --- */
+  table { width:100%; border-collapse:collapse; }
+  thead th { text-align:left; padding:4px 0; border-bottom:1px dashed #000; }
   tbody td { padding:4px 0; border-bottom:1px dashed #eee; vertical-align:top; }
+  th.right, td.right { text-align:right; white-space:nowrap; }
 
-  .totals .pair { font-size:12px; }
-  .totals .pair.total { font-weight:700; font-size:13px; }
+  /* Fit columns within 100% total on 78mm */
+  th.col-name     { width:35%; }
+  th.col-qty      { width:13%; }
+  th.col-price    { width:15%; }
+  th.col-disc     { width:17%; }
+  th.col-subtotal { width:20%; }
 
-  .note { margin-top:6px; font-size:11px; white-space:pre-wrap; }
-  .foot { margin-top:6px; text-align:center; font-size:11px; }
+  /* --- Totals --- */
+  .totals .pair { }
+  .totals .pair.total { font-size:14px; }
+
+  /* --- Footer --- */
+  .note { margin-top:6px; white-space:pre-wrap; }
+  .foot { margin-top:6px; text-align:center; }
+
+  /* Remove accidental extra space at end so cutters trim right after "Thank you!" */
+  .receipt, .foot { padding-bottom:0; margin-bottom:0; }
 </style>
 </head>
 <body>
@@ -56,12 +80,14 @@
 </div>
 
 <div class="receipt">
+  {{-- Start at logo (no top padding/margins) --}}
   @if($logo)
     <img class="logo" src="{{ $logo }}" alt="Logo">
   @endif
-  <div class="center" style="font-weight:700">{{ $store }}</div>
-  @if($addr)<div class="center muted">{{ $addr }}</div>@endif
-  @if($phone)<div class="center muted">Ph: {{ $phone }}</div>@endif
+
+  <div class="center" style="font-size:36px">{{ $store }}</div>
+  @if($addr)<div class="center">{{ $addr }}</div>@endif
+  @if($phone)<div class="center">Ph: {{ $phone }}</div>@endif
 
   <div class="hr"></div>
 
@@ -75,18 +101,18 @@
   <table>
     <thead>
       <tr>
-        <th style="width:55%">Name</th>
-        <th class="right" style="width:15%">Qty</th>
-        <th class="right" style="width:15%">Price</th>
-        <th class="right" style="width:15%">Disc%</th>
-        <th class="right" style="width:20%">Subtotal</th>
+        <th class="col-name">Name</th>
+        <th class="right col-qty">Qty</th>
+        <th class="right col-price">Price</th>
+        <th class="right col-disc">Disc%</th>
+        <th class="right col-subtotal">Subtotal</th>
       </tr>
     </thead>
     <tbody>
       @foreach($invoice->items as $it)
         <tr>
           <td>{{ optional($it->product)->name ?? '-' }}</td>
-          <td class="right">{{ number_format((float)$it->quantity, 2) }}</td>
+          <td class="right">{{ number_format((float)$it->quantity) }}</td>
           <td class="right">{{ number_format((float)$it->price, 2) }}</td>
           <td class="right">{{ number_format((float)$it->item_discount_percentage, 2) }}</td>
           <td class="right">{{ number_format((float)$it->sub_total, 2) }}</td>
@@ -104,7 +130,6 @@
     <div class="pair total"><div>Total</div><div>{{ number_format((float)$total, 2) }}</div></div>
   </div>
 
-  {{-- Footer note at bottom of receipt --}}
   @if($footerNote !== '')
     <div class="hr"></div>
     <div class="note">{{ $footerNote }}</div>
