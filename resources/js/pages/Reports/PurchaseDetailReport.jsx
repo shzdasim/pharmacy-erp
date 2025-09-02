@@ -17,14 +17,14 @@ const fmtCurrency = (v) =>
 const smallSelectStyles = {
   control: (base) => ({
     ...base,
-    minHeight: 30,
-    height: 30,
+    minHeight: 28,
+    height: 28,
     borderColor: "#D1D5DB",
     boxShadow: "none",
     "&:hover": { borderColor: "#9CA3AF" },
   }),
-  valueContainer: (base) => ({ ...base, height: 30, padding: "0 6px" }),
-  indicatorsContainer: (base) => ({ ...base, height: 30 }),
+  valueContainer: (base) => ({ ...base, height: 28, padding: "0 6px" }),
+  indicatorsContainer: (base) => ({ ...base, height: 28 }),
   input: (base) => ({ ...base, margin: 0, padding: 0 }),
   menuPortal: (base) => ({ ...base, zIndex: 9999 }),
 };
@@ -126,69 +126,60 @@ export default function PurchaseDetailReport() {
     fetchReport();
   };
 
-  // PDF export
-// PDF export (popup-safe)
-const exportPdf = async () => {
-  // open a blank tab immediately (keeps browsers from blocking it)
-  const win = window.open("", "_blank");
-  if (!win) {
-    toast.error("Please allow pop-ups for this site to view the PDF.");
-    return;
-  }
-
-  try {
-    setPdfLoading(true);
-
-    const res = await axios.get("/api/reports/purchase-detail/pdf", {
-      params: {
-        from: fromDate,
-        to: toDate,
-        supplier_id: supplierId || undefined,
-        product_id: productId || undefined,
-      },
-      responseType: "blob",
-      // withCredentials helps if you rely on cookies/Sanctum
-      withCredentials: true,
-    });
-
-    const contentType =
-      (res.headers && (res.headers["content-type"] || res.headers["Content-Type"])) || "";
-
-    // If server returned an error (HTML/JSON), show it nicely and close the pre-opened tab
-    if (!contentType.includes("application/pdf")) {
-      // Try to read error text from the blob
-      const text = typeof res.data?.text === "function" ? await res.data.text() : "";
-      win.close();
-      toast.error(text?.slice(0, 200) || "Failed to generate PDF.");
+  // PDF export (popup-safe)
+  const exportPdf = async () => {
+    const win = window.open("", "_blank");
+    if (!win) {
+      toast.error("Please allow pop-ups for this site to view the PDF.");
       return;
     }
 
-    // Success: build a blob URL and point the already-opened tab at it
-    const blob = new Blob([res.data], { type: "application/pdf" });
-    const url = URL.createObjectURL(blob);
-    win.location.href = url;
+    try {
+      setPdfLoading(true);
+      const res = await axios.get("/api/reports/purchase-detail/pdf", {
+        params: {
+          from: fromDate,
+          to: toDate,
+          supplier_id: supplierId || undefined,
+          product_id: productId || undefined,
+        },
+        responseType: "blob",
+        withCredentials: true,
+      });
 
-    // Cleanup: revoke the object URL after use
-    const cleanup = () => URL.revokeObjectURL(url);
-    // Revoke after tab navigates away or after a minute as a fallback
-    const timer = setTimeout(cleanup, 60000);
-    const i = setInterval(() => {
-      if (win.closed) {
-        clearInterval(i);
-        clearTimeout(timer);
-        cleanup();
+      const contentType =
+        (res.headers && (res.headers["content-type"] || res.headers["Content-Type"])) || "";
+
+      if (!contentType.includes("application/pdf")) {
+        const text = typeof res.data?.text === "function" ? await res.data.text() : "";
+        win.close();
+        toast.error(text?.slice(0, 200) || "Failed to generate PDF.");
+        return;
       }
-    }, 3000);
-  } catch (e) {
-    console.error(e);
-    // Close the pre-opened tab if something failed
-    try { win.close(); } catch {}
-    toast.error("Could not open PDF.");
-  } finally {
-    setPdfLoading(false);
-  }
-};
 
+      const blob = new Blob([res.data], { type: "application/pdf" });
+      const url = URL.createObjectURL(blob);
+      win.location.href = url;
+
+      const cleanup = () => URL.revokeObjectURL(url);
+      const timer = setTimeout(cleanup, 60000);
+      const i = setInterval(() => {
+        if (win.closed) {
+          clearInterval(i);
+          clearTimeout(timer);
+          cleanup();
+        }
+      }, 3000);
+    } catch (e) {
+      console.error(e);
+      try {
+        win.close();
+      } catch {}
+      toast.error("Could not open PDF.");
+    } finally {
+      setPdfLoading(false);
+    }
+  };
 
   // Keyboard flow for date inputs (don't override React-Select behavior)
   const nextFocus = (ref) => ref?.current?.focus?.();
@@ -200,22 +191,35 @@ const exportPdf = async () => {
   };
 
   return (
-    <div className="p-3 w-full overflow-x-hidden">
-      <h1 className="text-sm font-semibold mb-2 tracking-tight">Purchase Detail Report</h1>
+    <div className="p-2 w-full overflow-x-hidden">
+      {/* Ultra-compact style just for this component */}
+      <style>{`
+        .tight-table { border-collapse: collapse; table-layout: fixed; }
+        .tight-table th, .tight-table td { padding: 0 !important; line-height: 1.05; font-size: 10px; }
+        .tight-table th { background: #f8fafc; font-weight: 600; color: #374151; }
+        .tight-table .num { text-align: right; }
+        .tight-table .nowrap { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .tight-table tr:nth-child(even) { background: #f9fafb; }
+        .tight-card { margin-bottom: 6px; border-radius: 6px; }
+        .tight-card-hd { padding: 4px 6px; }
+        .tight-hd-text { font-size: 10px; }
+      `}</style>
+
+      <h1 className="text-[12px] font-semibold mb-1 tracking-tight">Purchase Detail Report</h1>
 
       {/* Filter Form (compact) */}
       <form
         onSubmit={handleSubmit}
-        className="mb-3 bg-white rounded-md p-2 shadow-sm border border-gray-200 text-[12px]"
+        className="mb-2 bg-white rounded-md p-2 shadow-sm border border-gray-200 text-[11px]"
       >
         <div className="flex flex-wrap items-end gap-2">
           {/* From */}
           <div className="flex flex-col">
-            <label className="text-[11px] text-gray-600 mb-0.5">From</label>
+            <label className="text-[10px] text-gray-600 mb-0.5">From</label>
             <input
               ref={fromRef}
               type="date"
-              className="border rounded px-1 py-1 text-[12px] w-[150px] focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              className="border rounded px-1 py-[2px] text-[11px] w-[130px] focus:outline-none focus:ring-2 focus:ring-indigo-500"
               value={fromDate}
               onChange={(e) => setFromDate(e.target.value)}
               onKeyDown={(e) => onKeyDownEnter(e, toRef)}
@@ -224,11 +228,11 @@ const exportPdf = async () => {
 
           {/* To */}
           <div className="flex flex-col">
-            <label className="text-[11px] text-gray-600 mb-0.5">To</label>
+            <label className="text-[10px] text-gray-600 mb-0.5">To</label>
             <input
               ref={toRef}
               type="date"
-              className="border rounded px-1 py-1 text-[12px] w-[150px] focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              className="border rounded px-1 py-[2px] text-[11px] w-[130px] focus:outline-none focus:ring-2 focus:ring-indigo-500"
               value={toDate}
               onChange={(e) => setToDate(e.target.value)}
               onKeyDown={(e) => onKeyDownEnter(e, { current: supplierRef.current?.inputRef })}
@@ -236,8 +240,8 @@ const exportPdf = async () => {
           </div>
 
           {/* Supplier */}
-          <div className="flex flex-col" style={{ minWidth: 220 }}>
-            <label className="text-[11px] text-gray-600 mb-0.5">Supplier</label>
+          <div className="flex flex-col" style={{ minWidth: 210 }}>
+            <label className="text-[10px] text-gray-600 mb-0.5">Supplier</label>
             <Select
               ref={supplierRef}
               classNamePrefix="rs"
@@ -251,10 +255,8 @@ const exportPdf = async () => {
                 setSupplierValue(opt);
                 const id = opt?.value || "";
                 setSupplierId(id);
-                // reset product when supplier changes
                 setProductValue(null);
                 setProductId("");
-                // after the menu closes, focus next field
                 setTimeout(() => {
                   productRef.current?.focus?.();
                   productRef.current?.inputRef?.focus?.();
@@ -264,8 +266,8 @@ const exportPdf = async () => {
           </div>
 
           {/* Product */}
-          <div className="flex flex-col" style={{ minWidth: 240 }}>
-            <label className="text-[11px] text-gray-600 mb-0.5">Product</label>
+          <div className="flex flex-col" style={{ minWidth: 220 }}>
+            <label className="text-[10px] text-gray-600 mb-0.5">Product</label>
             <Select
               ref={productRef}
               classNamePrefix="rs"
@@ -287,7 +289,7 @@ const exportPdf = async () => {
           <button
             ref={submitRef}
             type="submit"
-            className="h-8 px-3 rounded bg-indigo-600 text-white text-[12px] font-medium hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            className="h-7 px-2 rounded bg-indigo-600 text-white text-[11px] font-medium hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500"
             disabled={loading}
             title="Submit"
           >
@@ -298,7 +300,7 @@ const exportPdf = async () => {
           <button
             type="button"
             onClick={exportPdf}
-            className="h-8 px-3 rounded bg-emerald-600 text-white text-[12px] font-medium hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+            className="h-7 px-2 rounded bg-emerald-600 text-white text-[11px] font-medium hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-500"
             disabled={pdfLoading}
             title="Export PDF"
           >
@@ -309,155 +311,136 @@ const exportPdf = async () => {
 
       {/* Results */}
       {data.length === 0 && !loading && (
-        <div className="text-[12px] text-gray-600">No data found for the selected filters.</div>
+        <div className="text-[11px] text-gray-600">No data found for the selected filters.</div>
       )}
 
-      <div className="flex flex-col gap-3">
+      <div className="flex flex-col gap-2">
         {data.map((inv) => (
           <div
             key={inv.id || `${inv.posted_number}-${inv.invoice_number}-${inv.invoice_date}`}
-            className="bg-white rounded-md border border-gray-200 shadow-sm overflow-hidden"
+            className="bg-white rounded-md border border-gray-200 shadow-sm overflow-hidden tight-card"
           >
             {/* Header */}
-            <div className="px-2 py-1 border-b border-gray-200 bg-gray-50 text-[11px] grid grid-cols-2 md:grid-cols-4 gap-x-4 gap-y-1">
-              <div>
+            <div className="px-2 py-1 border-b border-gray-200 bg-gray-50 text-[10px] grid grid-cols-2 md:grid-cols-4 gap-x-2 gap-y-0.5 tight-card-hd">
+              <div className="tight-hd-text">
                 <span className="text-gray-600">Supplier:</span>{" "}
                 <span className="font-medium text-gray-800">{inv.supplier_name || "-"}</span>
               </div>
-              <div>
+              <div className="tight-hd-text">
                 <span className="text-gray-600">Posted #:</span>{" "}
                 <span className="font-medium text-gray-800">{inv.posted_number || "-"}</span>
               </div>
-              <div>
+              <div className="tight-hd-text">
                 <span className="text-gray-600">Invoice #:</span>{" "}
                 <span className="font-medium text-gray-800">{inv.invoice_number || "-"}</span>
               </div>
-              <div>
+              <div className="tight-hd-text">
                 <span className="text-gray-600">Date:</span>{" "}
                 <span className="font-medium text-gray-800">{inv.invoice_date || "-"}</span>
               </div>
             </div>
 
-            {/* Table — only the table area scrolls horizontally */}
-            <div className="relative max-w-full overflow-x-auto overscroll-x-contain">
-              <table className="min-w-[1800px] w-full table-auto border border-gray-200 border-collapse text-[11px] leading-tight">
-                <thead className="bg-gray-50">
-                  <tr className="text-gray-700">
-                    <th className="px-1 py-[2px] border border-gray-200 text-left whitespace-nowrap">Product Name</th>
-                    <th className="px-1 py-[2px] border border-gray-200 text-left whitespace-nowrap">Batch</th>
-                    <th className="px-1 py-[2px] border border-gray-200 text-left whitespace-nowrap">Expiry</th>
-                    <th className="px-1 py-[2px] border border-gray-200 text-right whitespace-nowrap">Pack Qty</th>
-                    <th className="px-1 py-[2px] border border-gray-200 text-right whitespace-nowrap">Pack Size</th>
-                    <th className="px-1 py-[2px] border border-gray-200 text-right whitespace-nowrap">Unit Qty</th>
-                    <th className="px-1 py-[2px] border border-gray-200 text-right whitespace-nowrap">Pack Purchase</th>
-                    <th className="px-1 py-[2px] border border-gray-200 text-right whitespace-nowrap">Unit Purchase</th>
-                    <th className="px-1 py-[2px] border border-gray-200 text-right whitespace-nowrap">Pack Sale</th>
-                    <th className="px-1 py-[2px] border border-gray-200 text-right whitespace-nowrap">Unit Sale</th>
-                    <th className="px-1 py-[2px] border border-gray-200 text-right whitespace-nowrap">Pack Bonus</th>
-                    <th className="px-1 py-[2px] border border-gray-200 text-right whitespace-nowrap">Unit Bonus</th>
-                    <th className="px-1 py-[2px] border border-gray-200 text-right whitespace-nowrap">Item Disc %</th>
-                    <th className="px-1 py-[2px] border border-gray-200 text-right whitespace-nowrap">Margin</th>
-                    <th className="px-1 py-[2px] border border-gray-200 text-right whitespace-nowrap">Sub Total</th>
-                    <th className="px-1 py-[2px] border border-gray-200 text-right whitespace-nowrap">Quantity</th>
+            {/* Table — compact, fixed layout, narrow widths */}
+            <div className="relative max-w-full overflow-x-auto">
+              <table className="tight-table w-full min-w-[1120px] border border-gray-200">
+                <colgroup>
+                  <col style={{ width: 220 }} />
+                  <col style={{ width: 90 }} />
+                  <col style={{ width: 90 }} />
+                  {/* 13 numeric columns @ 60px each */}
+                  {Array.from({ length: 13 }).map((_, i) => (
+                    <col key={i} style={{ width: 60 }} />
+                  ))}
+                </colgroup>
+
+                <thead>
+                  <tr>
+                    <th className="border border-gray-200 text-left nowrap">Product Name</th>
+                    <th className="border border-gray-200 text-left nowrap">Batch</th>
+                    <th className="border border-gray-200 text-left nowrap">Expiry</th>
+                    <th className="border border-gray-200 num nowrap">Pack Qty</th>
+                    <th className="border border-gray-200 num nowrap">Pack Size</th>
+                    <th className="border border-gray-200 num nowrap">Unit Qty</th>
+                    <th className="border border-gray-200 num nowrap">Pack Purchase</th>
+                    <th className="border border-gray-200 num nowrap">Unit Purchase</th>
+                    <th className="border border-gray-200 num nowrap">Pack Sale</th>
+                    <th className="border border-gray-200 num nowrap">Unit Sale</th>
+                    <th className="border border-gray-200 num nowrap">Pack Bonus</th>
+                    <th className="border border-gray-200 num nowrap">Unit Bonus</th>
+                    <th className="border border-gray-200 num nowrap">Item Disc %</th>
+                    <th className="border border-gray-200 num nowrap">Margin</th>
+                    <th className="border border-gray-200 num nowrap">Sub Total</th>
+                    <th className="border border-gray-200 num nowrap">Quantity</th>
                   </tr>
                 </thead>
 
                 <tbody className="tabular-nums">
                   {(inv.items || []).map((it, idx) => (
-                    <tr
-                      key={(it.id ?? idx) + "-" + (it.product_id ?? "p") + "-" + idx}
-                      className="odd:bg-white even:bg-gray-50/60"
-                    >
-                      <td className="px-1 py-[2px] border border-gray-200 text-left truncate">
-                        {it.product_name || it.product?.name || "-"}
-                      </td>
-                      <td className="px-1 py-[2px] border border-gray-200 text-left truncate">{it.batch || "-"}</td>
-                      <td className="px-1 py-[2px] border border-gray-200 text-left truncate">{it.expiry || "-"}</td>
-                      <td className="px-1 py-[2px] border border-gray-200 text-right whitespace-nowrap">
-                        {it.pack_quantity ?? 0}
-                      </td>
-                      <td className="px-1 py-[2px] border border-gray-200 text-right whitespace-nowrap">
-                        {it.pack_size ?? 0}
-                      </td>
-                      <td className="px-1 py-[2px] border border-gray-200 text-right whitespace-nowrap">
-                        {it.unit_quantity ?? 0}
-                      </td>
-                      <td className="px-1 py-[2px] border border-gray-200 text-right whitespace-nowrap">
-                        {fmtCurrency(it.pack_purchase_price)}
-                      </td>
-                      <td className="px-1 py-[2px] border border-gray-200 text-right whitespace-nowrap">
-                        {fmtCurrency(it.unit_purchase_price)}
-                      </td>
-                      <td className="px-1 py-[2px] border border-gray-200 text-right whitespace-nowrap">
-                        {fmtCurrency(it.pack_sale_price)}
-                      </td>
-                      <td className="px-1 py-[2px] border border-gray-200 text-right whitespace-nowrap">
-                        {fmtCurrency(it.unit_sale_price)}
-                      </td>
-                      <td className="px-1 py-[2px] border border-gray-200 text-right whitespace-nowrap">
-                        {it.pack_bonus ?? 0}
-                      </td>
-                      <td className="px-1 py-[2px] border border-gray-200 text-right whitespace-nowrap">
-                        {it.unit_bonus ?? 0}
-                      </td>
-                      <td className="px-1 py-[2px] border border-gray-200 text-right whitespace-nowrap">
+                    <tr key={(it.id ?? idx) + "-" + (it.product_id ?? "p") + "-" + idx}>
+                      <td className="border border-gray-200 text-left nowrap">{it.product_name || "-"}</td>
+                      <td className="border border-gray-200 text-left nowrap">{it.batch || "-"}</td>
+                      <td className="border border-gray-200 text-left nowrap">{it.expiry || "-"}</td>
+                      <td className="border border-gray-200 num nowrap">{it.pack_quantity ?? 0}</td>
+                      <td className="border border-gray-200 num nowrap">{it.pack_size ?? 0}</td>
+                      <td className="border border-gray-200 num nowrap">{it.unit_quantity ?? 0}</td>
+                      <td className="border border-gray-200 num nowrap">{fmtCurrency(it.pack_purchase_price)}</td>
+                      <td className="border border-gray-200 num nowrap">{fmtCurrency(it.unit_purchase_price)}</td>
+                      <td className="border border-gray-200 num nowrap">{fmtCurrency(it.pack_sale_price)}</td>
+                      <td className="border border-gray-200 num nowrap">{fmtCurrency(it.unit_sale_price)}</td>
+                      <td className="border border-gray-200 num nowrap">{it.pack_bonus ?? 0}</td>
+                      <td className="border border-gray-200 num nowrap">{it.unit_bonus ?? 0}</td>
+                      <td className="border border-gray-200 num nowrap">
                         {(it.item_discount_percentage ?? 0).toFixed(2)}
                       </td>
-                      <td className="px-1 py-[2px] border border-gray-200 text-right whitespace-nowrap">
-                        {(it.margin ?? 0).toFixed(2)}
-                      </td>
-                      <td className="px-1 py-[2px] border border-gray-200 text-right whitespace-nowrap">
-                        {fmtCurrency(it.sub_total)}
-                      </td>
-                      <td className="px-1 py-[2px] border border-gray-200 text-right whitespace-nowrap">
-                        {it.quantity ?? 0}
-                      </td>
+                      <td className="border border-gray-200 num nowrap">{(it.margin ?? 0).toFixed(2)}</td>
+                      <td className="border border-gray-200 num nowrap">{fmtCurrency(it.sub_total)}</td>
+                      <td className="border border-gray-200 num nowrap">{it.quantity ?? 0}</td>
                     </tr>
                   ))}
 
                   {(!inv.items || !inv.items.length) && (
                     <tr>
-                      <td colSpan={16} className="px-1 py-2 border border-gray-200 text-center text-gray-500">
+                      <td colSpan={16} className="border border-gray-200 text-center text-gray-500">
                         No items match this filter in this invoice.
                       </td>
                     </tr>
                   )}
                 </tbody>
 
-                <tfoot className="bg-gray-50 tabular-nums">
-                  <tr className="text-gray-800">
-                    <td className="px-1 py-[2px] border border-gray-200 text-right font-medium" colSpan={9}>
+                <tfoot>
+                  <tr>
+                    <td className="border border-gray-200 text-right font-medium" colSpan={9}>
                       Tax %
                     </td>
-                    <td className="px-1 py-[2px] border border-gray-200 text-right" colSpan={2}>
+                    <td className="border border-gray-200 num" colSpan={2}>
                       {(inv.tax_percentage ?? 0).toFixed(2)}
                     </td>
-                    <td className="px-1 py-[2px] border border-gray-200 text-right font-medium" colSpan={3}>
+                    <td className="border border-gray-200 text-right font-medium" colSpan={3}>
                       Tax Amount
                     </td>
-                    <td className="px-1 py-[2px] border border-gray-200 text-right" colSpan={2}>
+                    <td className="border border-gray-200 num" colSpan={2}>
                       {fmtCurrency(inv.tax_amount)}
                     </td>
                   </tr>
-                  <tr className="text-gray-800">
-                    <td className="px-1 py-[2px] border border-gray-200 text-right font-medium" colSpan={9}>
+                  <tr>
+                    <td className="border border-gray-200 text-right font-medium" colSpan={9}>
                       Discount %
                     </td>
-                    <td className="px-1 py-[2px] border border-gray-200 text-right" colSpan={2}>
+                    <td className="border border-gray-200 num" colSpan={2}>
                       {(inv.discount_percentage ?? 0).toFixed(2)}
                     </td>
-                    <td className="px-1 py-[2px] border border-gray-200 text-right font-medium" colSpan={3}>
+                    <td className="border border-gray-200 text-right font-medium" colSpan={3}>
                       Discount Amount
                     </td>
-                    <td className="px-1 py-[2px] border border-gray-200 text-right" colSpan={2}>
+                    <td className="border border-gray-200 num" colSpan={2}>
                       {fmtCurrency(inv.discount_amount)}
                     </td>
                   </tr>
-                  <tr className="text-gray-900">
-                    <td className="px-1 py-[2px] border border-gray-200 text-right font-semibold" colSpan={14}>
+                  <tr>
+                    <td className="border border-gray-200 text-right font-semibold" colSpan={14}>
                       Total Amount
                     </td>
-                    <td className="px-1 py-[2px] border border-gray-200 text-right font-semibold" colSpan={2}>
+                    <td className="border border-gray-200 num font-semibold" colSpan={2}>
                       {fmtCurrency(inv.total_amount)}
                     </td>
                   </tr>
