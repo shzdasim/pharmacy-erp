@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import axios from "axios";
 import Select from "react-select";
 import toast from "react-hot-toast";
@@ -27,7 +27,16 @@ export default function ProductForm({ initialData = null, onSubmitSuccess }) {
   const [brands, setBrands] = useState([]);
   const [suppliers, setSuppliers] = useState([]);
   const [files, setFiles] = useState([]);
-  const [batches, setBatches] = useState([]); // 🆕 for batch table
+  const [batches, setBatches] = useState([]); // for batch table
+
+  // === Refs for focus & navigation ===
+  const nameRef = useRef(null);
+  const formulationRef = useRef(null);
+  const packSizeRef = useRef(null);
+  const categorySelectRef = useRef(null);
+  const brandSelectRef = useRef(null);
+  const supplierSelectRef = useRef(null);
+  const saveBtnRef = useRef(null);
 
   const fetchDropdowns = async () => {
     const [catRes, brandRes, supRes] = await Promise.all([
@@ -80,6 +89,12 @@ export default function ProductForm({ initialData = null, onSubmitSuccess }) {
     }
   }, []);
 
+  // Focus Name on mount (and after re-renders)
+  useEffect(() => {
+    const t = setTimeout(() => nameRef.current?.focus(), 120);
+    return () => clearTimeout(t);
+  }, []);
+
   const handleChange = (e) => {
     setForm({ ...form, [e.target.name]: e.target.value });
   };
@@ -112,15 +127,16 @@ export default function ProductForm({ initialData = null, onSubmitSuccess }) {
           headers: { "Content-Type": "multipart/form-data" },
         });
         toast.success("✅ Product added!");
+        // stay on form for adding another → reset relevant fields & refocus Name
         setForm({ narcotic: "no" });
         setFiles([]);
         fetchNewCodes();
+        setTimeout(() => nameRef.current?.focus(), 50);
       }
 
       if (onSubmitSuccess) onSubmitSuccess();
     } catch (error) {
       if (error.response?.status === 422) {
-        // Laravel validation errors
         const errors = error.response.data.errors;
         Object.values(errors).forEach((messages) => {
           messages.forEach((msg) => toast.error(msg));
@@ -131,30 +147,53 @@ export default function ProductForm({ initialData = null, onSubmitSuccess }) {
     }
   };
 
-  // 🔑 Keyboard Shortcuts
+  // 🔑 Keyboard Shortcuts & enter-flow navigation
   useEffect(() => {
     const handleShortcut = (e) => {
-      if (e.altKey && e.key.toLowerCase() === "s") {
+      // Save (Alt+S) and Save (Alt+N)
+      if (e.altKey && (e.key.toLowerCase() === "s" || e.key.toLowerCase() === "n")) {
         e.preventDefault();
-        document.getElementById("save-product-btn")?.click();
+        saveBtnRef.current?.click();
       }
+      // Back to list
       if (e.altKey && e.key.toLowerCase() === "c") {
         e.preventDefault();
         navigate("/products");
       }
     };
-
     window.addEventListener("keydown", handleShortcut);
     return () => window.removeEventListener("keydown", handleShortcut);
   }, [navigate]);
 
+  // Small react-select styles
+  const smallSelectStyles = {
+    control: (base) => ({
+      ...base,
+      minHeight: "28px",
+      height: "28px",
+      fontSize: "12px",
+    }),
+    valueContainer: (base) => ({
+      ...base,
+      height: "28px",
+      padding: "0 6px",
+    }),
+    indicatorsContainer: (base) => ({
+      ...base,
+      height: "28px",
+    }),
+    input: (base) => ({
+      ...base,
+      margin: 0,
+      padding: 0,
+    }),
+    menu: (base) => ({ ...base, fontSize: "12px" }),
+  };
+
   return (
     <div className="grid grid-cols-3 gap-6">
       {/* LEFT SIDE: FORM */}
-      <form
-        onSubmit={handleSubmit}
-        className="space-y-6 col-span-2"
-      >
+      <form onSubmit={handleSubmit} className="space-y-6 col-span-2">
         {/* Row 1: Image */}
         <div className="grid grid-cols-1">
           <div>
@@ -209,31 +248,51 @@ export default function ProductForm({ initialData = null, onSubmitSuccess }) {
           <div>
             <label className="block font-medium">Name</label>
             <input
+              ref={nameRef}
               type="text"
               name="name"
-              autoFocus
               value={form.name || ""}
               onChange={handleChange}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  formulationRef.current?.focus();
+                }
+              }}
               className="border w-full px-2 py-1 rounded"
             />
           </div>
           <div>
             <label className="block font-medium">Formulation</label>
             <input
+              ref={formulationRef}
               type="text"
               name="formulation"
               value={form.formulation || ""}
               onChange={handleChange}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  packSizeRef.current?.focus();
+                }
+              }}
               className="border w-full px-2 py-1 rounded"
             />
           </div>
           <div>
             <label className="block font-medium">Pack Size</label>
             <input
+              ref={packSizeRef}
               type="text"
               name="pack_size"
               value={form.pack_size || ""}
               onChange={handleChange}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  categorySelectRef.current?.focus();
+                }
+              }}
               className="border w-full px-2 py-1 rounded"
             />
           </div>
@@ -251,125 +310,173 @@ export default function ProductForm({ initialData = null, onSubmitSuccess }) {
         </div>
 
         {/* Row 5: Category, Brand, Supplier */}
-        <div className="grid grid-cols-3 gap-4">
-          <div>
-            <label className="block font-medium">Category</label>
-            <Select
-              options={categories.map((c) => ({ value: c.id, label: c.name }))}
-              value={
-                categories
-                  .map((c) => ({ value: c.id, label: c.name }))
-                  .find((opt) => opt.value === form.category_id) || null
-              }
-              onChange={(opt) =>
-                setForm({ ...form, category_id: opt?.value })
-              }
-            />
-          </div>
-          <div>
-            <label className="block font-medium">Brand</label>
-            <Select
-              options={brands.map((b) => ({ value: b.id, label: b.name }))}
-              value={
-                brands
-                  .map((b) => ({ value: b.id, label: b.name }))
-                  .find((opt) => opt.value === form.brand_id) || null
-              }
-              onChange={(opt) => setForm({ ...form, brand_id: opt?.value })}
-            />
-          </div>
-          <div>
-            <label className="block font-medium">Supplier</label>
-            <Select
-              options={suppliers.map((s) => ({ value: s.id, label: s.name }))}
-              value={
-                suppliers
-                  .map((s) => ({ value: s.id, label: s.name }))
-                  .find((opt) => opt.value === form.supplier_id) || null
-              }
-              onChange={(opt) =>
-                setForm({ ...form, supplier_id: opt?.value })
-              }
-            />
-          </div>
+<div className="grid grid-cols-3 gap-4">
+  <div>
+    <label className="block font-medium">Category</label>
+    <Select
+      ref={categorySelectRef}
+      options={categories.map((c) => ({ value: c.id, label: c.name }))}
+      value={
+        categories
+          .map((c) => ({ value: c.id, label: c.name }))
+          .find((opt) => opt.value === form.category_id) || null
+      }
+      onChange={(opt) => {
+        setForm({ ...form, category_id: opt?.value });
+        // after keyboard Enter or mouse select → go to Brand
+        setTimeout(() => brandSelectRef.current?.focus(), 0);
+      }}
+      classNamePrefix="rs"
+      isSearchable
+      styles={smallSelectStyles}
+    />
+  </div>
+
+  <div>
+    <label className="block font-medium">Brand</label>
+    <Select
+      ref={brandSelectRef}
+      options={brands.map((b) => ({ value: b.id, label: b.name }))}
+      value={
+        brands
+          .map((b) => ({ value: b.id, label: b.name }))
+          .find((opt) => opt.value === form.brand_id) || null
+      }
+      onChange={(opt) => {
+        setForm({ ...form, brand_id: opt?.value });
+        // after selection → go to Supplier
+        setTimeout(() => supplierSelectRef.current?.focus(), 0);
+      }}
+      classNamePrefix="rs"
+      isSearchable
+      styles={smallSelectStyles}
+    />
+  </div>
+
+  <div>
+    <label className="block font-medium">Supplier</label>
+    <Select
+      ref={supplierSelectRef}
+      options={suppliers.map((s) => ({ value: s.id, label: s.name }))}
+      value={
+        suppliers
+          .map((s) => ({ value: s.id, label: s.name }))
+          .find((opt) => opt.value === form.supplier_id) || null
+      }
+      onChange={(opt) => {
+        setForm({ ...form, supplier_id: opt?.value });
+        // after selection → jump to Save button
+        setTimeout(() => saveBtnRef.current?.focus(), 0);
+      }}
+      classNamePrefix="rs"
+      isSearchable
+      styles={smallSelectStyles}
+    />
+  </div>
+</div>
+
+
+        {/* Row 6: Mini table (very small fields, no number arrows) */}
+        <div>
+          <table className="w-full border-collapse text-[11px]">
+            <thead>
+              <tr className="bg-gray-100">
+                <th className="border p-1 text-left">Total Qty</th>
+                <th className="border p-1 text-left">Pack P.Price</th>
+                <th className="border p-1 text-left">Pack S.Price</th>
+                <th className="border p-1 text-left">Unit P.Price</th>
+                <th className="border p-1 text-left">Unit S.Price</th>
+                <th className="border p-1 text-left">Avg Price</th>
+                <th className="border p-1 text-left">Margin %</th>
+                <th className="border p-1 text-left">Max Discount</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td className="border p-1">
+                  <input
+                    type="number"
+                    name="quantity"
+                    disabled
+                    value={form.quantity || ""}
+                    className="border w-full h-6 px-1 rounded bg-gray-100 appearance-none [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                  />
+                </td>
+                <td className="border p-1">
+                  <input
+                    type="number"
+                    name="pack_purchase_price"
+                    disabled
+                    value={form.pack_purchase_price || ""}
+                    className="border w-full h-6 px-1 rounded bg-gray-100 appearance-none [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                  />
+                </td>
+                <td className="border p-1">
+                  <input
+                    type="number"
+                    name="pack_sale_price"
+                    disabled
+                    value={form.pack_sale_price || ""}
+                    className="border w-full h-6 px-1 rounded bg-gray-100 appearance-none [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                  />
+                </td>
+                <td className="border p-1">
+                  <input
+                    type="number"
+                    name="unit_purchase_price"
+                    disabled
+                    value={form.unit_purchase_price || ""}
+                    className="border w-full h-6 px-1 rounded bg-gray-100 appearance-none [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                  />
+                </td>
+                <td className="border p-1">
+                  <input
+                    type="number"
+                    name="unit_sale_price"
+                    disabled
+                    value={form.unit_sale_price || ""}
+                    className="border w-full h-6 px-1 rounded bg-gray-100 appearance-none [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                  />
+                </td>
+                <td className="border p-1">
+                  <input
+                    type="number"
+                    name="avg_price"
+                    disabled
+                    value={form.avg_price || ""}
+                    className="border w-full h-6 px-1 rounded bg-gray-100 appearance-none [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                  />
+                </td>
+                <td className="border p-1">
+                  <input
+                    type="number"
+                    name="margin"
+                    disabled
+                    value={form.margin || ""}
+                    className="border w-full h-6 px-1 rounded bg-gray-100 appearance-none [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                  />
+                </td>
+                <td className="border p-1">
+                  <input
+                    type="number"
+                    name="max_discount"
+                    value={form.max_discount || ""}
+                    onChange={handleChange}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        saveBtnRef.current?.focus();
+                      }
+                    }}
+                    className="border w-full h-6 px-1 rounded appearance-none [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                  />
+                </td>
+              </tr>
+            </tbody>
+          </table>
         </div>
 
-        {/* Row 6: Pricing + Margin + Discount + Narcotic */}
-        <div className="grid grid-cols-6 gap-2 items-end">
-          <label className="block font-medium">Total Quantity</label>
-          <input 
-          type="number"
-          name="quantity"
-          disabled
-          value={form.quantity || ""}
-          placeholder="Quantity"
-          className="border w-full px-2 py-1 rounded bg-gray-100"
-          />
-          <label className="block font-medium">Pack P.Price</label>
-          <input
-            type="number"
-            name="pack_purchase_price"
-            disabled
-            value={form.pack_purchase_price || ""}
-            placeholder="Pack Purchase Price"
-            className="border w-full px-2 py-1 rounded bg-gray-100"
-          />
-          <label className="block font-medium">Pack S.Price</label>
-          <input
-            type="number"
-            name="pack_sale_price"
-            disabled
-            value={form.pack_sale_price || ""}
-            placeholder="Pack Sale Price"
-            className="border w-full px-2 py-1 rounded bg-gray-100"
-          />
-          <label className="block font-medium">Unit P.Price</label>
-          <input
-            type="number"
-            name="unit_purchase_price"
-            disabled
-            value={form.unit_purchase_price || ""}
-            placeholder="Unit Purchase Price"
-            className="border w-full px-2 py-1 rounded bg-gray-100"
-          />
-          <label className="block font-medium">Unit S.Price</label>
-          <input
-            type="number"
-            name="unit_sale_price"
-            disabled
-            value={form.unit_sale_price || ""}
-            placeholder="Unit Sale Price"
-            className="border w-full px-2 py-1 rounded bg-gray-100"
-          />
-          <label className="block font-medium">Avg Price</label>
-          <input
-            type="number"
-            name="avg_price"
-            disabled
-            value={form.avg_price || ""}
-            placeholder="Avg Price"
-            className="border w-full px-2 py-1 rounded bg-gray-100"
-          />
-          <label className="block font-medium">Margin %</label>
-          <input
-            type="number"
-            name="margin"
-            disabled
-            value={form.margin || ""}
-            placeholder="Margin %"
-            className="border w-full px-2 py-1 rounded bg-gray-100"
-          />
-          <label className="block font-medium">Max Discount</label>
-          <input
-            type="number"
-            name="max_discount"
-            value={form.max_discount || ""}
-            onChange={handleChange}
-            placeholder="Max Discount"
-            className="border px-2 py-1 rounded"
-          />
-        </div>
-
+        {/* Narcotic (separate row, compact) */}
         <div className="grid grid-cols-3 gap-4">
           <label className="flex items-center space-x-2">
             <input
@@ -389,8 +496,9 @@ export default function ProductForm({ initialData = null, onSubmitSuccess }) {
         <div className="flex items-stretch gap-2">
           <button
             id="save-product-btn"
+            ref={saveBtnRef}
             type="submit"
-            title="Shortcut: Alt + S"
+            title="Shortcuts: Alt+S or Alt+N"
             className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
           >
             Save Product
