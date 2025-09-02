@@ -123,12 +123,26 @@ class SaleInvoiceController extends Controller
         return response()->json(['posted_number' => $code]);
     }
 
-    public function index()
-    {
-        return SaleInvoice::with(['customer'])
-            ->orderBy('id', 'desc')
-            ->get();
+    // SaleInvoiceController@index
+public function index(Request $request)
+{
+    $qPosted   = trim((string) $request->query('posted'));
+    $qCustomer = trim((string) $request->query('customer'));
+
+    $query = SaleInvoice::with(['customer'])->orderByDesc('id');
+
+    if ($qPosted !== '') {
+        $query->where('posted_number', 'like', '%'.$qPosted.'%');
     }
+    if ($qCustomer !== '') {
+        $query->whereHas('customer', function ($q) use ($qCustomer) {
+            $q->where('name', 'like', '%'.$qCustomer.'%');
+        });
+    }
+
+    return $query->get();
+}
+
 
     public function show($id)
     {
