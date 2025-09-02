@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Product;
 use App\Models\Supplier;
 use Illuminate\Http\Request;
 
@@ -12,7 +13,9 @@ class SupplierController extends Controller
      */
     public function index()
     {
-        return response()->json(Supplier::all());
+        return response()->json(
+            Supplier::withCount('products')->get()
+        );
     }
 
     /**
@@ -46,6 +49,13 @@ class SupplierController extends Controller
      */
     public function destroy(Supplier $supplier)
     {
+        // HARD GUARD: block delete if any product references this supplier
+        $inUse = Product::where('supplier_id', $supplier->id)->exists();
+        if ($inUse) {
+            return response()->json([
+                'message' => 'Cannot delete: supplier is used by one or more products.'
+            ], 422);
+        }
         $supplier->delete();
         return response()->json(null, 204);
     }
