@@ -13,7 +13,8 @@ import {
   FolderMinusIcon,
   DocumentCurrencyDollarIcon,
   DocumentMinusIcon,
-  TruckIcon
+  TruckIcon,
+  ChartBarIcon
 } from "@heroicons/react/24/outline";
 
 export default function Sidebar() {
@@ -33,7 +34,8 @@ export default function Sidebar() {
     { name: "Purchase Return", path: "/purchase-returns", icon: <FolderMinusIcon className="w-6 h-6" /> },
     { name: "Sale Invoice", path: "/sale-invoices", icon: <DocumentCurrencyDollarIcon className="w-6 h-6" /> },
     { name: "Sale Return", path: "/sale-returns", icon: <DocumentMinusIcon className="w-6 h-6" /> },
-    { name: "Purchase Orders", path: "/purchase-orders", icon: <TruckIcon className="w-6 h-6" /> }
+    { name: "Purchase Orders", path: "/purchase-orders", icon: <TruckIcon className="w-6 h-6" /> },
+    { name: "Cost of Sale Report", path: "/reports/cost-of-sale", icon: <ChartBarIcon className="w-6 h-6" /> }
     
 
   ];

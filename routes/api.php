@@ -12,6 +12,7 @@ use App\Http\Controllers\ProductController;
 use App\Http\Controllers\PurchaseInvoiceController;
 use App\Http\Controllers\PurchaseOrderController;
 use App\Http\Controllers\PurchaseReturnController;
+use App\Http\Controllers\ReportsController;
 use App\Http\Controllers\SaleInvoiceController;
 use App\Http\Controllers\SaleReturnController;
 use App\Http\Controllers\SupplierController;
@@ -57,6 +58,10 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/dashboard/summary', [DashboardController::class, 'summary']);
     Route::get('/dashboard/near-expiry', [DashboardController::class, 'nearExpiry']);
     Route::get('/dashboard/near-expiry/filters', [DashboardController::class, 'nearExpiryFilters']);
+
+    // Reports
+    Route::get('/reports/cost-of-sale', [ReportsController::class, 'costOfSale']);
+
 });
 
 
