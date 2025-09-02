@@ -63,7 +63,7 @@
   .wm img {
     width:58mm;                      /* fits inside 78mm with margins */
     max-width:90%;
-    opacity:0.2;                    /* light for readability; adjust 0.05–0.12 if needed */
+    opacity:0.5;                    /* light for readability; adjust 0.05–0.12 if needed */
     filter: grayscale(100%) contrast(90%);
     -webkit-print-color-adjust: exact;
             print-color-adjust: exact;
