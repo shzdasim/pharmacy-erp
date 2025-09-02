@@ -42,33 +42,35 @@ export default function PurchaseInvoiceForm({ invoiceId, onSuccess }) {
   });
 
   // only allow numbers (and optionally decimals)
-// allow decimals for price/percentage fields
-const sanitizeNumberInput = (value, allowDecimal = false) => {
-  if (value === "") return ""; // allow empty input
+  // allow decimals for price/percentage fields
+  const sanitizeNumberInput = (value, allowDecimal = false) => {
+    if (value === "") return ""; // allow empty input
 
-  if (allowDecimal) {
-    // valid: numbers with at most one decimal point
-    if (/^\d*\.?\d*$/.test(value)) {
-      return value;
+    if (allowDecimal) {
+      // valid: numbers with at most one decimal point
+      if (/^\d*\.?\d*$/.test(value)) {
+        return value;
+      }
+      return value.slice(0, -1); // strip invalid char
     }
-    return value.slice(0, -1); // strip invalid char
-  }
 
-  // integer-only fields
-  return value.replace(/\D/g, "");
-};
-
-
+    // integer-only fields
+    return value.replace(/\D/g, "");
+  };
 
   const [suppliers, setSuppliers] = useState([]);
   const [products, setProducts] = useState([]);
-  const [currentField, setCurrentField] = useState('supplier');
+  const [currentField, setCurrentField] = useState("supplier");
   const [currentRowIndex, setCurrentRowIndex] = useState(0);
 
   // Refs for navigation
   const supplierRef = useRef(null);
   const invoiceNumberRef = useRef(null);
   const invoiceAmountRef = useRef(null);
+  const taxPercentageRef = useRef(null);
+  const discountPercentageRef = useRef(null);
+  const saveButtonRef = useRef(null);
+
   // productSearchRefs will hold container DOM nodes (wrapping ProductSearchInput)
   const productSearchRefs = useRef([]);
   const packQuantityRefs = useRef([]);
@@ -97,16 +99,15 @@ const sanitizeNumberInput = (value, allowDecimal = false) => {
   }, []);
 
   useEffect(() => {
-    // Handle Alt+S for save
+    // Handle Alt+S for save (from anywhere)
     const handleKeyDown = (e) => {
-      if (e.altKey && e.key === 's') {
+      if (e.altKey && e.key.toLowerCase() === "s") {
         e.preventDefault();
         handleSubmit(e);
       }
     };
-
-    document.addEventListener('keydown', handleKeyDown);
-    return () => document.removeEventListener('keydown', handleKeyDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
   }, [form]);
 
   const fetchSuppliers = async () => {
@@ -132,82 +133,77 @@ const sanitizeNumberInput = (value, allowDecimal = false) => {
     }));
   };
 
-const handleChange = (e) => {
-  const { name, value } = e.target;
+  const handleChange = (e) => {
+    const { name, value } = e.target;
 
-  // Fields that should accept decimals as the user types
-  const decimalFields = new Set([
-    "invoice_amount",
-    "tax_percentage",
-    "tax_amount",
-    "discount_percentage",
-    "discount_amount",
-  ]);
+    // Fields that should accept decimals as the user types
+    const decimalFields = new Set([
+      "invoice_amount",
+      "tax_percentage",
+      "tax_amount",
+      "discount_percentage",
+      "discount_amount",
+    ]);
 
-  // Sanitize while preserving typing like ".", "12.", ".5"
-  const newValue = decimalFields.has(name)
-    ? sanitizeNumberInput(value, true)
-    : value;
+    // Sanitize while preserving typing like ".", "12.", ".5"
+    const newValue = decimalFields.has(name)
+      ? sanitizeNumberInput(value, true)
+      : value;
 
-  // Build a temp form with the raw typed value
-  const tempForm = { ...form, [name]: newValue };
+    // Build a temp form with the raw typed value
+    const tempForm = { ...form, [name]: newValue };
 
-  // Recalculate totals, but DO NOT overwrite the field the user is typing
-  let nextForm = recalcFooter(tempForm, name);
-  nextForm[name] = newValue;
+    // Recalculate totals, but DO NOT overwrite the field the user is typing
+    let nextForm = recalcFooter(tempForm, name);
+    nextForm[name] = newValue;
 
-  setForm(nextForm);
-};
-
+    setForm(nextForm);
+  };
 
   const handleSelectChange = (field, value) => {
     setForm({ ...form, [field]: value?.value || "" });
   };
 
-function handleItemChange(index, field, rawValue) {
-  let value = rawValue;
+  function handleItemChange(index, field, rawValue) {
+    let value = rawValue;
 
-  // fields that can have decimals
-  const allowDecimalFields = [
-    "pack_purchase_price",
-    "unit_purchase_price",
-    "pack_sale_price",
-    "unit_sale_price",
-    "item_discount_percentage",
-  ];
+    // fields that can have decimals
+    const allowDecimalFields = [
+      "pack_purchase_price",
+      "unit_purchase_price",
+      "pack_sale_price",
+      "unit_sale_price",
+      "item_discount_percentage",
+    ];
 
-  // integer-only fields
-  const integerFields = [
-    "pack_quantity",
-    "unit_quantity",
-    "pack_bonus",
-    "unit_bonus",
-  ];
+    // integer-only fields
+    const integerFields = [
+      "pack_quantity",
+      "unit_quantity",
+      "pack_bonus",
+      "unit_bonus",
+    ];
 
-  if (allowDecimalFields.includes(field)) {
-    // allow numbers like 34, 34., 34.5, 34.56
-    if (!/^\d*\.?\d*$/.test(value)) {
-      return; // reject invalid chars
+    if (allowDecimalFields.includes(field)) {
+      // allow numbers like 34, 34., 34.5, 34.56
+      if (!/^\d*\.?\d*$/.test(value)) {
+        return; // reject invalid chars
+      }
+    } else if (integerFields.includes(field)) {
+      // strip everything except digits
+      value = value.replace(/\D/g, "");
     }
-  } else if (integerFields.includes(field)) {
-    // strip everything except digits
-    value = value.replace(/\D/g, "");
+
+    // push to items
+    const newItems = [...form.items];
+    newItems[index] = recalcItem({ ...newItems[index], [field]: value }, field);
+
+    // recalc totals
+    let newForm = { ...form, items: newItems };
+    newForm = recalcFooter(newForm, "items");
+
+    setForm(newForm);
   }
-
-  // push to items
-  const newItems = [...form.items];
-  newItems[index] = recalcItem(
-    { ...newItems[index], [field]: value },
-    field
-  );
-
-  // recalc totals
-  let newForm = { ...form, items: newItems };
-  newForm = recalcFooter(newForm, "items");
-
-  setForm(newForm);
-}
-
 
   const addItem = () => {
     setForm((prev) => ({
@@ -257,20 +253,20 @@ function handleItemChange(index, field, rawValue) {
       // If the ref is a DOM node that wraps the input
       if (container instanceof HTMLElement) {
         const input = container.querySelector('input, [contenteditable="true"]');
-        if (input && typeof input.focus === 'function') {
+        if (input && typeof input.focus === "function") {
           input.focus();
           // select text if applicable
-          if (typeof input.select === 'function') input.select();
-          setCurrentField('product');
+          if (typeof input.select === "function") input.select();
+          setCurrentField("product");
           setCurrentRowIndex(rowIndex);
           return true;
         }
       }
 
       // If the ref is a component instance exposing focus
-      if (container && typeof container.focus === 'function') {
+      if (container && typeof container.focus === "function") {
         container.focus();
-        setCurrentField('product');
+        setCurrentField("product");
         setCurrentRowIndex(rowIndex);
         return true;
       }
@@ -295,38 +291,38 @@ function handleItemChange(index, field, rawValue) {
   const focusOnField = (field, rowIndex) => {
     setTimeout(() => {
       switch (field) {
-        case 'pack_quantity':
+        case "pack_quantity":
           if (packQuantityRefs.current[rowIndex]) {
             packQuantityRefs.current[rowIndex].focus();
-            setCurrentField('pack_quantity');
+            setCurrentField("pack_quantity");
             setCurrentRowIndex(rowIndex);
           }
           break;
-        case 'pack_purchase_price':
+        case "pack_purchase_price":
           if (packPurchasePriceRefs.current[rowIndex]) {
             packPurchasePriceRefs.current[rowIndex].focus();
-            setCurrentField('pack_purchase_price');
+            setCurrentField("pack_purchase_price");
             setCurrentRowIndex(rowIndex);
           }
           break;
-        case 'item_discount':
+        case "item_discount":
           if (itemDiscountRefs.current[rowIndex]) {
             itemDiscountRefs.current[rowIndex].focus();
-            setCurrentField('item_discount');
+            setCurrentField("item_discount");
             setCurrentRowIndex(rowIndex);
           }
           break;
-        case 'pack_bonus':
+        case "pack_bonus":
           if (packBonusRefs.current[rowIndex]) {
             packBonusRefs.current[rowIndex].focus();
-            setCurrentField('pack_bonus');
+            setCurrentField("pack_bonus");
             setCurrentRowIndex(rowIndex);
           }
           break;
-        case 'pack_sale_price':
+        case "pack_sale_price":
           if (packSalePriceRefs.current[rowIndex]) {
             packSalePriceRefs.current[rowIndex].focus();
-            setCurrentField('pack_sale_price');
+            setCurrentField("pack_sale_price");
             setCurrentRowIndex(rowIndex);
           }
           break;
@@ -341,53 +337,53 @@ function handleItemChange(index, field, rawValue) {
   const navigateToNextField = (currentFieldName, rowIndex = 0) => {
     setTimeout(() => {
       switch (currentFieldName) {
-        case 'supplier':
+        case "supplier":
           if (invoiceNumberRef.current) {
             invoiceNumberRef.current.focus();
-            setCurrentField('invoice_number');
+            setCurrentField("invoice_number");
           }
           break;
-        case 'invoice_number':
+        case "invoice_number":
           if (invoiceAmountRef.current) {
             invoiceAmountRef.current.focus();
-            setCurrentField('invoice_amount');
+            setCurrentField("invoice_amount");
           }
           break;
-        case 'invoice_amount':
+        case "invoice_amount":
           // robust focus into first product search input
           focusProductSearch(0);
           break;
-        case 'product':
+        case "product":
           if (packQuantityRefs.current[rowIndex]) {
             packQuantityRefs.current[rowIndex].focus();
-            setCurrentField('pack_quantity');
+            setCurrentField("pack_quantity");
           }
           break;
-        case 'pack_quantity':
+        case "pack_quantity":
           if (packPurchasePriceRefs.current[rowIndex]) {
             packPurchasePriceRefs.current[rowIndex].focus();
-            setCurrentField('pack_purchase_price');
+            setCurrentField("pack_purchase_price");
           }
           break;
-        case 'pack_purchase_price':
+        case "pack_purchase_price":
           if (itemDiscountRefs.current[rowIndex]) {
             itemDiscountRefs.current[rowIndex].focus();
-            setCurrentField('item_discount');
+            setCurrentField("item_discount");
           }
           break;
-        case 'item_discount':
+        case "item_discount":
           if (packBonusRefs.current[rowIndex]) {
             packBonusRefs.current[rowIndex].focus();
-            setCurrentField('pack_bonus');
+            setCurrentField("pack_bonus");
           }
           break;
-        case 'pack_bonus':
+        case "pack_bonus":
           if (packSalePriceRefs.current[rowIndex]) {
             packSalePriceRefs.current[rowIndex].focus();
-            setCurrentField('pack_sale_price');
+            setCurrentField("pack_sale_price");
           }
           break;
-        case 'pack_sale_price':
+        case "pack_sale_price":
           // Add new row and focus on product search of the new row
           addItem();
           // focusProductSearch will retry until the element exists
@@ -398,14 +394,14 @@ function handleItemChange(index, field, rawValue) {
   };
 
   const handleKeyDown = (e, field, rowIndex = 0) => {
-    if (e.key === 'Enter') {
+    if (e.key === "Enter") {
       e.preventDefault();
       navigateToNextField(field, rowIndex);
-    } else if (e.key === 'Tab' && field === 'invoice_amount') {
+    } else if (e.key === "Tab" && field === "invoice_amount") {
       // intercept Tab on invoice amount to move to product search
       e.preventDefault();
       navigateToNextField(field, rowIndex);
-    } else if (e.key === 'ArrowDown') {
+    } else if (e.key === "ArrowDown") {
       e.preventDefault();
       if (rowIndex === form.items.length - 1) {
         addItem(); // Add a new row if currently on the last row
@@ -417,7 +413,7 @@ function handleItemChange(index, field, rawValue) {
         const nextRowIndex = rowIndex + 1;
         focusOnField(field, nextRowIndex);
       }
-    } else if (e.key === 'ArrowUp') {
+    } else if (e.key === "ArrowUp") {
       e.preventDefault();
       if (rowIndex > 0) {
         const prevRowIndex = rowIndex - 1;
@@ -427,14 +423,14 @@ function handleItemChange(index, field, rawValue) {
   };
 
   const handleProductKeyDown = (e, rowIndex) => {
-    if (e.key === 'Enter') {
+    if (e.key === "Enter") {
       e.preventDefault();
-      navigateToNextField('product', rowIndex);
-    } else if (e.key === 'ArrowUp' && rowIndex > 0) {
+      navigateToNextField("product", rowIndex);
+    } else if (e.key === "ArrowUp" && rowIndex > 0) {
       e.preventDefault();
       const prevRowIndex = rowIndex - 1;
       focusProductSearch(prevRowIndex);
-    } else if (e.key === 'ArrowDown') {
+    } else if (e.key === "ArrowDown") {
       e.preventDefault();
       if (rowIndex === form.items.length - 1) {
         addItem(); // Add a new row if currently on the last row
@@ -447,84 +443,84 @@ function handleItemChange(index, field, rawValue) {
     }
   };
 
-const handleSubmit = async (e) => {
-  e.preventDefault();
+  const handleSubmit = async (e) => {
+    e.preventDefault();
 
-  // 0) Block if any selected product has margin <= 0 (or not a number)
-  const badItem = form.items.find((item) => {
-    if (!item.product_id) return false; // ignore empty rows
-    const m = Number(item.margin);
-    return !Number.isFinite(m) || m <= 0;
-  });
-
-  if (badItem) {
-    const idx = form.items.indexOf(badItem);
-    const product = products.find((p) => p.id === badItem.product_id);
-    const productName = product?.name || `row ${idx + 1}`;
-    toast.error(`Margin must be greater than 0 for ${productName}`);
-    return;
-  }
-
-  // 1) (kept) Prevent negative margin (redundant now but harmless)
-  const negativeMarginItem = form.items.find(
-    (item) => item.product_id && Number(item.margin) < 0
-  );
-  if (negativeMarginItem) {
-    const product = products.find((p) => p.id === negativeMarginItem.product_id);
-    const productName = product ? product.name : negativeMarginItem.product_id;
-    toast.error(`Margin cannot be negative for Product ${productName}`);
-    return;
-  }
-
-  // 2) (kept) Validate invoice vs total
-  const invoiceAmount = Number(form.invoice_amount || 0);
-  const totalAmount = Number(form.total_amount || 0);
-  if (Math.abs(invoiceAmount - totalAmount) > 5) {
-    toast.error(
-      `Invoice amount (${invoiceAmount}) must be equal to total amount (${totalAmount}), difference > 5`
-    );
-    return;
-  }
-
-  try {
-    // 3) (kept) Duplicate invoice number check
-    const checkRes = await axios.get("/api/purchase-invoices/check-unique", {
-      params: {
-        supplier_id: form.supplier_id,
-        invoice_number: form.invoice_number,
-        exclude_id: invoiceId || null,
-      },
+    // 0) Block if any selected product has margin <= 0 (or not a number)
+    const badItem = form.items.find((item) => {
+      if (!item.product_id) return false; // ignore empty rows
+      const m = Number(item.margin);
+      return !Number.isFinite(m) || m <= 0;
     });
 
-    if (!checkRes.data.unique) {
+    if (badItem) {
+      const idx = form.items.indexOf(badItem);
+      const product = products.find((p) => p.id === badItem.product_id);
+      const productName = product?.name || `row ${idx + 1}`;
+      toast.error(`Margin must be greater than 0 for ${productName}`);
+      return;
+    }
+
+    // 1) (kept) Prevent negative margin (redundant now but harmless)
+    const negativeMarginItem = form.items.find(
+      (item) => item.product_id && Number(item.margin) < 0
+    );
+    if (negativeMarginItem) {
+      const product = products.find((p) => p.id === negativeMarginItem.product_id);
+      const productName = product ? product.name : negativeMarginItem.product_id;
+      toast.error(`Margin cannot be negative for Product ${productName}`);
+      return;
+    }
+
+    // 2) (kept) Validate invoice vs total
+    const invoiceAmount = Number(form.invoice_amount || 0);
+    const totalAmount = Number(form.total_amount || 0);
+    if (Math.abs(invoiceAmount - totalAmount) > 5) {
       toast.error(
-        `Invoice number "${form.invoice_number}" already exists for this supplier`
+        `Invoice amount (${invoiceAmount}) must be equal to total amount (${totalAmount}), difference > 5`
       );
       return;
     }
 
-    // 4) (kept) Save
-    if (invoiceId) {
-      await axios.put(`/api/purchase-invoices/${invoiceId}`, form);
-      toast.success("Invoice updated successfully");
-    } else {
-      await axios.post("/api/purchase-invoices", form);
-      toast.success("Invoice created successfully");
+    try {
+      // 3) (kept) Duplicate invoice number check
+      const checkRes = await axios.get("/api/purchase-invoices/check-unique", {
+        params: {
+          supplier_id: form.supplier_id,
+          invoice_number: form.invoice_number,
+          exclude_id: invoiceId || null,
+        },
+      });
+
+      if (!checkRes.data.unique) {
+        toast.error(
+          `Invoice number "${form.invoice_number}" already exists for this supplier`
+        );
+        return;
+      }
+
+      // 4) (kept) Save
+      if (invoiceId) {
+        await axios.put(`/api/purchase-invoices/${invoiceId}`, form);
+        toast.success("Invoice updated successfully");
+      } else {
+        await axios.post("/api/purchase-invoices", form);
+        toast.success("Invoice created successfully");
+      }
+
+      onSuccess();
+    } catch (err) {
+      toast.error("Failed to save invoice");
     }
-
-    onSuccess();
-  } catch (err) {
-    toast.error("Failed to save invoice");
-  }
-};
-
-
+  };
 
   return (
-    <form className="flex flex-col" style={{minHeight: "74vh", maxHeight: "80vh" }}>
+    <form className="flex flex-col" style={{ minHeight: "74vh", maxHeight: "80vh" }}>
       {/* ================= HEADER SECTION ================= */}
       <div className="sticky top-0 bg-white shadow p-2 z-10">
-        <h2 className="text-sm font-bold mb-2">Purchase Invoice (Use Enter to navigate, Alt+S to save)</h2>
+        <h2 className="text-sm font-bold mb-2">
+          Purchase Invoice (Use Enter to navigate, Alt+S to save)
+        </h2>
         <table className="w-full border-collapse text-xs">
           <tbody>
             <tr>
@@ -561,12 +557,12 @@ const handleSubmit = async (e) => {
                   }
                   onChange={(val) => {
                     handleSelectChange("supplier_id", val);
-                    navigateToNextField('supplier');
+                    navigateToNextField("supplier");
                   }}
                   onKeyDown={(e) => {
-                    if (e.key === 'Enter' && form.supplier_id) {
+                    if (e.key === "Enter" && form.supplier_id) {
                       e.preventDefault();
-                      navigateToNextField('supplier');
+                      navigateToNextField("supplier");
                     }
                   }}
                   isSearchable
@@ -599,7 +595,7 @@ const handleSubmit = async (e) => {
                   name="invoice_number"
                   value={form.invoice_number}
                   onChange={handleChange}
-                  onKeyDown={(e) => handleKeyDown(e, 'invoice_number')}
+                  onKeyDown={(e) => handleKeyDown(e, "invoice_number")}
                   className="border rounded w-full p-1 h-7 text-xs"
                 />
               </td>
@@ -611,7 +607,7 @@ const handleSubmit = async (e) => {
                   name="invoice_amount"
                   value={form.invoice_amount}
                   onChange={handleChange}
-                  onKeyDown={(e) => handleKeyDown(e, 'invoice_amount')}
+                  onKeyDown={(e) => handleKeyDown(e, "invoice_amount")}
                   className="border rounded w-full p-1 h-7 text-xs"
                 />
               </td>
@@ -644,7 +640,7 @@ const handleSubmit = async (e) => {
               <th colSpan={2} className="border">Purchase Price (P / U)</th>
               <th colSpan={3} className="border">Disc % / Bonus (P / U)</th>
               <th colSpan={2} className="border">Sale Price (P / U)</th>
-              <th colSpan={2} className="border">Margin % / Avg </th>
+              <th colSpan={3} className="border">Margin % / Avg / Sub Total</th>
               <th rowSpan={2} className="border w-6">+</th>
             </tr>
 
@@ -663,6 +659,7 @@ const handleSubmit = async (e) => {
               <th className="border w-14">Unit.S</th>
               <th className="border w-14">Margin%</th>
               <th className="border w-16">Avg</th>
+              <th className="border w-20">Sub Total</th>
             </tr>
           </thead>
 
@@ -680,71 +677,71 @@ const handleSubmit = async (e) => {
                   </button>
                 </td>
 
-                {/* Product Search Input - wrapped in a div ref so we can reliably query the inner input */}
+                {/* Product Search Input */}
                 <td colSpan={1} className="border text-left w-[200px]">
                   <div ref={(el) => (productSearchRefs.current[i] = el)}>
                     <ProductSearchInput
-                    value={item.product_id}
-                    onChange={(val) => {
-                    const selectedProduct = products.find((p) => p.id === val);
+                      value={item.product_id}
+                      onChange={(val) => {
+                        const selectedProduct = products.find((p) => p.id === val);
 
-                    const duplicateIndex = form.items.findIndex((it, idx) => {
-                        if (idx === i) return false;
-                        if (it.product_id !== selectedProduct?.id) return false;
+                        const duplicateIndex = form.items.findIndex((it, idx) => {
+                          if (idx === i) return false;
+                          if (it.product_id !== selectedProduct?.id) return false;
 
-                        // Case 1: Other row has a batch
-                        if (it.batch && it.batch.trim() !== "") {
-                        // allow different batch, block same batch
-                        return it.batch === form.items[i]?.batch;
+                          // Case 1: Other row has a batch
+                          if (it.batch && it.batch.trim() !== "") {
+                            // allow different batch, block same batch
+                            return it.batch === form.items[i]?.batch;
+                          }
+
+                          // Case 2: Other row has no batch → block duplicate outright
+                          return true;
+                        });
+
+                        if (duplicateIndex !== -1) {
+                          toast.error(
+                            form.items[duplicateIndex]?.batch
+                              ? `Product "${selectedProduct?.name}" with batch "${form.items[duplicateIndex].batch}" is already in row ${duplicateIndex + 1}`
+                              : `Product "${selectedProduct?.name}" is already in row ${duplicateIndex + 1}`
+                          );
+                          return; // ⛔ stop here
                         }
 
-                        // Case 2: Other row has no batch → block duplicate outright
-                        return true;
-                    });
-
-                    if (duplicateIndex !== -1) {
-                        toast.error(
-                        form.items[duplicateIndex]?.batch
-                            ? `Product "${selectedProduct?.name}" with batch "${form.items[duplicateIndex].batch}" is already in row ${duplicateIndex + 1}`
-                            : `Product "${selectedProduct?.name}" is already in row ${duplicateIndex + 1}`
+                        const newItems = [...form.items];
+                        newItems[i] = recalcItem(
+                          {
+                            ...newItems[i],
+                            product_id: selectedProduct?.id || "",
+                            pack_size: selectedProduct?.pack_size || "",
+                            pack_purchase_price:
+                              selectedProduct?.pack_purchase_price ?? "",
+                            unit_purchase_price:
+                              selectedProduct?.unit_purchase_price ?? "",
+                            pack_sale_price: selectedProduct?.pack_sale_price ?? "",
+                            unit_sale_price: selectedProduct?.unit_sale_price ?? "",
+                            // don't overwrite batch here, keep whatever user enters
+                            batch: newItems[i].batch || "",
+                            // reset user-editable fields
+                            pack_quantity: "",
+                            unit_quantity: "",
+                            pack_bonus: "",
+                            unit_bonus: "",
+                            item_discount_percentage: "",
+                            margin: "",
+                            sub_total: "",
+                            avg_price: "",
+                            quantity: "",
+                          },
+                          selectedProduct
                         );
-                        return; // ⛔ stop here
-                    }
 
-                    const newItems = [...form.items];
-                    newItems[i] = recalcItem(
-                        {
-                        ...newItems[i],
-                        product_id: selectedProduct?.id || "",
-                        pack_size: selectedProduct?.pack_size || "",
-                        pack_purchase_price: selectedProduct?.pack_purchase_price ?? "",
-                        unit_purchase_price: selectedProduct?.unit_purchase_price ?? "",
-                        pack_sale_price: selectedProduct?.pack_sale_price ?? "",
-                        unit_sale_price: selectedProduct?.unit_sale_price ?? "",
-                        // don't overwrite batch here, keep whatever user enters
-                        batch: newItems[i].batch || "",
-                        // reset user-editable fields
-                        pack_quantity: "",
-                        unit_quantity: "",
-                        pack_bonus: "",
-                        unit_bonus: "",
-                        item_discount_percentage: "",
-                        margin: "",
-                        sub_total: "",
-                        avg_price: "",
-                        quantity: "",
-                        },
-                        selectedProduct
-                    );
-
-                    setForm({ ...form, items: newItems });
-                    navigateToNextField("product", i);
-                    }}
-
-
-                    onKeyDown={(e) => handleProductKeyDown(e, i)}
-                    products={products}
-                    onRefreshProducts={fetchProducts}
+                        setForm({ ...form, items: newItems });
+                        navigateToNextField("product", i);
+                      }}
+                      onKeyDown={(e) => handleProductKeyDown(e, i)}
+                      products={products}
+                      onRefreshProducts={fetchProducts}
                     />
                   </div>
                 </td>
@@ -761,49 +758,50 @@ const handleSubmit = async (e) => {
 
                 {/* Batch */}
                 <td className="border w-16">
-                    <input
-                        type="text"
-                        value={item.batch ?? ""}
-                        onChange={(e) => {
-                        const newBatch = e.target.value;
+                  <input
+                    type="text"
+                    value={item.batch ?? ""}
+                    onChange={(e) => {
+                      const newBatch = e.target.value;
 
-                        // ✅ Duplicate check
-                        const duplicateIndex = form.items.findIndex((it, idx) => {
-                            if (idx === i) return false;
-                            if (it.product_id !== item.product_id) return false;
+                      // ✅ Duplicate check
+                      const duplicateIndex = form.items.findIndex((it, idx) => {
+                        if (idx === i) return false;
+                        if (it.product_id !== item.product_id) return false;
 
-                            // If another row has batch → block only if same batch
-                            if (it.batch && it.batch.trim() !== "") {
-                            return it.batch === newBatch;
-                            }
-
-                            // If another row has no batch → block outright
-                            return !newBatch;
-                        });
-
-                        if (duplicateIndex !== -1) {
-                            toast.error(
-                            newBatch
-                                ? `Product "${
-                                    products.find((p) => p.id === item.product_id)?.name
-                                }" with batch "${newBatch}" already exists in row ${
-                                    duplicateIndex + 1
-                                }`
-                                : `Product "${
-                                    products.find((p) => p.id === item.product_id)?.name
-                                }" without batch already exists in row ${duplicateIndex + 1}`
-                            );
-                            return; // ⛔ block update
+                        // If another row has batch → block only if same batch
+                        if (it.batch && it.batch.trim() !== "") {
+                          return it.batch === newBatch;
                         }
 
-                        // If no duplicate → update
-                        const newItems = [...form.items];
-                        newItems[i] = { ...newItems[i], batch: newBatch };
-                        setForm({ ...form, items: newItems });
-                        }}
-                        className="border w-full h-6 text-[11px] px-1"
-                    />
-                    </td>
+                        // If another row has no batch → block outright
+                        return !newBatch;
+                      });
+
+                      if (duplicateIndex !== -1) {
+                        toast.error(
+                          newBatch
+                            ? `Product "${
+                                products.find((p) => p.id === item.product_id)?.name
+                              }" with batch "${newBatch}" already exists in row ${
+                                duplicateIndex + 1
+                              }`
+                            : `Product "${
+                                products.find((p) => p.id === item.product_id)?.name
+                              }" without batch already exists in row ${duplicateIndex + 1}`
+                        );
+                        return; // ⛔ block update
+                      }
+
+                      // If no duplicate → update
+                      const newItems = [...form.items];
+                      newItems[i] = { ...newItems[i], batch: newBatch };
+                      setForm({ ...form, items: newItems });
+                    }}
+                    className="border w-full h-6 text-[11px] px-1"
+                  />
+                </td>
+
                 {/* Expiry */}
                 <td className="border w-20">
                   <input
@@ -821,7 +819,7 @@ const handleSubmit = async (e) => {
                     type="text"
                     value={item.pack_quantity === 0 ? "" : item.pack_quantity}
                     onChange={(e) => handleItemChange(i, "pack_quantity", e.target.value)}
-                    onKeyDown={(e) => handleKeyDown(e, 'pack_quantity', i)}
+                    onKeyDown={(e) => handleKeyDown(e, "pack_quantity", i)}
                     className="border w-full h-6 text-[11px] px-1 appearance-none [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                   />
                 </td>
@@ -830,7 +828,7 @@ const handleSubmit = async (e) => {
                 <td className="border">
                   <input
                     type="text"
-                    value={item.unit_quantity=== 0 ? "" : item.unit_quantity}
+                    value={item.unit_quantity === 0 ? "" : item.unit_quantity}
                     onChange={(e) => handleItemChange(i, "unit_quantity", e.target.value)}
                     className="border w-full h-6 text-[11px] px-1 appearance-none [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                   />
@@ -843,7 +841,7 @@ const handleSubmit = async (e) => {
                     type="text"
                     value={item.pack_purchase_price === 0 ? "" : item.pack_purchase_price}
                     onChange={(e) => handleItemChange(i, "pack_purchase_price", e.target.value)}
-                    onKeyDown={(e) => handleKeyDown(e, 'pack_purchase_price', i)}
+                    onKeyDown={(e) => handleKeyDown(e, "pack_purchase_price", i)}
                     className="border w-full h-6 text-[11px] px-1 appearance-none [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                   />
                 </td>
@@ -864,8 +862,10 @@ const handleSubmit = async (e) => {
                     ref={(el) => (itemDiscountRefs.current[i] = el)}
                     type="text"
                     value={item.item_discount_percentage ?? ""}
-                    onChange={(e) => handleItemChange(i, "item_discount_percentage", e.target.value)}
-                    onKeyDown={(e) => handleKeyDown(e, 'item_discount', i)}
+                    onChange={(e) =>
+                      handleItemChange(i, "item_discount_percentage", e.target.value)
+                    }
+                    onKeyDown={(e) => handleKeyDown(e, "item_discount", i)}
                     className="border w-full h-6 text-[11px] px-1 appearance-none [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                   />
                 </td>
@@ -875,9 +875,9 @@ const handleSubmit = async (e) => {
                   <input
                     ref={(el) => (packBonusRefs.current[i] = el)}
                     type="text"
-                   value={item.pack_bonus === 0 ? "" : item.pack_bonus}
+                    value={item.pack_bonus === 0 ? "" : item.pack_bonus}
                     onChange={(e) => handleItemChange(i, "pack_bonus", e.target.value)}
-                    onKeyDown={(e) => handleKeyDown(e, 'pack_bonus', i)}
+                    onKeyDown={(e) => handleKeyDown(e, "pack_bonus", i)}
                     className="border w-full h-6 text-[11px] px-1 appearance-none [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                   />
                 </td>
@@ -899,7 +899,7 @@ const handleSubmit = async (e) => {
                     type="text"
                     value={item.pack_sale_price ?? ""}
                     onChange={(e) => handleItemChange(i, "pack_sale_price", e.target.value)}
-                    onKeyDown={(e) => handleKeyDown(e, 'pack_sale_price', i)}
+                    onKeyDown={(e) => handleKeyDown(e, "pack_sale_price", i)}
                     className="border w-full h-6 text-[11px] px-1 appearance-none [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                   />
                 </td>
@@ -934,8 +934,18 @@ const handleSubmit = async (e) => {
                   />
                 </td>
 
-                {/* Quantity */}
-                <td className="border" style={{ display: 'none' }}>
+                {/* Sub Total (readonly) */}
+                <td className="border">
+                  <input
+                    type="number"
+                    value={item.sub_total ?? ""}
+                    readOnly
+                    className="border w-full h-6 text-[11px] px-1 bg-gray-100"
+                  />
+                </td>
+
+                {/* Quantity (hidden) */}
+                <td className="border" style={{ display: "none" }}>
                   <input
                     type="number"
                     readOnly
@@ -969,10 +979,17 @@ const handleSubmit = async (e) => {
               <td className="border p-1 w-1/6">
                 <label className="block text-[10px]">Tax %</label>
                 <input
+                  ref={taxPercentageRef}
                   type="text"
                   name="tax_percentage"
                   value={form.tax_percentage ?? ""}
                   onChange={handleChange}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      discountPercentageRef.current?.focus();
+                    }
+                  }}
                   className="border rounded w-full p-1 h-7 text-xs"
                 />
               </td>
@@ -989,10 +1006,17 @@ const handleSubmit = async (e) => {
               <td className="border p-1 w-1/6">
                 <label className="block text-[10px]">Discount %</label>
                 <input
+                  ref={discountPercentageRef}
                   type="text"
                   name="discount_percentage"
                   value={form.discount_percentage ?? ""}
                   onChange={handleChange}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      saveButtonRef.current?.focus();
+                    }
+                  }}
                   className="border rounded w-full p-1 h-7 text-xs"
                 />
               </td>
@@ -1001,7 +1025,7 @@ const handleSubmit = async (e) => {
                 <input
                   type="text"
                   name="discount_amount"
-                  value={form.discount_amount ?? ""} 
+                  value={form.discount_amount ?? ""}
                   onChange={handleChange}
                   className="border rounded w-full p-1 h-7 text-xs"
                 />
@@ -1018,6 +1042,7 @@ const handleSubmit = async (e) => {
               </td>
               <td className="border p-1 text-center align-middle">
                 <button
+                  ref={saveButtonRef}
                   type="button"
                   onClick={handleSubmit}
                   className="bg-green-600 text-white px-8 py-3 rounded text-sm hover:bg-green-700 transition duration-200"
