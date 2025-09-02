@@ -117,6 +117,7 @@
           <td class="right">{{ number_format((float)$it->item_discount_percentage, 2) }}</td>
           <td class="right">{{ number_format((float)$it->sub_total, 2) }}</td>
         </tr>
+        <div class="hr"></div>
       @endforeach
     </tbody>
   </table>
