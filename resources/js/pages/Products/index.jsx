@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import axios from "axios";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
 import {
   TrashIcon,
@@ -21,6 +21,31 @@ export default function ProductsIndex() {
   // pagination
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
+
+  const navigate = useNavigate();
+
+  // === Keyboard shortcut: Alt+N => navigate to /products/create ===
+  useEffect(() => {
+    const onKeyDown = (e) => {
+      if (!e.altKey) return;
+
+      const key = (e.key || "").toLowerCase();
+      if (key !== "n") return;
+
+      // avoid triggering while typing in inputs/selects/textareas/contenteditable
+      const tag = (e.target?.tagName || "").toLowerCase();
+      const isTyping =
+        ["input", "textarea", "select"].includes(tag) ||
+        e.target?.isContentEditable;
+      if (isTyping) return;
+
+      e.preventDefault();
+      navigate("/products/create");
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [navigate]);
 
   const fetchProducts = async () => {
     try {
@@ -107,10 +132,15 @@ export default function ProductsIndex() {
         <h1 className="text-2xl font-bold">Products</h1>
         <Link
           to="/products/create"
+          title="Add Product (Alt+N)"
+          aria-keyshortcuts="Alt+N"
           className="bg-blue-600 text-white px-4 py-2 rounded flex items-center gap-2 self-start sm:self-auto"
         >
           <PlusCircleIcon className="w-5 h-5" />
           Add Product
+          <span className="ml-2 hidden sm:inline text-xs opacity-80 border rounded px-1 py-0.5">
+            Alt+N
+          </span>
         </Link>
       </div>
 
@@ -127,7 +157,7 @@ export default function ProductsIndex() {
         </div>
         <div className="relative">
           <MagnifyingGlassIcon className="w-5 h-5 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-          <input
+        <input
             value={qBrand}
             onChange={(e) => setQBrand(e.target.value)}
             placeholder="Search by Brand…"
