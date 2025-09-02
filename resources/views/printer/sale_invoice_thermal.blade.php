@@ -51,24 +51,25 @@
 
   /* --- Watermark layer (real <img>, not CSS background, so it prints) --- */
   .wm {
-    position:absolute;
-    inset:0;
-    display:flex;
-    align-items:center;
-    justify-content:center;
-    top:10px;
-    z-index:0;                       /* behind all content */
-    pointer-events:none;
-    user-select:none;
-  }
-  .wm img {
-    width:58mm;                      /* fits inside 78mm with margins */
-    max-width:90%;
-    opacity:0.8;                    /* light for readability; adjust 0.05–0.12 if needed */
-    filter: grayscale(100%) contrast(90%);
-    -webkit-print-color-adjust: exact;
-            print-color-adjust: exact;
-  }
+  position: absolute;
+  top: 0;            /* push down from very top if needed */
+  left: 0;
+  right: 0;
+  z-index: 0;          /* behind all content */
+  text-align: center;  /* center horizontally */
+  pointer-events: none;
+  user-select: none;
+}
+
+.wm img {
+  width: 58mm;         /* fits inside 78mm page */
+  max-width: 90%;
+  opacity: 0.8;       /* 0.05–0.12 is ideal for thermal; 0.8 will be too dark */
+  filter: grayscale(100%) contrast(90%);
+  -webkit-print-color-adjust: exact;
+          print-color-adjust: exact;
+}
+
 
   /* Keep actual content above the watermark */
   .content { position:relative; z-index:1; }
@@ -80,11 +81,11 @@
   th.right, td.right { text-align:right; white-space:nowrap; }
   td.center { text-align:center; }
   /* Fit columns within 100% total on 78mm */
-  th.col-name     { width:40%; }
+  th.col-name     { width:45%; }
   th.col-qty      { width:13%; }
   th.col-price    { width:15%; }
   th.col-disc     { width:12%; }
-  th.col-subtotal { width:20%; }
+  th.col-subtotal { width:15%; }
 
   /* --- Totals --- */
   .totals .pair.total { font-size:14px; }
@@ -131,8 +132,8 @@
           <th class="col-name">Name</th>
           <th class="right col-qty">Qty</th>
           <th class="right col-price">Price</th>
-          <th class="right col-disc">Disc%</th>
-          <th class="right col-subtotal">Subtotal</th>
+          <th class="right col-disc">Dis%</th>
+          <th class="right col-subtotal">Subt.</th>
         </tr>
       </thead>
       <tbody>
