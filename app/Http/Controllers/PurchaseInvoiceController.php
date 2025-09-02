@@ -29,15 +29,24 @@ class PurchaseInvoiceController extends Controller
 
     // List all invoices
     public function index(Request $request)
-    {
-        $query = PurchaseInvoice::with('supplier', 'items.product');
+{
+    $qPosted   = trim((string) $request->query('posted'));
+    $qSupplier = trim((string) $request->query('supplier'));
 
-        if ($request->has('supplier_id')) {
-            $query->where('supplier_id', $request->supplier_id);
-        }
+    $query = PurchaseInvoice::with(['supplier']);
 
-        return $query->get();
+    if ($qPosted !== '') {
+        $query->where('posted_number', 'like', '%' . $qPosted . '%');
     }
+
+    if ($qSupplier !== '') {
+        $query->whereHas('supplier', function ($q) use ($qSupplier) {
+            $q->where('name', 'like', '%' . $qSupplier . '%');
+        });
+    }
+
+    return $query->orderByDesc('id')->get();
+}
 
     // Show single invoice
     public function show(PurchaseInvoice $purchaseInvoice)
