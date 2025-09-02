@@ -26,10 +26,10 @@
   @page { size: 78mm auto; margin: 0; }
   * { box-sizing: border-box; }
   html, body { margin:0; padding:0; color:#000; background:#fff; }
-  body { 
+  body {
     font-family: 'Courier New', monospace;
-    font-weight: 700;                /* all text bold for darker thermal output */
-    font-size: 13px;                 /* slightly larger for legibility */
+    font-weight: 700;             /* bold for darker thermal output */
+    font-size: 13px;
     line-height: 1.25;
     -webkit-print-color-adjust: exact;
             print-color-adjust: exact;
@@ -40,37 +40,43 @@
   @media print { .print-actions { display:none; } }
 
   /* --- Receipt layout --- */
-  .receipt { width:78mm; max-width:100%; margin:0 auto; padding:0 6px 6px; } /* top padding 0 so logo is first pixel */
+  .receipt { width:78mm; max-width:100%; margin:0 auto; padding:0 6px 6px; } /* top padding 0 so logo starts at top */
   .center { text-align:center; }
-  .right { text-align:right; }
+  .right  { text-align:right; }
   .logo { max-width:56mm; max-height:32mm; object-fit:contain; display:block; margin:0 auto 6px; }
   .hr { border-top:1px dashed #000; margin:6px 0; }
 
   .pair { display:flex; justify-content:space-between; }
   .pair + .pair { margin-top:2px; }
 
-  /* --- Table --- */
-  table { width:100%; border-collapse:collapse; }
-  thead th { text-align:left; padding:4px 0; border-bottom:1px dashed #000; }
-  tbody td { padding:4px 0; border-bottom:1px dashed #eee; vertical-align:top; }
-  th.right, td.right { text-align:right; white-space:nowrap; }
+  /* --- Items table with full borders --- */
+  table.items { width:100%; border-collapse:collapse; border:1px solid #000; }
+  table.items th, table.items td {
+    border:1px solid #000;             /* borders around & between cells */
+    padding:4px 3px;
+    vertical-align:top;
+  }
+  table.items th { text-align:left; }
+  table.items th.right, table.items td.right { text-align:right; white-space:nowrap; }
 
-  /* Fit columns within 100% total on 78mm */
-  th.col-name     { width:35%; }
-  th.col-qty      { width:13%; }
-  th.col-price    { width:15%; }
-  th.col-disc     { width:17%; }
-  th.col-subtotal { width:20%; }
+  /* Keep columns fitting within 100% on 78mm */
+  table.items th.col-name     { width:35%; }
+  table.items th.col-qty      { width:13%; }
+  table.items th.col-price    { width:15%; }
+  table.items th.col-disc     { width:17%; }
+  table.items th.col-subtotal { width:20%; }
+
+  /* Allow long product names to wrap without breaking layout */
+  td.name { white-space:normal; word-break:break-word; }
 
   /* --- Totals --- */
-  .totals .pair { }
   .totals .pair.total { font-size:14px; }
 
   /* --- Footer --- */
   .note { margin-top:6px; white-space:pre-wrap; }
   .foot { margin-top:6px; text-align:center; }
 
-  /* Remove accidental extra space at end so cutters trim right after "Thank you!" */
+  /* Trim any trailing space so cutters slice right after Thank you! */
   .receipt, .foot { padding-bottom:0; margin-bottom:0; }
 </style>
 </head>
@@ -98,7 +104,7 @@
 
   <div class="hr"></div>
 
-  <table>
+  <table class="items">
     <thead>
       <tr>
         <th class="col-name">Name</th>
@@ -111,13 +117,12 @@
     <tbody>
       @foreach($invoice->items as $it)
         <tr>
-          <td>{{ optional($it->product)->name ?? '-' }}</td>
+          <td class="name">{{ optional($it->product)->name ?? '-' }}</td>
           <td class="right">{{ number_format((float)$it->quantity) }}</td>
           <td class="right">{{ number_format((float)$it->price, 2) }}</td>
-          <td class="right">{{ number_format((float)$it->item_discount_percentage, 2) }}</td>
+          <td class="right">{{ number_format((float)$it->item_discount_percentage) }}</td>
           <td class="right">{{ number_format((float)$it->sub_total, 2) }}</td>
         </tr>
-        <div class="hr"></div>
       @endforeach
     </tbody>
   </table>
