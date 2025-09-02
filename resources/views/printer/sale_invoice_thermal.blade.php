@@ -56,6 +56,7 @@
     display:flex;
     align-items:center;
     justify-content:center;
+    top:10px;
     z-index:0;                       /* behind all content */
     pointer-events:none;
     user-select:none;
@@ -77,7 +78,7 @@
   thead th { text-align:left; padding:2px 2px; border:2px solid #000; }
   tbody td { padding:0px 0; border-bottom:1px solid #000; vertical-align:top; }
   th.right, td.right { text-align:right; white-space:nowrap; }
-
+  td.center { text-align:center; }
   /* Fit columns within 100% total on 78mm */
   th.col-name     { width:40%; }
   th.col-qty      { width:13%; }
@@ -137,10 +138,10 @@
       <tbody>
         @foreach($invoice->items as $it)
           <tr>
-            <td style="font-size: 12px">{{ optional($it->product)->name ?? '-' }}</td>
-            <td class="right">{{ number_format((float)$it->quantity) }}</td>
+            <td style="font-size: 11px">{{ optional($it->product)->name ?? '-' }}</td>
+            <td class="center">{{ number_format((float)$it->quantity) }}</td>
             <td class="right">{{ number_format((float)$it->price, 2) }}</td>
-            <td class="right">{{ number_format((float)$it->item_discount_percentage) }}</td>
+            <td class="center">{{ number_format((float)$it->item_discount_percentage) }}</td>
             <td class="right">{{ number_format((float)$it->sub_total, 2) }}</td>
           </tr>
         @endforeach
