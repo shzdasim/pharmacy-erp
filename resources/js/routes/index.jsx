@@ -26,11 +26,7 @@ import IndexSaleReturn from "../pages/SaleReturn/Index.jsx";
 import CreateSaleReturn from "../pages/SaleReturn/Create.jsx";
 import EditSaleReturn from "../pages/SaleReturn/Edit.jsx";
 import PurchaseOrder from "../pages/PurchaseOrder.jsx";
-
-
-function DashboardHome() {
-  return <h1 className="text-2xl font-bold">Welcome to the Dashboard</h1>;
-}
+import Dashboard from "../pages/Dashboard.jsx";
 
 export default function AppRoutes() {
   return (
@@ -44,7 +40,7 @@ export default function AppRoutes() {
     element={
       <ProtectedRoute>
         <DashboardLayout>
-          <DashboardHome />
+          <Dashboard />
         </DashboardLayout>
       </ProtectedRoute>
     }

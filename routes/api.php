@@ -7,6 +7,7 @@ use App\Http\Controllers\BatchController;
 use App\Http\Controllers\BrandController;
 use App\Http\Controllers\CategoryController;
 use App\Http\Controllers\CustomerController;
+use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\ProductController;
 use App\Http\Controllers\PurchaseInvoiceController;
 use App\Http\Controllers\PurchaseOrderController;
@@ -51,6 +52,8 @@ Route::middleware('auth:sanctum')->group(function () {
 
     // Purchase Orders
     Route::get('/purchase-orders/forecast', [PurchaseOrderController::class, 'forecast']);
+
+    Route::get('/dashboard/summary', [DashboardController::class, 'summary']);
 });
 
 
