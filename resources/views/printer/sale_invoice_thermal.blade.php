@@ -52,7 +52,7 @@
   /* --- Watermark layer (real <img>, not CSS background, so it prints) --- */
   .wm {
   position: absolute;
-  top: 0;            /* push down from very top if needed */
+  top: 2mm;            /* push down from very top if needed */
   left: 0;
   right: 0;
   z-index: 0;          /* behind all content */
