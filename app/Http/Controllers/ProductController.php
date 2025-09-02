@@ -71,7 +71,10 @@ public function availableQuantity(\Illuminate\Http\Request $request)
 
     public function index()
     {
-        return Product::with(['brand', 'category', 'supplier'])->orderBy('created_at', 'desc')->get();
+       return Product::with(['brand', 'category', 'supplier'])
+        ->withCount('batches')
+        ->orderBy('created_at', 'desc')
+        ->get();
     }
 
     // Store new product
@@ -160,6 +163,18 @@ public function availableQuantity(\Illuminate\Http\Request $request)
     {
         $product = Product::findOrFail($id);
 
+        if (($product->quantity ?? 0) > 0) {
+        return response()->json([
+            'message' => 'Cannot delete: product has on-hand quantity.'
+        ], 422);
+    }
+
+    if ($product->batches()->exists()) {
+        return response()->json([
+            'message' => 'Cannot delete: product has batch records.'
+        ], 422);
+    }
+
         if ($product->image) {
             Storage::disk('public')->delete($product->image);
         }
@@ -168,4 +183,36 @@ public function availableQuantity(\Illuminate\Http\Request $request)
 
         return response()->json(['message' => 'Product deleted']);
     }
+
+    public function bulkUpdateMeta(Request $request)
+{
+    $validated = $request->validate([
+        'product_ids'   => 'required|array|min:1',
+        'product_ids.*' => 'integer|exists:products,id',
+        'category_id'   => 'nullable|integer|exists:categories,id',
+        'brand_id'      => 'nullable|integer|exists:brands,id',
+        'supplier_id'   => 'nullable|integer|exists:suppliers,id',
+    ]);
+
+    $updates = array_filter([
+        'category_id' => $validated['category_id'] ?? null,
+        'brand_id'    => $validated['brand_id'] ?? null,
+        'supplier_id' => $validated['supplier_id'] ?? null,
+    ], fn($v) => !is_null($v));
+
+    if (empty($updates)) {
+        return response()->json([
+            'message' => 'Provide at least one of category_id, brand_id, supplier_id to update.'
+        ], 422);
+    }
+
+    $count = \App\Models\Product::whereIn('id', $validated['product_ids'])->update($updates);
+
+    return response()->json([
+        'updated'    => $count,
+        'updates'    => $updates,
+        'product_ids'=> $validated['product_ids'],
+    ]);
+}
+
 }

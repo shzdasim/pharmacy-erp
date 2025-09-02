@@ -31,6 +31,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('products/new-code', [ProductController::class, 'generateNewCode']);
     Route::get('products/{product}/batches', [BatchController::class, 'index']);
     Route::get('products/available-quantity', [ProductController::class, 'availableQuantity']);
+    Route::patch('/products/bulk-update-meta', [ProductController::class, 'bulkUpdateMeta']);
     Route::apiResource('products', ProductController::class);
 
     // Purchases
