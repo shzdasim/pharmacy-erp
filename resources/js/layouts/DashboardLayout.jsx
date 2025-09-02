@@ -16,6 +16,11 @@ export default function DashboardLayout({ children }) {
       "/Products": "Products",
       "/categories": "Categories",
       "/brands": "Brands",
+      "/purchase-invoices": "Purchase Invoices",
+      "/purchase-returns": "Purchase Returns",
+      "/sale-invoices": "Sale Invoices",
+      "/sale-returns": "Sale Returns",
+      "/purchase-orders": "Purchase Orders"
     };
 
     const currentPath = location.pathname;
