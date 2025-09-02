@@ -85,7 +85,7 @@
     <img class="logo" src="{{ $logo }}" alt="Logo">
   @endif
 
-  <div class="center" style="font-size:36px">{{ $store }}</div>
+  <div class="center" style="font-size:26px">{{ $store }}</div>
   @if($addr)<div class="center">{{ $addr }}</div>@endif
   @if($phone)<div class="center">Ph: {{ $phone }}</div>@endif
 
