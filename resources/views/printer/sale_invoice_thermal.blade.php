@@ -28,8 +28,8 @@
   html, body { margin:0; padding:0; color:#000; background:#fff; }
   body { 
     font-family: 'Courier New', monospace;
-    font-weight: 700;                /* all text bold for darker thermal output */
-    font-size: 13px;                 /* slightly larger for legibility */
+    font-weight: 700;                /* bold for darker thermal output */
+    font-size: 13px;
     line-height: 1.25;
     -webkit-print-color-adjust: exact;
             print-color-adjust: exact;
@@ -40,16 +40,39 @@
   @media print { .print-actions { display:none; } }
 
   /* --- Receipt layout --- */
-  .receipt { width:78mm; max-width:100%; margin:0 auto; padding:0 6px 6px; } /* top padding 0 so logo is first pixel */
+  .receipt { width:78mm; max-width:100%; margin:0 auto; padding:0 6px 6px; position:relative; overflow:hidden; }
   .center { text-align:center; }
-  .right { text-align:right; }
+  .right  { text-align:right; }
   .logo { max-width:56mm; max-height:32mm; object-fit:contain; display:block; margin:0 auto 6px; }
   .hr { border-top:1px dashed #000; margin:6px 0; }
 
   .pair { display:flex; justify-content:space-between; }
   .pair + .pair { margin-top:2px; }
 
-  /* --- Table --- */
+  /* --- Watermark layer (real <img>, not CSS background, so it prints) --- */
+  .wm {
+    position:absolute;
+    inset:0;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    z-index:0;                       /* behind all content */
+    pointer-events:none;
+    user-select:none;
+  }
+  .wm img {
+    width:58mm;                      /* fits inside 78mm with margins */
+    max-width:90%;
+    opacity:0.2;                    /* light for readability; adjust 0.05–0.12 if needed */
+    filter: grayscale(100%) contrast(90%);
+    -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+  }
+
+  /* Keep actual content above the watermark */
+  .content { position:relative; z-index:1; }
+
+  /* --- Table (your current borders) --- */
   table { width:100%; border-collapse:collapse; }
   thead th { text-align:left; padding:2px 2px; border:2px solid #000; }
   tbody td { padding:0px 0; border-bottom:1px solid #000; vertical-align:top; }
@@ -63,14 +86,13 @@
   th.col-subtotal { width:20%; }
 
   /* --- Totals --- */
-  .totals .pair { }
   .totals .pair.total { font-size:14px; }
 
   /* --- Footer --- */
   .note { margin-top:6px; white-space:pre-wrap; }
   .foot { margin-top:6px; text-align:center; }
 
-  /* Remove accidental extra space at end so cutters trim right after "Thank you!" */
+  /* Cut right after Thank you! */
   .receipt, .foot { padding-bottom:0; margin-bottom:0; }
 </style>
 </head>
@@ -80,61 +102,65 @@
 </div>
 
 <div class="receipt">
-  {{-- Start at logo (no top padding/margins) --}}
+  {{-- Watermark behind everything --}}
   @if($logo)
-    <img class="logo" src="{{ $logo }}" alt="Logo">
-  @endif
-
-  <div class="center" style="font-size:29px">{{ $store }}</div>
-  @if($addr)<div class="center">{{ $addr }}</div>@endif
-  @if($phone)<div class="center">Ph: {{ $phone }}</div>@endif
-
-  <div class="hr"></div>
-
-  <div class="pair"><div>Invoice</div><div># {{ $posted }}</div></div>
-  <div class="pair"><div>Date</div><div>{{ $date }}</div></div>
-  @if($cust)<div class="pair"><div>Customer</div><div>{{ $cust }}</div></div>@endif
-  @if($user)<div class="pair"><div>User</div><div>{{ $user }}</div></div>@endif
-
-  <div class="hr"></div>
-
-  <table>
-    <thead>
-      <tr>
-        <th class="col-name">Name</th>
-        <th class="right col-qty">Qty</th>
-        <th class="right col-price">Price</th>
-        <th class="right col-disc">Disc%</th>
-        <th class="right col-subtotal">Subtotal</th>
-      </tr>
-    </thead>
-    <tbody>
-      @foreach($invoice->items as $it)
-        <tr>
-          <td>{{ optional($it->product)->name ?? '-' }}</td>
-          <td class="right">{{ number_format((float)$it->quantity) }}</td>
-          <td class="right">{{ number_format((float)$it->price, 2) }}</td>
-          <td class="right">{{ number_format((float)$it->item_discount_percentage) }}</td>
-          <td class="right">{{ number_format((float)$it->sub_total, 2) }}</td>
-        </tr>
-      @endforeach
-    </tbody>
-  </table>
-
-
-  <div class="totals">
-    <div class="pair"><div>Gross</div><div>{{ number_format((float)$gross, 2) }}</div></div>
-    <div class="pair"><div>Discount</div><div>{{ number_format((float)$disc, 2) }}</div></div>
-    <div class="pair"><div>Tax</div><div>{{ number_format((float)$tax, 2) }}</div></div>
-    <div class="pair total"><div>Total</div><div>{{ number_format((float)$total, 2) }}</div></div>
+  <div class="wm">
+    <img src="{{ $logo }}" alt="Watermark">
   </div>
-
-  @if($footerNote !== '')
-    <div class="hr"></div>
-    <div class="note">{{ $footerNote }}</div>
   @endif
 
-  <div class="foot">Thank you!</div>
+  {{-- Foreground content --}}
+  <div class="content">
+    <div class="center" style="font-size:29px">{{ $store }}</div>
+    @if($addr)<div class="center">{{ $addr }}</div>@endif
+    @if($phone)<div class="center">Ph: {{ $phone }}</div>@endif
+
+    <div class="hr"></div>
+
+    <div class="pair"><div>Invoice</div><div># {{ $posted }}</div></div>
+    <div class="pair"><div>Date</div><div>{{ $date }}</div></div>
+    @if($cust)<div class="pair"><div>Customer</div><div>{{ $cust }}</div></div>@endif
+    @if($user)<div class="pair"><div>User</div><div>{{ $user }}</div></div>@endif
+
+    <div class="hr"></div>
+
+    <table>
+      <thead>
+        <tr>
+          <th class="col-name">Name</th>
+          <th class="right col-qty">Qty</th>
+          <th class="right col-price">Price</th>
+          <th class="right col-disc">Disc%</th>
+          <th class="right col-subtotal">Subtotal</th>
+        </tr>
+      </thead>
+      <tbody>
+        @foreach($invoice->items as $it)
+          <tr>
+            <td style="font-size: 12px">{{ optional($it->product)->name ?? '-' }}</td>
+            <td class="right">{{ number_format((float)$it->quantity) }}</td>
+            <td class="right">{{ number_format((float)$it->price, 2) }}</td>
+            <td class="right">{{ number_format((float)$it->item_discount_percentage) }}</td>
+            <td class="right">{{ number_format((float)$it->sub_total, 2) }}</td>
+          </tr>
+        @endforeach
+      </tbody>
+    </table>
+
+    <div class="totals">
+      <div class="pair"><div>Gross</div><div>{{ number_format((float)$gross, 2) }}</div></div>
+      <div class="pair"><div>Discount</div><div>{{ number_format((float)$disc, 2) }}</div></div>
+      <div class="pair"><div>Tax</div><div>{{ number_format((float)$tax, 2) }}</div></div>
+      <div class="pair total"><div>Total</div><div>{{ number_format((float)$total, 2) }}</div></div>
+    </div>
+
+    @if($footerNote !== '')
+      <div class="hr"></div>
+      <div class="note">{{ $footerNote }}</div>
+    @endif
+
+    <div class="foot">Thank you!</div>
+  </div>
 </div>
 </body>
 </html>
