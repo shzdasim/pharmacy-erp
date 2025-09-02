@@ -106,10 +106,26 @@ class PurchaseReturnController extends Controller
 
     // ===== Endpoints =====
 
-    public function index()
-    {
-        return PurchaseReturn::with(['supplier', 'purchaseInvoice', 'items.product'])->latest()->get();
+// PurchaseReturnController@index
+public function index(Request $request)
+{
+    $qPosted   = trim((string) $request->query('posted'));
+    $qSupplier = trim((string) $request->query('supplier'));
+
+    $query = PurchaseReturn::with(['supplier', 'purchaseInvoice'])->latest();
+
+    if ($qPosted !== '') {
+        $query->where('posted_number', 'like', '%' . $qPosted . '%');
     }
+    if ($qSupplier !== '') {
+        $query->whereHas('supplier', function ($q) use ($qSupplier) {
+            $q->where('name', 'like', '%' . $qSupplier . '%');
+        });
+    }
+
+    return $query->get();
+}
+
 
     public function show(PurchaseReturn $purchaseReturn)
     {
