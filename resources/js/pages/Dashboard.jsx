@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import axios from "axios";
 import toast from "react-hot-toast";
+import Select from "react-select";
 import {
   AreaChart,
   Area,
@@ -13,7 +14,7 @@ import {
   Line,
 } from "recharts";
 
-// ===== Helpers =====
+/* ===================== Helpers ===================== */
 
 // Local ISO date (avoid UTC off-by-one)
 const localISODate = (d = new Date()) => {
@@ -89,13 +90,55 @@ function buildNetSeries(series) {
   return Array.from(map.entries()).map(([date, value]) => ({ date, value }));
 }
 
-// ===== Component =====
+/* ===================== React-Select styles (compact) ===================== */
+const smallSelectStyles = {
+  control: (base, state) => ({
+    ...base,
+    minHeight: 34,
+    height: 34,
+    paddingLeft: 4,
+    borderColor: state.isFocused ? "#3b82f6" : base.borderColor,
+    boxShadow: state.isFocused ? "0 0 0 1px #3b82f6" : "none",
+    "&:hover": { borderColor: "#3b82f6" },
+    fontSize: "0.875rem",
+  }),
+  valueContainer: (base) => ({ ...base, padding: "0 6px" }),
+  indicatorsContainer: (base) => ({ ...base, height: 34 }),
+  dropdownIndicator: (base) => ({ ...base, padding: "0 6px" }),
+  clearIndicator: (base) => ({ ...base, padding: "0 6px" }),
+  input: (base) => ({ ...base, margin: 0, padding: 0 }),
+  option: (base, state) => ({
+    ...base,
+    fontSize: "0.875rem",
+    backgroundColor: state.isFocused ? "#eff6ff" : state.isSelected ? "#dbeafe" : "white",
+    color: "#111827",
+  }),
+  menu: (base) => ({ ...base, zIndex: 30 }),
+};
+
+/* ===================== Component ===================== */
 export default function Dashboard() {
   // Filters — default to *today*
   const [from, setFrom] = useState(todayStr());
   const [to, setTo] = useState(todayStr());
 
-  // Data
+  // Near Expiry filters
+  const [expiryMonths, setExpiryMonths] = useState(3); // default 3 months
+  const [supplierId, setSupplierId] = useState("");
+  const [brandId, setBrandId] = useState("");
+
+  // react-select values
+  const [supplierValue, setSupplierValue] = useState({ value: "", label: "All Suppliers" });
+  const [brandValue, setBrandValue] = useState({ value: "", label: "All Brands" });
+
+  // options for react-select
+  const [supplierOptions, setSupplierOptions] = useState([{ value: "", label: "All Suppliers" }]);
+  const [brandOptions, setBrandOptions] = useState([{ value: "", label: "All Brands" }]);
+
+  const [nearExpiryRows, setNearExpiryRows] = useState([]);
+  const [loadingExpiry, setLoadingExpiry] = useState(false);
+
+  // Cards & charts
   const [loading, setLoading] = useState(false);
   const [cards, setCards] = useState({
     sales: 0,
@@ -112,6 +155,7 @@ export default function Dashboard() {
 
   const netSales = useMemo(() => (cards.sales || 0) - (cards.saleReturns || 0), [cards]);
 
+  /* ===================== Effects ===================== */
   useEffect(() => {
     fetchAll();
     const onKey = (e) => {
@@ -125,11 +169,62 @@ export default function Dashboard() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [from, to]);
 
+  useEffect(() => {
+    // Load Supplier/Brand options once
+    fetchExpiryFilters();
+  }, []);
+
+  useEffect(() => {
+    // Fetch near-expiry whenever filters change
+    fetchNearExpiry();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [expiryMonths, supplierId, brandId]);
+
+  /* ===================== API Calls ===================== */
+  async function fetchExpiryFilters() {
+    try {
+      const { data } = await axios.get("/api/dashboard/near-expiry/filters");
+      const sup = (data?.suppliers || []).map((s) => ({ value: String(s.id), label: s.name }));
+      const br = (data?.brands || []).map((b) => ({ value: String(b.id), label: b.name }));
+
+      const supOpts = [{ value: "", label: "All Suppliers" }, ...sup];
+      const brOpts = [{ value: "", label: "All Brands" }, ...br];
+
+      setSupplierOptions(supOpts);
+      setBrandOptions(brOpts);
+
+      // Keep previously-selected value in list if possible
+      const currentSup = supOpts.find((o) => o.value === supplierValue.value) || supOpts[0];
+      const currentBr = brOpts.find((o) => o.value === brandValue.value) || brOpts[0];
+      setSupplierValue(currentSup);
+      setBrandValue(currentBr);
+    } catch (err) {
+      console.error(err);
+      // Soft fail
+    }
+  }
+
+  async function fetchNearExpiry() {
+    setLoadingExpiry(true);
+    try {
+      const params = {
+        months: expiryMonths,
+        supplier_id: supplierId || undefined,
+        brand_id: brandId || undefined,
+      };
+      const { data } = await axios.get("/api/dashboard/near-expiry", { params });
+      setNearExpiryRows(Array.isArray(data?.rows) ? data.rows : []);
+    } catch (err) {
+      console.error(err);
+      toast.error("Failed to load near expiry data.");
+    } finally {
+      setLoadingExpiry(false);
+    }
+  }
+
   async function fetchAll() {
-    // If any field is blank, treat it as "today" (keeps dashboard working)
     const f = from || todayStr();
     const t = to || todayStr();
-
     setLoading(true);
 
     // Preferred: aggregated endpoint
@@ -217,7 +312,7 @@ export default function Dashboard() {
     }
   }
 
-  // ===== UI =====
+  /* ===================== UI ===================== */
   return (
     <div className="p-4 space-y-4">
       <h1 className="text-2xl font-semibold">Business Dashboard</h1>
@@ -318,6 +413,154 @@ export default function Dashboard() {
         <StatCard title="Purchase Returns" value={`Rs ${fmtCurrency(cards.purchaseReturns)}`} series={series.purchaseReturns} color="#a855f7" />
       </div>
 
+      {/* ===== Near Expiry Table (compact, modern) ===== */}
+      <div className="rounded-lg border shadow-sm">
+        <div className="px-3 pt-3">
+          <div className="flex items-center justify-between gap-3">
+            <h2 className="font-semibold">Near Expiry</h2>
+
+            {/* Single-line compact header controls */}
+            <div className="flex items-center gap-2 flex-nowrap overflow-x-auto whitespace-nowrap py-1">
+              {/* Months range buttons */}
+              <div className="flex items-center gap-1">
+                {[
+                  { m: 1, label: "1 mo" },
+                  { m: 3, label: "3 mo" },
+                  { m: 6, label: "6 mo" },
+                  { m: 12, label: "1 yr" },
+                  { m: 18, label: "1.5 yr" },
+                ].map((opt) => (
+                  <button
+                    key={opt.m}
+                    onClick={() => setExpiryMonths(opt.m)}
+                    className={`px-2 py-1 rounded border text-sm shrink-0 ${
+                      expiryMonths === opt.m
+                        ? "bg-blue-600 text-white border-blue-600"
+                        : "bg-gray-100 hover:bg-gray-200"
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+
+              {/* Supplier select (react-select searchable) */}
+              <div className="flex items-center gap-1 shrink-0" style={{ minWidth: 210 }}>
+                <span className="text-gray-700 text-sm">Supplier</span>
+                <div className="w-40">
+                  <Select
+                    classNamePrefix="rs"
+                    isSearchable
+                    menuPlacement="auto"
+                    options={supplierOptions}
+                    value={supplierValue}
+                    onChange={(opt) => {
+                      setSupplierValue(opt || { value: "", label: "All Suppliers" });
+                      setSupplierId(opt?.value || "");
+                    }}
+                    styles={smallSelectStyles}
+                  />
+                </div>
+              </div>
+
+              {/* Brand select (react-select searchable) */}
+              <div className="flex items-center gap-1 shrink-0" style={{ minWidth: 190 }}>
+                <span className="text-gray-700 text-sm">Brand</span>
+                <div className="w-40">
+                  <Select
+                    classNamePrefix="rs"
+                    isSearchable
+                    menuPlacement="auto"
+                    options={brandOptions}
+                    value={brandValue}
+                    onChange={(opt) => {
+                      setBrandValue(opt || { value: "", label: "All Brands" });
+                      setBrandId(opt?.value || "");
+                    }}
+                    styles={smallSelectStyles}
+                  />
+                </div>
+              </div>
+
+              <button
+                onClick={() => {
+                  const sup = { value: "", label: "All Suppliers" };
+                  const br = { value: "", label: "All Brands" };
+                  setSupplierValue(sup);
+                  setBrandValue(br);
+                  setSupplierId("");
+                  setBrandId("");
+                }}
+                className="border px-2 py-1 rounded bg-gray-50 hover:bg-gray-100 text-sm shrink-0"
+                title="Clear supplier/brand filters"
+              >
+                Clear
+              </button>
+
+              <button
+                onClick={fetchNearExpiry}
+                disabled={loadingExpiry}
+                className="border px-3 py-1 rounded bg-white hover:bg-gray-50 disabled:opacity-60 text-sm shrink-0"
+              >
+                {loadingExpiry ? "Loading…" : "Refresh"}
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div className="p-0 overflow-auto">
+          <table className="min-w-full text-sm">
+            <thead className="sticky top-0 bg-white/90 backdrop-blur z-10 border-b">
+              <tr className="text-left text-gray-600">
+                <th className="px-3 py-2 font-medium">Product</th>
+                <th className="px-3 py-2 font-medium">Supplier</th>
+                <th className="px-3 py-2 font-medium">Brand</th>
+                <th className="px-3 py-2 font-medium">Batch #</th>
+                <th className="px-3 py-2 font-medium">Expiry</th>
+                <th className="px-3 py-2 font-medium text-right">Qty</th>
+              </tr>
+            </thead>
+            <tbody>
+              {nearExpiryRows.length === 0 ? (
+                <tr>
+                  <td className="px-3 py-4 text-gray-500" colSpan={6}>
+                    {loadingExpiry ? "Loading…" : "No near-expiry items found for the selected filters."}
+                  </td>
+                </tr>
+              ) : (
+                nearExpiryRows.map((r) => (
+                  <tr
+                    key={`b-${r.batch_id}`}
+                    className="odd:bg-white even:bg-gray-50 hover:bg-blue-50 transition-colors"
+                  >
+                    <td className="px-3 py-2">
+                      <div className="max-w-[280px] truncate" title={r.product_name}>
+                        {r.product_name}
+                      </div>
+                    </td>
+                    <td className="px-3 py-2">
+                      <div className="max-w-[220px] truncate" title={r.supplier_name || "—"}>
+                        {r.supplier_name || "—"}
+                      </div>
+                    </td>
+                    <td className="px-3 py-2">
+                      <div className="max-w-[200px] truncate" title={r.brand_name || "—"}>
+                        {r.brand_name || "—"}
+                      </div>
+                    </td>
+                    <td className="px-3 py-2">{r.batch_number}</td>
+                    <td className="px-3 py-2">{(r.expiry_date || "").slice(0, 10)}</td>
+                    <td className="px-3 py-2 text-right">
+                      {Number(r.quantity ?? 0).toLocaleString()}
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
       {/* Net Sales Trend */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         <div className="lg:col-span-3 border rounded p-3">
@@ -385,6 +628,7 @@ export default function Dashboard() {
   );
 }
 
+/* ===================== Stat Card ===================== */
 function StatCard({ title, value, series, color = "#2563eb" }) {
   return (
     <div className="border rounded p-3 flex flex-col gap-2">

@@ -54,6 +54,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/purchase-orders/forecast', [PurchaseOrderController::class, 'forecast']);
 
     Route::get('/dashboard/summary', [DashboardController::class, 'summary']);
+    Route::get('/dashboard/near-expiry', [DashboardController::class, 'nearExpiry']);
+    Route::get('/dashboard/near-expiry/filters', [DashboardController::class, 'nearExpiryFilters']);
 });
 
 

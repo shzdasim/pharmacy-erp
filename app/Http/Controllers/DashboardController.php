@@ -87,4 +87,60 @@ class DashboardController extends Controller
             ],
         ]);
     }
+
+    public function nearExpiry(Request $request)
+{
+    $months = (int) $request->query('months', 3);
+    if (!in_array($months, [1,3,6,12,18], true)) {
+        $months = 3;
+    }
+
+    $supplierId = $request->query('supplier_id');
+    $brandId    = $request->query('brand_id');
+
+    $today = now()->toDateString();
+    $to    = now()->copy()->addMonths($months)->toDateString();
+
+    $q = DB::table('batches as b')
+        ->join('products as p', 'p.id', '=', 'b.product_id')
+        ->leftJoin('suppliers as s', 's.id', '=', 'p.supplier_id')
+        ->leftJoin('brands as br', 'br.id', '=', 'p.brand_id')
+        ->whereNotNull('b.expiry_date')
+        ->whereBetween(DB::raw('DATE(b.expiry_date)'), [$today, $to]);
+
+    if (!empty($supplierId)) $q->where('p.supplier_id', $supplierId);
+    if (!empty($brandId))    $q->where('p.brand_id', $brandId);
+
+    $rows = $q->orderBy('b.expiry_date')
+        ->select(
+            'b.id as batch_id',
+            'b.batch_number',
+            'b.expiry_date',
+            'b.quantity',
+            'p.id as product_id',
+            'p.product_code',
+            'p.name as product_name',
+            'p.supplier_id',
+            'p.brand_id',
+            DB::raw('COALESCE(s.name, "") as supplier_name'),
+            DB::raw('COALESCE(br.name, "") as brand_name')
+        )
+        ->limit(1000)
+        ->get();
+
+    return response()->json([
+        'months' => $months,
+        'from'   => $today,
+        'to'     => $to,
+        'rows'   => $rows,
+    ]);
+}
+
+public function nearExpiryFilters()
+{
+    $suppliers = DB::table('suppliers')->select('id','name')->orderBy('name')->get();
+    $brands    = DB::table('brands')->select('id','name')->orderBy('name')->get();
+    return response()->json(compact('suppliers','brands'));
+}
+
 }
