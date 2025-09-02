@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\PurchaseInvoice;
+use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Carbon\Carbon;
@@ -116,5 +118,188 @@ class ReportsController extends Controller
                 'trace'   => config('app.debug') ? $e->getTrace() : null,
             ], 500);
         }
+    }
+
+    public function purchaseDetail(Request $req)
+    {
+        $from = $req->query('from');
+        $to   = $req->query('to');
+        $supplierId = $req->query('supplier_id');
+        $productId  = $req->query('product_id');
+
+        // Defaults to current month if not provided
+        try { $fromDate = $from ? Carbon::parse($from)->startOfDay() : Carbon::now()->startOfMonth(); }
+        catch (\Throwable $e) { $fromDate = Carbon::now()->startOfMonth(); }
+        try { $toDate = $to ? Carbon::parse($to)->endOfDay() : Carbon::now()->endOfDay(); }
+        catch (\Throwable $e) { $toDate = Carbon::now()->endOfDay(); }
+        if ($fromDate->gt($toDate)) {
+            [$fromDate, $toDate] = [$toDate->copy()->startOfDay(), $fromDate->copy()->endOfDay()];
+        }
+
+        $invoices = PurchaseInvoice::with([
+                'supplier:id,name',
+                'items' => function ($q) use ($productId) {
+                    if ($productId) $q->where('product_id', $productId);
+                    $q->with('product:id,name')
+                      ->select([
+                          'id','purchase_invoice_id','product_id',
+                          'batch','expiry',
+                          'pack_quantity','pack_size','unit_quantity',
+                          'pack_purchase_price','unit_purchase_price',
+                          'pack_sale_price','unit_sale_price',
+                          'pack_bonus','unit_bonus',
+                          'item_discount_percentage','margin',
+                          'sub_total','quantity',
+                      ]);
+                },
+            ])
+            // IMPORTANT: filter by posted_date (not date)
+            ->whereBetween('posted_date', [$fromDate, $toDate])
+            ->when($supplierId, fn($q) => $q->where('supplier_id', $supplierId))
+            // If product filter is set, ensure we only include invoices that have that product
+            ->when($productId, fn($q) => $q->whereHas('items', fn($iq) => $iq->where('product_id', $productId)))
+            ->orderBy('posted_date', 'asc')
+            ->orderBy('id', 'asc')
+            ->get();
+
+        $rows = $invoices->map(function ($inv) {
+            return [
+                'id'             => $inv->id,
+                'supplier_id'    => $inv->supplier_id,
+                'supplier_name'  => $inv->supplier->name ?? null,
+                'posted_number'  => $inv->posted_number ?? null,
+                'invoice_number' => $inv->invoice_number ?? null,
+                'invoice_date'   => optional($inv->posted_date)->format('Y-m-d')
+                                   ?? (is_string($inv->posted_date) ? substr($inv->posted_date,0,10) : null),
+
+                // Footer (header) fields from PurchaseInvoice
+                'tax_percentage'      => (float)($inv->tax_percentage ?? 0),
+                'tax_amount'          => (float)($inv->tax_amount ?? 0),
+                'discount_percentage' => (float)($inv->discount_percentage ?? 0),
+                'discount_amount'     => (float)($inv->discount_amount ?? 0),
+                'total_amount'        => (float)($inv->total_amount ?? ($inv->total ?? 0)),
+
+                // Items
+                'items' => ($inv->items ?? collect())->map(function ($it) {
+                    return [
+                        'id'                        => $it->id,
+                        'product_id'                => $it->product_id,
+                        'product_name'              => $it->product->name ?? null,
+                        'batch'                     => $it->batch,
+                        'expiry'                    => $it->expiry,
+                        'pack_quantity'             => (int)($it->pack_quantity ?? 0),
+                        'pack_size'                 => (int)($it->pack_size ?? 0),
+                        'unit_quantity'             => (int)($it->unit_quantity ?? 0),
+                        'pack_purchase_price'       => (float)($it->pack_purchase_price ?? 0),
+                        'unit_purchase_price'       => (float)($it->unit_purchase_price ?? 0),
+                        'pack_sale_price'           => (float)($it->pack_sale_price ?? 0),
+                        'unit_sale_price'           => (float)($it->unit_sale_price ?? 0),
+                        'pack_bonus'                => (int)($it->pack_bonus ?? 0),
+                        'unit_bonus'                => (int)($it->unit_bonus ?? 0),
+                        'item_discount_percentage'  => (float)($it->item_discount_percentage ?? 0),
+                        'margin'                    => (float)($it->margin ?? 0),
+                        'sub_total'                 => (float)($it->sub_total ?? 0),
+                        'quantity'                  => (int)($it->quantity ?? 0),
+                    ];
+                })->values(),
+            ];
+        })->values();
+
+        return response()->json($rows);
+    }
+    private function buildPurchaseDetailRows($from, $to, $supplierId, $productId)
+    {
+        try { $fromDate = $from ? Carbon::parse($from)->startOfDay() : Carbon::now()->startOfMonth(); }
+        catch (\Throwable $e) { $fromDate = Carbon::now()->startOfMonth(); }
+        try { $toDate = $to ? Carbon::parse($to)->endOfDay() : Carbon::now()->endOfDay(); }
+        catch (\Throwable $e) { $toDate = Carbon::now()->endOfDay(); }
+        if ($fromDate->gt($toDate)) {
+            [$fromDate, $toDate] = [$toDate->copy()->startOfDay(), $fromDate->copy()->endOfDay()];
+        }
+
+        $invoices = PurchaseInvoice::with([
+                'supplier:id,name',
+                'items' => function ($q) use ($productId) {
+                    if ($productId) $q->where('product_id', $productId);
+                    $q->with('product:id,name')
+                      ->select([
+                          'id','purchase_invoice_id','product_id',
+                          'batch','expiry',
+                          'pack_quantity','pack_size','unit_quantity',
+                          'pack_purchase_price','unit_purchase_price',
+                          'pack_sale_price','unit_sale_price',
+                          'pack_bonus','unit_bonus',
+                          'item_discount_percentage','margin',
+                          'sub_total','quantity',
+                      ]);
+                },
+            ])
+            ->whereBetween('posted_date', [$fromDate, $toDate])
+            ->when($supplierId, fn($q) => $q->where('supplier_id', $supplierId))
+            ->when($productId, fn($q) => $q->whereHas('items', fn($iq) => $iq->where('product_id', $productId)))
+            ->orderBy('posted_date', 'asc')
+            ->orderBy('id', 'asc')
+            ->get();
+
+        return $invoices->map(function ($inv) {
+            return [
+                'id'                 => $inv->id,
+                'supplier_name'      => $inv->supplier->name ?? null,
+                'posted_number'      => $inv->posted_number ?? null,
+                'invoice_number'     => $inv->invoice_number ?? null,
+                'invoice_date'       => optional($inv->posted_date)->format('Y-m-d')
+                                        ?? (is_string($inv->posted_date) ? substr($inv->posted_date,0,10) : null),
+                'tax_percentage'      => (float)($inv->tax_percentage ?? 0),
+                'tax_amount'          => (float)($inv->tax_amount ?? 0),
+                'discount_percentage' => (float)($inv->discount_percentage ?? 0),
+                'discount_amount'     => (float)($inv->discount_amount ?? 0),
+                'total_amount'        => (float)($inv->total_amount ?? ($inv->total ?? 0)),
+                'items' => ($inv->items ?? collect())->map(function ($it) {
+                    return [
+                        'product_name'             => $it->product->name ?? null,
+                        'batch'                    => $it->batch,
+                        'expiry'                   => $it->expiry,
+                        'pack_quantity'            => (int)($it->pack_quantity ?? 0),
+                        'pack_size'                => (int)($it->pack_size ?? 0),
+                        'unit_quantity'            => (int)($it->unit_quantity ?? 0),
+                        'pack_purchase_price'      => (float)($it->pack_purchase_price ?? 0),
+                        'unit_purchase_price'      => (float)($it->unit_purchase_price ?? 0),
+                        'pack_sale_price'          => (float)($it->pack_sale_price ?? 0),
+                        'unit_sale_price'          => (float)($it->unit_sale_price ?? 0),
+                        'pack_bonus'               => (int)($it->pack_bonus ?? 0),
+                        'unit_bonus'               => (int)($it->unit_bonus ?? 0),
+                        'item_discount_percentage' => (float)($it->item_discount_percentage ?? 0),
+                        'margin'                   => (float)($it->margin ?? 0),
+                        'sub_total'                => (float)($it->sub_total ?? 0),
+                        'quantity'                 => (int)($it->quantity ?? 0),
+                    ];
+                })->values(),
+            ];
+        })->values();
+    }
+
+    /** GET /api/reports/purchase-detail/pdf */
+    public function purchaseDetailPdf(Request $req)
+    {
+        $rows = $this->buildPurchaseDetailRows(
+            $req->query('from'),
+            $req->query('to'),
+            $req->query('supplier_id'),
+            $req->query('product_id'),
+        );
+
+        $meta = [
+            'from'        => $req->query('from'),
+            'to'          => $req->query('to'),
+            'generatedAt' => now()->format('Y-m-d H:i'),
+        ];
+
+        $pdf = Pdf::loadView('reports.purchase_detail_pdf', [
+            'rows' => $rows,
+            'meta' => $meta,
+        ])->setPaper('a4', 'landscape'); // wide tables fit better
+
+        $filename = 'purchase-detail-' . ($meta['from'] ?: 'start') . '-to-' . ($meta['to'] ?: 'today') . '.pdf';
+        return $pdf->stream($filename); // 'inline' disposition -> opens in new tab
     }
 }

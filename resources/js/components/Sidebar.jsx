@@ -35,7 +35,8 @@ export default function Sidebar() {
     { name: "Sale Invoice", path: "/sale-invoices", icon: <DocumentCurrencyDollarIcon className="w-6 h-6" /> },
     { name: "Sale Return", path: "/sale-returns", icon: <DocumentMinusIcon className="w-6 h-6" /> },
     { name: "Purchase Orders", path: "/purchase-orders", icon: <TruckIcon className="w-6 h-6" /> },
-    { name: "Cost of Sale Report", path: "/reports/cost-of-sale", icon: <ChartBarIcon className="w-6 h-6" /> }
+    { name: "Cost of Sale Report", path: "/reports/cost-of-sale", icon: <ChartBarIcon className="w-6 h-6" /> },
+    { name: "Purchase Detail Report", path: "/reports/purchase-detail", icon: <ChartBarIcon className="w-6 h-6" /> },
     
 
   ];

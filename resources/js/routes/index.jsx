@@ -28,6 +28,7 @@ import EditSaleReturn from "../pages/SaleReturn/Edit.jsx";
 import PurchaseOrder from "../pages/PurchaseOrder.jsx";
 import Dashboard from "../pages/Dashboard.jsx";
 import CostOfSaleReport from "../pages/Reports/CostOfSaleReport.jsx";
+import PurchaseDetailReport from "../pages/Reports/PurchaseDetailReport.jsx";
 
 export default function AppRoutes() {
   return (
@@ -288,7 +289,16 @@ export default function AppRoutes() {
         </ProtectedRoute>
       }
       />
-      
+      <Route
+      path="reports/purchase-detail"
+      element= {
+        <ProtectedRoute>
+          <DashboardLayout>
+            <PurchaseDetailReport />
+          </DashboardLayout>
+        </ProtectedRoute>
+      }
+      />
   
 
 </Routes>
