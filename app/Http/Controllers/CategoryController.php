@@ -9,7 +9,11 @@ use Illuminate\Http\Request;
 class CategoryController extends Controller
 {
     public function index() {
-        return Category::all();
+        return response()->json(
+            Category::withCount('products')
+                ->orderBy('name')
+                ->get()
+        );
     }
 
     public function store(Request $request) {
@@ -33,6 +37,11 @@ class CategoryController extends Controller
     }
 
     public function destroy(Category $category) {
+        if ($category->products()->exists()) {
+            return response()->json([
+                'message' => 'Cannot delete: category is used by one or more products.'
+            ], 422);
+        }
         $category->delete();
         return response()->json(null, 204);
     }
