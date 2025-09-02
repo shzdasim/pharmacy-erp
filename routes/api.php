@@ -15,6 +15,7 @@ use App\Http\Controllers\PurchaseReturnController;
 use App\Http\Controllers\ReportsController;
 use App\Http\Controllers\SaleInvoiceController;
 use App\Http\Controllers\SaleReturnController;
+use App\Http\Controllers\SettingController;
 use App\Http\Controllers\SupplierController;
 
 Route::post('/login', [AuthController::class, 'login']);
@@ -65,6 +66,10 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/reports/purchase-detail/pdf', [ReportsController::class, 'purchaseDetailPdf']);
     Route::get('/reports/sale-detail', [ReportsController::class, 'saleDetail']);
     Route::get('/reports/sale-detail/pdf', [ReportsController::class, 'saleDetailPdf']);
+
+    // Settings
+    Route::get('/settings', [SettingController::class, 'show']);
+    Route::post('/settings', [SettingController::class, 'update']);
 
 });
 

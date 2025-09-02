@@ -289,4 +289,19 @@ public function index(Request $request)
             return response()->json(['message' => 'Sale Invoice deleted']);
         });
     }
+
+    public function print(Request $request, \App\Models\SaleInvoice $invoice)
+{
+    $invoice->load(['items.product', 'customer', 'user']);
+    $setting = \App\Models\Setting::first();
+
+    // Choose printer type: query param overrides Setting
+    $type = strtolower($request->query('type', $setting->printer_type ?? 'a4'));
+    if (!in_array($type, ['a4', 'thermal'])) {
+        $type = 'a4';
+    }
+
+    return view("printer.sale_invoice_{$type}", compact('invoice', 'setting'));
+}
+
 }

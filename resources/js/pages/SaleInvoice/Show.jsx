@@ -9,13 +9,20 @@ export default function SaleInvoiceShow() {
   const [inv, setInv] = useState(null);
   const [loading, setLoading] = useState(true);
   const [deleting, setDeleting] = useState(false);
+  const [printerType, setPrinterType] = useState("a4"); // from Settings
 
   // Fetch invoice
   useEffect(() => {
     (async () => {
       try {
-        const res = await axios.get(`/api/sale-invoices/${id}`);
-        setInv(res.data);
+        const [invRes, setRes] = await Promise.all([
+          axios.get(`/api/sale-invoices/${id}`),
+          axios.get("/api/settings").catch(() => null),
+        ]);
+        setInv(invRes.data);
+        if (setRes?.data?.printer_type) {
+          setPrinterType(String(setRes.data.printer_type).toLowerCase());
+        }
       } catch (e) {
         toast.error("Failed to load invoice");
       } finally {
@@ -27,11 +34,8 @@ export default function SaleInvoiceShow() {
   // After delete: go to previous invoice (by id), else index
   const goToPrevOrIndex = async (deletedId) => {
     try {
-      // Your index endpoint returns invoices ordered by id desc (per controller)
       const res = await axios.get("/api/sale-invoices");
       const list = Array.isArray(res.data) ? res.data : [];
-
-      // Find the next older invoice (smaller id), pick the largest among those
       const prev = list
         .filter((x) => Number(x?.id) < Number(deletedId))
         .sort((a, b) => Number(b?.id) - Number(a?.id))[0];
@@ -96,7 +100,42 @@ export default function SaleInvoiceShow() {
     );
   };
 
-  // Keyboard shortcuts: Alt+N (new), Alt+B (back), Alt+P (print), Alt+D (delete confirm)
+  // Open server-rendered print preview (backend chooses template by Settings)
+  // ⬇️ replace your current handlePrint with this
+const handlePrint = () => {
+  if (!id) return;
+
+  // If you serve SPA and Laravel on different origins, set VITE_BACKEND_WEB_BASE.
+  // If they are the same origin, keeping it empty will fall back to window.location.origin.
+  const WEB_BASE =
+    (import.meta.env.VITE_BACKEND_WEB_BASE || "").replace(/\/$/, "") ||
+    window.location.origin;
+
+  // Let backend decide A4 vs Thermal by Settings (no ?type= needed)
+  const url = `${WEB_BASE}/print/sale-invoices/${id}`;
+
+  const w = window.open(url, "_blank", "noopener,noreferrer");
+  if (!w) {
+    toast.error("Popup blocked. Allow popups to print.");
+    return;
+  }
+  try {
+    w.onload = () => {
+      try { w.focus(); w.print(); } catch {}
+    };
+    const timer = setInterval(() => {
+      try {
+        if (w.document?.readyState === "complete") {
+          w.focus(); w.print(); clearInterval(timer);
+        }
+      } catch {}
+      if (w.closed) clearInterval(timer);
+    }, 400);
+  } catch {}
+};
+
+
+  // Keyboard shortcuts: Alt+N (new), Alt+B (back), Alt+P (print), Alt+D (delete confirm), Alt+E (edit)
   useEffect(() => {
     const onKey = (e) => {
       if (!e.altKey) return;
@@ -111,16 +150,20 @@ export default function SaleInvoiceShow() {
       }
       if (k === "p") {
         e.preventDefault();
-        window.print();
+        handlePrint();
       }
       if (k === "d") {
         e.preventDefault();
         confirmDeleteToast();
       }
+      if (k === "e") {
+        e.preventDefault();
+        navigate(`/sale-invoices/${id}/edit`);
+      }
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [navigate, inv, deleting]);
+  }, [navigate, inv, deleting, id, printerType]);
 
   if (loading) return <div className="p-4 text-sm">Loading…</div>;
   if (!inv) return <div className="p-4 text-sm">Invoice not found.</div>;
@@ -252,6 +295,13 @@ export default function SaleInvoiceShow() {
           🗑 Delete
         </button>
         <button
+          className="bg-yellow-600 text-white px-4 py-2 rounded text-sm"
+          onClick={() => navigate(`/sale-invoices/${id}/edit`)}
+          title="Alt+E"
+        >
+          ✏️ Edit Invoice
+        </button>
+        <button
           className="bg-blue-600 text-white px-4 py-2 rounded text-sm"
           onClick={() => navigate("/sale-invoices/create")}
           title="Alt+N"
@@ -267,11 +317,16 @@ export default function SaleInvoiceShow() {
         </button>
         <button
           className="bg-green-600 text-white px-4 py-2 rounded text-sm"
-          onClick={() => window.print()}
+          onClick={handlePrint}
           title="Alt+P"
         >
           🖨️ Print Invoice
         </button>
+      </div>
+
+      {/* Hidden info about which printer template will be used */}
+      <div className="no-print text-[11px] text-gray-500">
+        Using printer template: <b>{printerType?.toUpperCase?.() || "A4"}</b> (from Settings)
       </div>
     </div>
   );

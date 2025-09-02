@@ -30,6 +30,7 @@ import Dashboard from "../pages/Dashboard.jsx";
 import CostOfSaleReport from "../pages/Reports/CostOfSaleReport.jsx";
 import PurchaseDetailReport from "../pages/Reports/PurchaseDetailReport.jsx";
 import SaleDetailReport from "../pages/Reports/SaleDetailReport.jsx";
+import Setting from "../pages/Setting.jsx";
 
 export default function AppRoutes() {
   return (
@@ -306,6 +307,17 @@ export default function AppRoutes() {
         <ProtectedRoute>
           <DashboardLayout>
             <SaleDetailReport />
+          </DashboardLayout>
+        </ProtectedRoute>
+      }
+      />
+      {/* Settings */}
+      <Route
+      path="settings"
+      element= {
+        <ProtectedRoute>
+          <DashboardLayout>
+            <Setting />
           </DashboardLayout>
         </ProtectedRoute>
       }

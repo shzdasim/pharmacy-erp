@@ -1,9 +1,16 @@
 <?php
 
 use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\SaleInvoiceController;
 
-// Your API or Laravel-specific routes go here first
+// --- Server-rendered routes FIRST ---
+Route::get('/print/sale-invoices/{invoice}', [SaleInvoiceController::class, 'print'])
+    ->whereNumber('invoice')
+    ->name('sale-invoices.print');
 
-// React catch-all route
+// (add any other Blade/PDF routes here)
+// Route::get('/reports/sale-detail/pdf', ...);
+
+// --- React SPA catch-all LAST and excluding /print/* ---
 Route::view('/{path?}', 'index')
-    ->where('path', '.*');
+    ->where('path', '^(?!print/).*$');
