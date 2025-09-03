@@ -1,0 +1,20 @@
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration {
+    public function up(): void {
+        Schema::table('suppliers', function (Blueprint $table) {
+            if (!Schema::hasColumn('suppliers', 'name')) return;
+            // add index only if not exists (safe-ish; some DBs require try/catch)
+            $table->unique('name', 'suppliers_name_unique');
+        });
+    }
+    public function down(): void {
+        Schema::table('suppliers', function (Blueprint $table) {
+            $table->dropUnique('suppliers_name_unique');
+        });
+    }
+};

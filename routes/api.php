@@ -17,6 +17,7 @@ use App\Http\Controllers\SaleInvoiceController;
 use App\Http\Controllers\SaleReturnController;
 use App\Http\Controllers\SettingController;
 use App\Http\Controllers\SupplierController;
+use App\Http\Controllers\SupplierImportController;
 
 Route::post('/login', [AuthController::class, 'login']);
 Route::middleware(['auth:sanctum'])->get('/user', [AuthController::class, 'user']);
@@ -70,6 +71,11 @@ Route::middleware('auth:sanctum')->group(function () {
     // Settings
     Route::get('/settings', [SettingController::class, 'show']);
     Route::post('/settings', [SettingController::class, 'update']);
+
+    // Supplier Import
+    Route::get('/suppliers/import/template', [SupplierImportController::class, 'template']);
+    Route::post('/suppliers/import/validate', [SupplierImportController::class, 'validateUpload']);
+    Route::post('/suppliers/import/commit',    [SupplierImportController::class, 'commit']);
 
 });
 

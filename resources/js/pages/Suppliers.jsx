@@ -7,12 +7,13 @@ import {
   PencilSquareIcon,
   TrashIcon,
 } from "@heroicons/react/24/solid";
-
+import SupplierImportModal from "../components/SupplierImportModal.jsx"; // adjust path if needed
 export default function Suppliers() {
   const [suppliers, setSuppliers] = useState([]);
   const [form, setForm] = useState({ name: "", address: "", phone: "" });
   const [editingId, setEditingId] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
 
   // Search + pagination
   const [qName, setQName] = useState("");
@@ -263,7 +264,32 @@ export default function Suppliers() {
           </select>
         </div>
       </div>
+      {/* Header row with Import button */}
+  <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-4">
+    <h1 className="text-2xl font-bold">Suppliers</h1>
 
+    <div className="flex items-center gap-2">
+      {/* Import button */}
+      <button
+        onClick={() => setImportOpen(true)}
+        className="bg-indigo-600 hover:bg-indigo-700 text-white h-9 px-4 rounded text-sm"
+      >
+        Import CSV
+      </button>
+
+      {/* existing Search by name */}
+      <div className="relative w-full md:w-80">
+        {/* ... your existing search input ... */}
+      </div>
+    </div>
+  </div>
+
+  {/* At end of component JSX */}
+  <SupplierImportModal
+    open={importOpen}
+    onClose={() => setImportOpen(false)}
+    onImported={fetchSuppliers}
+  />
       {/* Table */}
       <div className="w-full overflow-x-auto rounded border">
         <table className="w-full">
