@@ -469,6 +469,12 @@ const handleExport = async () => {
           }}
         />
       )}
+      {/* Import modal */}
+<ProductImportModal
+  open={importOpen}
+  onClose={() => setImportOpen(false)}
+  onImported={fetchProducts}
+/>
     </div>
   );
 }
