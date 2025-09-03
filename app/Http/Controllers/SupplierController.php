@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Product;
 use App\Models\Supplier;
 use Illuminate\Http\Request;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class SupplierController extends Controller
 {
@@ -59,4 +60,35 @@ class SupplierController extends Controller
         $supplier->delete();
         return response()->json(null, 204);
     }
+    public function export(): StreamedResponse
+{
+    $file = 'suppliers_'.now()->format('Y-m-d_H-i-s').'.csv';
+
+    return response()->streamDownload(function () {
+        $out = fopen('php://output', 'w');
+
+        // UTF-8 BOM so Excel opens it correctly
+        fprintf($out, chr(0xEF).chr(0xBB).chr(0xBF));
+
+        // Header
+        fputcsv($out, ['name','address','phone']);
+
+        // Stream rows in chunks for large datasets
+        Supplier::select('name','address','phone')
+            ->orderBy('name')
+            ->chunk(1000, function ($chunk) use ($out) {
+                foreach ($chunk as $s) {
+                    fputcsv($out, [
+                        (string) ($s->name ?? ''),
+                        (string) ($s->address ?? ''),
+                        (string) ($s->phone ?? ''),
+                    ]);
+                }
+            });
+
+        fclose($out);
+    }, $file, [
+        'Content-Type' => 'text/csv; charset=UTF-8',
+    ]);
+}
 }

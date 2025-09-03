@@ -28,6 +28,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::apiResource('categories', CategoryController::class);
     Route::apiResource('brands', BrandController::class);
     Route::apiResource('customers', CustomerController::class);
+    Route::get('/suppliers/export', [SupplierController::class, 'export']);
     Route::apiResource('suppliers', SupplierController::class);
 
     // Products & batches

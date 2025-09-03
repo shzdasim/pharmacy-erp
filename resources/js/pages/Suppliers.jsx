@@ -6,7 +6,8 @@ import {
   CheckCircleIcon,
   PencilSquareIcon,
   TrashIcon,
-  ArrowUpTrayIcon,
+  ArrowUpTrayIcon,     // import
+  ArrowDownTrayIcon,   // NEW: export icon
 } from "@heroicons/react/24/solid";
 import SupplierImportModal from "../components/SupplierImportModal.jsx"; // adjust path if needed
 
@@ -16,6 +17,7 @@ export default function Suppliers() {
   const [editingId, setEditingId] = useState(null);
   const [loading, setLoading] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
+  const [exporting, setExporting] = useState(false); // NEW
 
   // Search + pagination
   const [qName, setQName] = useState("");
@@ -129,6 +131,33 @@ export default function Suppliers() {
     if (e.key === "Enter" || e.key === " ") {
       e.preventDefault();
       action();
+    }
+  };
+
+  // ===== Export all suppliers =====
+  const handleExport = async () => {
+    try {
+      setExporting(true);
+      const res = await axios.get("/api/suppliers/export", { responseType: "blob" });
+
+      // Fallback filename if server doesn't set Content-Disposition (we set it in controller)
+      const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
+      const filename = `suppliers_${stamp}.csv`;
+
+      const blob = new Blob([res.data], { type: "text/csv;charset=utf-8" });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (e) {
+      console.error(e);
+      toast.error("Export failed");
+    } finally {
+      setExporting(false);
     }
   };
 
@@ -271,10 +300,11 @@ export default function Suppliers() {
       <div className="w-full overflow-x-auto rounded border">
         <table className="w-full">
           <thead className="bg-gray-50 sticky top-0 z-10">
-            {/* Toolbar row in header with Import button (start/left aligned) */}
+            {/* Toolbar row in header with Import + Export (start/left aligned) */}
             <tr>
               <th colSpan={4} className="border p-2">
-                <div className="flex items-center justify-start">
+                <div className="flex items-center justify-start gap-2">
+                  {/* Import */}
                   <button
                     onClick={() => setImportOpen(true)}
                     onKeyDown={(e) =>
@@ -286,6 +316,25 @@ export default function Suppliers() {
                   >
                     <ArrowUpTrayIcon className="w-5 h-5" />
                     Import CSV
+                  </button>
+
+                  {/* Export */}
+                  <button
+                    onClick={handleExport}
+                    onKeyDown={(e) =>
+                      (e.key === "Enter" || e.key === " ") && (e.preventDefault(), handleExport())
+                    }
+                    disabled={exporting}
+                    className={`inline-flex items-center gap-2 px-3 h-9 rounded text-sm border ${
+                      exporting
+                        ? "bg-gray-200 text-gray-600 cursor-not-allowed"
+                        : "bg-white hover:bg-gray-50 text-gray-800 border-gray-300"
+                    }`}
+                    title="Export all suppliers to CSV"
+                    aria-label="Export all suppliers to CSV"
+                  >
+                    <ArrowDownTrayIcon className="w-5 h-5" />
+                    {exporting ? "Exporting…" : "Export CSV"}
                   </button>
                 </div>
               </th>
