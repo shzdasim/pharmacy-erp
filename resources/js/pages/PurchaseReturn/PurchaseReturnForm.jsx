@@ -47,7 +47,16 @@ export default function PurchaseReturnForm({ returnId, initialData, onSuccess })
   });
 
   const [suppliers, setSuppliers] = useState([]);
-  const [catalogProducts, setCatalogProducts] = useState([]);
+  const refreshProducts = async (q = "") => {
+  // In invoice mode, do not override the restricted product list
+  if (form.purchase_invoice_id) return;
+  try {
+    const { data } = await axios.get("/api/products/search", { params: { q, limit: 30 } });
+    setProducts(Array.isArray(data?.data) ? data.data : Array.isArray(data) ? data : []);
+  } catch (e) {}
+};
+
+const [catalogProducts, setCatalogProducts] = useState([]);
   const [products, setProducts] = useState([]);
   const [purchaseInvoices, setPurchaseInvoices] = useState([]);
 
@@ -217,11 +226,11 @@ export default function PurchaseReturnForm({ returnId, initialData, onSuccess })
       try {
         const [supRes, prodRes, codeRes] = await Promise.all([
           axios.get("/api/suppliers"),
-          axios.get("/api/products"),
+          axios.get("/api/products/search", { params: { q: "", limit: 30 } }),
           axios.get("/api/purchase-returns/new-code"),
         ]);
         setSuppliers(supRes.data || []);
-        const catalog = Array.isArray(prodRes.data) ? prodRes.data : [];
+        const catalog = Array.isArray(prodRes?.data?.data) ? prodRes.data.data : Array.isArray(prodRes?.data) ? prodRes.data : [];
         setCatalogProducts(catalog);
         setProducts(catalog); // until an invoice is chosen
         setForm((prev) => ({ ...prev, posted_number: codeRes.data?.posted_number || codeRes.data?.code || "" }));

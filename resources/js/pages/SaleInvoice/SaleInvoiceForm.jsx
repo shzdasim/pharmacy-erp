@@ -95,12 +95,12 @@ useEffect(() => { setMarginPct(""); }, [saleId]);
     } catch {}
   };
 
-  const fetchProducts = async () => {
-    try {
-      const res = await axios.get("/api/products");
-      setProducts(Array.isArray(res.data) ? res.data : []);
-    } catch {}
-  };
+  const fetchProducts = async (q = "") => {
+  try {
+    const { data } = await axios.get("/api/products/search", { params: { q, limit: 30 } });
+    setProducts(Array.isArray(data?.data) ? data.data : Array.isArray(data) ? data : []);
+  } catch {}
+};
 
   const fetchBatches = async (productId) => {
     if (!productId) return [];

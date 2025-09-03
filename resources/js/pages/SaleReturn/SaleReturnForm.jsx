@@ -160,7 +160,16 @@ export default function SaleReturnForm({ returnId, initialData, onSuccess }) {
   });
 
   const [customers, setCustomers] = useState([]);
-  const [catalogProducts, setCatalogProducts] = useState([]);
+  const refreshProducts = async (q = "") => {
+  // If a sale invoice is selected, keep products limited to invoice items
+  if (form.sale_invoice_id) return;
+  try {
+    const { data } = await axios.get("/api/products/search", { params: { q, limit: 30 } });
+    setProducts(Array.isArray(data?.data) ? data.data : Array.isArray(data) ? data : []);
+  } catch (e) {}
+};
+
+const [catalogProducts, setCatalogProducts] = useState([]);
   const [products, setProducts] = useState([]);
   const [saleInvoices, setSaleInvoices] = useState([]);
   const [invoiceItems, setInvoiceItems] = useState([]);
@@ -195,13 +204,13 @@ export default function SaleReturnForm({ returnId, initialData, onSuccess }) {
       try {
         const [custRes, prodRes, codeRes] = await Promise.all([
           axios.get("/api/customers"),
-          axios.get("/api/products"),
+          axios.get("/api/products/search", { params: { q: "", limit: 30 } }),
           axios.get("/api/sale-returns/new-code"),
         ]);
         const customersArr = Array.isArray(custRes.data) ? custRes.data : [];
         setCustomers(customersArr);
 
-        const catalog = Array.isArray(prodRes.data) ? prodRes.data : [];
+        const catalog = Array.isArray(prodRes?.data?.data) ? prodRes.data.data : Array.isArray(prodRes?.data) ? prodRes.data : [];
         setCatalogProducts(catalog);
         setProducts(catalog);
 
@@ -930,10 +939,12 @@ export default function SaleReturnForm({ returnId, initialData, onSuccess }) {
                       <div ref={(el) => (productRefs.current[i] = el)}>
                         <ProductSearchInput
                           value={item.product_id}
-                          onChange={(val) => handleProductSelect(i, val)}
+                          onChange={(val) => handleProductSelect(i, val)}   // ← valid
+                          onRefreshProducts={refreshProducts}              // ← server search
                           products={products}
                           onKeyDown={(e) => onKeyNav(e, i, "product")}
                         />
+
                       </div>
                     </td>
                     <td className="border w-20">

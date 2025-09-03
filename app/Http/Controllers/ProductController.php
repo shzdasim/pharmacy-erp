@@ -10,6 +10,34 @@ use Illuminate\Validation\Rule;
 
 class ProductController extends Controller
 {
+    public function search(Request $req)
+{
+    $q = trim($req->input('q',''));
+    $limit = max(1, min((int)$req->input('limit', 30), 100));
+
+    $query = Product::select([
+            'id','name','product_code',
+            'pack_size',
+            'unit_purchase_price','unit_sale_price',
+            'pack_purchase_price','pack_sale_price',
+            'quantity',          // or expose available_units
+            'margin',            // or margin_percentage
+            'brand_id','supplier_id'
+        ])
+        ->with(['brand:id,name','supplier:id,name'])
+        ->orderBy('name');
+
+    if ($q !== '') {
+        $query->where('name','like',"%{$q}%");
+        // If you added FULLTEXT:
+        // $query->orWhereRaw('MATCH(name, description) AGAINST (? IN NATURAL LANGUAGE MODE)', [$q]);
+    }
+
+    return $query->limit($limit)->get();
+}
+
+
+
 public function generateNewCode()
 {
     // Get last product by id (latest)

@@ -115,10 +115,12 @@ export default function PurchaseInvoiceForm({ invoiceId, onSuccess }) {
     setSuppliers(res.data);
   };
 
-  const fetchProducts = async () => {
-    const res = await axios.get("/api/products");
-    setProducts(res.data);
-  };
+  const fetchProducts = async (q = "") => {
+  const { data } = await axios.get("/api/products/search", {
+    params: { q, limit: 30 }, // return the top 30 matches
+  });
+  setProducts(data); // array is fine; paginator also fine
+};
 
   const fetchInvoice = async () => {
     const res = await axios.get(`/api/purchase-invoices/${invoiceId}`);

@@ -38,6 +38,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::apiResource('suppliers', SupplierController::class);
 
     // Products & batches
+    Route::get('/products/search', [ProductController::class, 'search']);
     Route::get('products/new-code', [ProductController::class, 'generateNewCode']);
     Route::get('products/{product}/batches', [BatchController::class, 'index']);
     Route::get('products/available-quantity', [ProductController::class, 'availableQuantity']);
