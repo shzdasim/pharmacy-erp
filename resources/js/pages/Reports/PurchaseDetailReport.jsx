@@ -195,7 +195,7 @@ export default function PurchaseDetailReport() {
       {/* Ultra-compact style just for this component */}
       <style>{`
         .tight-table { border-collapse: collapse; table-layout: fixed; }
-        .tight-table th, .tight-table td { padding: 0 !important; line-height: 1.05; font-size: 10px; }
+        .tight-table th, .tight-table td { padding: 0 !important; line-height: 1.05; font-size: 12px; }
         .tight-table th { background: #f8fafc; font-weight: 600; color: #374151; }
         .tight-table .num { text-align: right; }
         .tight-table .nowrap { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -344,9 +344,9 @@ export default function PurchaseDetailReport() {
             <div className="relative max-w-full overflow-x-auto">
               <table className="tight-table w-full min-w-[1120px] border border-gray-200">
                 <colgroup>
-                  <col style={{ width: 220 }} />
-                  <col style={{ width: 90 }} />
-                  <col style={{ width: 90 }} />
+                  <col style={{ width: 140 }} />
+                  <col style={{ width: 50 }} />
+                  <col style={{ width: 50 }} />
                   {/* 13 numeric columns @ 60px each */}
                   {Array.from({ length: 13 }).map((_, i) => (
                     <col key={i} style={{ width: 60 }} />
