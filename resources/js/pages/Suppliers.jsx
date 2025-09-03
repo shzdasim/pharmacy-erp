@@ -6,8 +6,10 @@ import {
   CheckCircleIcon,
   PencilSquareIcon,
   TrashIcon,
+  ArrowUpTrayIcon,
 } from "@heroicons/react/24/solid";
 import SupplierImportModal from "../components/SupplierImportModal.jsx"; // adjust path if needed
+
 export default function Suppliers() {
   const [suppliers, setSuppliers] = useState([]);
   const [form, setForm] = useState({ name: "", address: "", phone: "" });
@@ -31,7 +33,6 @@ export default function Suppliers() {
   const fetchSuppliers = async () => {
     try {
       setLoading(true);
-      // Expecting products_count in payload to guard deletes
       const res = await axios.get("/api/suppliers");
       setSuppliers(res.data || []);
     } catch (err) {
@@ -153,6 +154,7 @@ export default function Suppliers() {
 
   return (
     <div className="p-6">
+      {/* Header with search */}
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-4">
         <h1 className="text-2xl font-bold">Suppliers</h1>
 
@@ -168,7 +170,7 @@ export default function Suppliers() {
         </div>
       </div>
 
-      {/* Compact inline form: inputs on one row; button on NEW row with icon */}
+      {/* Compact inline form */}
       <form onSubmit={(e) => e.preventDefault()} className="mb-4">
         <div className="flex flex-col gap-2">
           {/* Inputs row */}
@@ -264,36 +266,32 @@ export default function Suppliers() {
           </select>
         </div>
       </div>
-      {/* Header row with Import button */}
-  <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-4">
-    <h1 className="text-2xl font-bold">Suppliers</h1>
 
-    <div className="flex items-center gap-2">
-      {/* Import button */}
-      <button
-        onClick={() => setImportOpen(true)}
-        className="bg-indigo-600 hover:bg-indigo-700 text-white h-9 px-4 rounded text-sm"
-      >
-        Import CSV
-      </button>
-
-      {/* existing Search by name */}
-      <div className="relative w-full md:w-80">
-        {/* ... your existing search input ... */}
-      </div>
-    </div>
-  </div>
-
-  {/* At end of component JSX */}
-  <SupplierImportModal
-    open={importOpen}
-    onClose={() => setImportOpen(false)}
-    onImported={fetchSuppliers}
-  />
       {/* Table */}
       <div className="w-full overflow-x-auto rounded border">
         <table className="w-full">
-          <thead className="bg-gray-50 sticky top-0">
+          <thead className="bg-gray-50 sticky top-0 z-10">
+            {/* Toolbar row in header with Import button (start/left aligned) */}
+            <tr>
+              <th colSpan={4} className="border p-2">
+                <div className="flex items-center justify-start">
+                  <button
+                    onClick={() => setImportOpen(true)}
+                    onKeyDown={(e) =>
+                      (e.key === "Enter" || e.key === " ") && (e.preventDefault(), setImportOpen(true))
+                    }
+                    className="inline-flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-3 h-9 rounded text-sm"
+                    title="Import Suppliers (CSV)"
+                    aria-label="Import suppliers from CSV"
+                  >
+                    <ArrowUpTrayIcon className="w-5 h-5" />
+                    Import CSV
+                  </button>
+                </div>
+              </th>
+            </tr>
+
+            {/* Column labels */}
             <tr>
               <th className="border p-2 text-left">Name</th>
               <th className="border p-2 text-left">Address</th>
@@ -301,6 +299,7 @@ export default function Suppliers() {
               <th className="border p-2 text-center">Actions</th>
             </tr>
           </thead>
+
           <tbody>
             {paged.length === 0 && !loading && (
               <tr>
@@ -312,7 +311,10 @@ export default function Suppliers() {
             {paged.map((s) => {
               const used = Number(s.products_count || 0) > 0;
               return (
-                <tr key={s.id} className="odd:bg-white even:bg-gray-50 hover:bg-blue-50 transition-colors">
+                <tr
+                  key={s.id}
+                  className="odd:bg-white even:bg-gray-50 hover:bg-blue-50 transition-colors"
+                >
                   <td className="border p-2">{s.name}</td>
                   <td className="border p-2">{s.address}</td>
                   <td className="border p-2">{s.phone}</td>
@@ -363,14 +365,47 @@ export default function Suppliers() {
 
       {/* Pagination */}
       <div className="mt-4 flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between">
-        <div className="text-sm text-gray-600">Page {page} of {pageCount}</div>
+        <div className="text-sm text-gray-600">
+          Page {page} of {pageCount}
+        </div>
         <div className="flex items-center gap-2">
-          <button onClick={() => setPage(1)} disabled={page === 1} className="px-3 py-1 border rounded disabled:opacity-50">⏮ First</button>
-          <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page === 1} className="px-3 py-1 border rounded disabled:opacity-50">◀ Prev</button>
-          <button onClick={() => setPage((p) => Math.min(pageCount, p + 1))} disabled={page === pageCount} className="px-3 py-1 border rounded disabled:opacity-50">Next ▶</button>
-          <button onClick={() => setPage(pageCount)} disabled={page === pageCount} className="px-3 py-1 border rounded disabled:opacity-50">Last ⏭</button>
+          <button
+            onClick={() => setPage(1)}
+            disabled={page === 1}
+            className="px-3 py-1 border rounded disabled:opacity-50"
+          >
+            ⏮ First
+          </button>
+          <button
+            onClick={() => setPage((p) => Math.max(1, p - 1))}
+            disabled={page === 1}
+            className="px-3 py-1 border rounded disabled:opacity-50"
+          >
+            ◀ Prev
+          </button>
+          <button
+            onClick={() => setPage((p) => Math.min(pageCount, p + 1))}
+            disabled={page === pageCount}
+            className="px-3 py-1 border rounded disabled:opacity-50"
+          >
+            Next ▶
+          </button>
+          <button
+            onClick={() => setPage(pageCount)}
+            disabled={page === pageCount}
+            className="px-3 py-1 border rounded disabled:opacity-50"
+          >
+            Last ⏭
+          </button>
         </div>
       </div>
+
+      {/* Import Modal */}
+      <SupplierImportModal
+        open={importOpen}
+        onClose={() => setImportOpen(false)}
+        onImported={fetchSuppliers}
+      />
     </div>
   );
 }
