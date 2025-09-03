@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Services\ProductImportService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Validation\Rule;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class ProductImportController extends Controller
@@ -26,7 +27,7 @@ class ProductImportController extends Controller
     {
         $request->validate([
             'file' => ['required','file','mimes:csv,txt'],
-            'delimiter' => ['nullable','in:,,;,\t,|'],
+            'delimiter' => ['nullable', Rule::in([',',';','\t','|'])],
             'create_missing_refs' => ['sometimes','in:1,0,true,false,on,off'],
         ]);
 
@@ -51,7 +52,7 @@ class ProductImportController extends Controller
         $request->validate([
             'token' => ['required','uuid'],
             'insert_valid_only' => ['sometimes','boolean'],
-            'delimiter' => ['nullable','in:,,;,\t,|'],
+            'delimiter' => ['nullable', Rule::in([',',';','\t','|'])],
             'create_missing_refs' => ['sometimes','in:1,0,true,false,on,off'],
         ]);
 
