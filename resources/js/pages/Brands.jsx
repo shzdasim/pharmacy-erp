@@ -6,7 +6,10 @@ import {
   CheckCircleIcon,
   PencilSquareIcon,
   TrashIcon,
+  ArrowUpTrayIcon,
+  ArrowDownTrayIcon,
 } from "@heroicons/react/24/solid";
+import BrandImportModal from "../components/BrandImportModal.jsx";
 
 export default function Brands() {
   const [brands, setBrands] = useState([]);
@@ -14,6 +17,9 @@ export default function Brands() {
   const [editingId, setEditingId] = useState(null);
   const [preview, setPreview] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [saving, setSaving] = useState(false);
 
   // search + pagination
   const [q, setQ] = useState("");
@@ -23,7 +29,6 @@ export default function Brands() {
   // focus + save
   const nameRef = useRef(null);
   const saveBtnRef = useRef(null);
-  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     document.title = "Brands - Pharmacy ERP";
@@ -33,7 +38,7 @@ export default function Brands() {
   const fetchBrands = async () => {
     try {
       setLoading(true);
-      const res = await axios.get("/api/brands"); // returns products_count
+      const res = await axios.get("/api/brands");
       setBrands(res.data || []);
     } catch (err) {
       console.error("Failed to fetch brands", err);
@@ -43,12 +48,8 @@ export default function Brands() {
     }
   };
 
-  // focus name on mount and when switching modes
-  useEffect(() => {
-    nameRef.current?.focus();
-  }, [editingId]);
+  useEffect(() => { nameRef.current?.focus(); }, [editingId]);
 
-  // Alt+S to save
   useEffect(() => {
     const onKeyDown = (e) => {
       if (e.altKey && (e.key || "").toLowerCase() === "s") {
@@ -61,7 +62,6 @@ export default function Brands() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [form, editingId]);
 
-  // Enter in name -> focus Save (do not submit)
   const onEnterFocusSave = (e) => {
     if (e.key === "Enter") {
       e.preventDefault();
@@ -93,7 +93,6 @@ export default function Brands() {
       nameRef.current?.focus();
       return;
     }
-
     try {
       setSaving(true);
       const data = new FormData();
@@ -102,25 +101,20 @@ export default function Brands() {
 
       if (editingId) {
         data.append("_method", "PUT");
-        await axios.post(`/api/brands/${editingId}`, data, {
-          headers: { "Content-Type": "multipart/form-data" },
-        });
+        await axios.post(`/api/brands/${editingId}`, data, { headers: { "Content-Type": "multipart/form-data" } });
         toast.success("Brand updated");
       } else {
-        await axios.post("/api/brands", data, {
-          headers: { "Content-Type": "multipart/form-data" },
-        });
+        await axios.post("/api/brands", data, { headers: { "Content-Type": "multipart/form-data" } });
         toast.success("Brand saved");
       }
 
       resetForm();
       fetchBrands();
     } catch (err) {
-      const msg =
-        err?.response?.data?.message ||
-        err?.response?.data?.errors?.name?.[0] ||
-        err?.response?.data?.errors?.image?.[0] ||
-        "Save failed";
+      const msg = err?.response?.data?.message
+        || err?.response?.data?.errors?.name?.[0]
+        || err?.response?.data?.errors?.image?.[0]
+        || "Save failed";
       toast.error(msg);
     } finally {
       setSaving(false);
@@ -135,29 +129,44 @@ export default function Brands() {
 
   const handleDelete = async (b) => {
     const used = Number(b.products_count || 0) > 0;
-    if (used) {
-      toast.error("Cannot delete: brand is used by products.");
-      return;
-    }
+    if (used) return toast.error("Cannot delete: brand is used by products.");
     try {
       await axios.delete(`/api/brands/${b.id}`);
       setBrands((prev) => prev.filter((x) => x.id !== b.id));
       if (editingId === b.id) resetForm();
       toast.success("Brand deleted");
     } catch (err) {
-      const msg = err?.response?.data?.message || "Could not delete brand.";
-      toast.error(msg);
+      toast.error(err?.response?.data?.message || "Could not delete brand.");
     }
   };
 
   const handleButtonKeyDown = (e, action) => {
     if (e.key === "Enter" || e.key === " ") {
-      e.preventDefault();
-      action();
+      e.preventDefault(); action();
     }
   };
 
-  // ===== search + pagination (client-side) =====
+  // export all brands
+  const handleExport = async () => {
+    try {
+      setExporting(true);
+      const res = await axios.get("/api/brands/export", { responseType: "blob" });
+      const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
+      const filename = `brands_${stamp}.csv`;
+      const blob = new Blob([res.data], { type: "text/csv;charset=utf-8" });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url; a.download = filename; document.body.appendChild(a); a.click(); a.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (e) {
+      console.error(e);
+      toast.error("Export failed");
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  // search + pagination
   const norm = (v) => (v ?? "").toString().toLowerCase().trim();
   const filtered = useMemo(() => {
     const needle = norm(q);
@@ -165,14 +174,10 @@ export default function Brands() {
     return brands.filter((b) => norm(b.name).includes(needle));
   }, [brands, q]);
 
-  useEffect(() => {
-    setPage(1);
-  }, [q, pageSize]);
+  useEffect(() => { setPage(1); }, [q, pageSize]);
 
   const pageCount = Math.max(1, Math.ceil(filtered.length / pageSize));
-  useEffect(() => {
-    if (page > pageCount) setPage(pageCount);
-  }, [page, pageCount]);
+  useEffect(() => { if (page > pageCount) setPage(pageCount); }, [page, pageCount]);
 
   const start = (page - 1) * pageSize;
   const paged = filtered.slice(start, start + pageSize);
@@ -193,58 +198,39 @@ export default function Brands() {
         </div>
       </div>
 
-      {/* compact form: inputs row + Save row */}
+      {/* form */}
       <form onSubmit={(e) => e.preventDefault()} className="mb-4" encType="multipart/form-data">
         <div className="flex flex-col gap-2">
-          {/* Inputs row */}
           <div className="flex flex-col md:flex-row md:items-end md:gap-2">
             <div className="flex-1 min-w-[200px]">
               <label className="block text-xs text-gray-700 mb-1">Name</label>
               <input
-                type="text"
-                name="name"
-                placeholder="Brand Name"
+                type="text" name="name" placeholder="Brand Name"
                 className="border rounded px-2 h-9 text-sm w-full"
-                value={form.name}
-                onChange={handleInputChange}
-                onKeyDown={onEnterFocusSave}
-                ref={nameRef}
-                required
+                value={form.name} onChange={handleInputChange}
+                onKeyDown={onEnterFocusSave} ref={nameRef} required
               />
             </div>
-
             <div className="w-full md:w-[24rem]">
               <label className="block text-xs text-gray-700 mb-1">Image (optional)</label>
               <input
-                key={editingId || "new"} // reset when switching edit/new
-                type="file"
-                name="image"
-                accept="image/*"
+                key={editingId || "new"} type="file" name="image" accept="image/*"
                 onChange={handleFileChange}
                 className="border rounded h-9 text-sm w-full file:mr-3 file:px-3 file:py-1 file:text-sm file:rounded file:border-0 file:bg-gray-100"
               />
             </div>
-
             {preview && (
               <div className="w-full md:w-28">
                 <label className="block text-xs text-gray-700 mb-1">Preview</label>
-                <img
-                  src={preview}
-                  alt="Preview"
-                  className="w-24 h-24 object-contain border rounded bg-white"
-                />
+                <img src={preview} alt="Preview" className="w-24 h-24 object-contain border rounded bg-white" />
               </div>
             )}
           </div>
 
-          {/* Button row */}
           <div className="flex items-center justify-end">
             <button
-              type="button"
-              onClick={handleSubmit}
-              ref={saveBtnRef}
-              title="Save (Alt+S)"
-              aria-keyshortcuts="Alt+S"
+              type="button" onClick={handleSubmit} ref={saveBtnRef}
+              title="Save (Alt+S)" aria-keyshortcuts="Alt+S"
               className={`inline-flex items-center justify-center gap-2 px-4 h-10 rounded text-white text-sm min-w-[140px] md:w-44 ${
                 saving ? "bg-blue-400" : "bg-blue-600 hover:bg-blue-700"
               }`}
@@ -261,49 +247,67 @@ export default function Brands() {
       {/* meta */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-2">
         <div className="text-sm text-gray-600">
-          {loading ? (
-            "Loading…"
-          ) : (
+          {loading ? "Loading…" : (
             <>
-              Showing{" "}
-              <strong>
-                {filtered.length === 0 ? 0 : start + 1}-{Math.min(filtered.length, start + pageSize)}
-              </strong>{" "}
-              of <strong>{brands.length}</strong>{" "}
+              Showing <strong>{filtered.length === 0 ? 0 : start + 1}-{Math.min(filtered.length, start + pageSize)}</strong>
+              {" "}of <strong>{brands.length}</strong>
               {filtered.length !== brands.length && <> (filtered: <strong>{filtered.length}</strong>)</>}
             </>
           )}
         </div>
         <div className="flex items-center gap-2">
           <label className="text-sm text-gray-600">Rows per page</label>
-          <select
-            value={pageSize}
-            onChange={(e) => setPageSize(Number(e.target.value))}
-            className="border rounded px-2 h-9 text-sm"
-          >
-            <option value={10}>10</option>
-            <option value={25}>25</option>
-            <option value={50}>50</option>
+          <select value={pageSize} onChange={(e) => setPageSize(Number(e.target.value))}
+                  className="border rounded px-2 h-9 text-sm">
+            <option value={10}>10</option><option value={25}>25</option><option value={50}>50</option>
           </select>
         </div>
       </div>
 
-      {/* table */}
+      {/* table with toolbar in header */}
       <div className="w-full overflow-x-auto rounded border">
         <table className="w-full">
-          <thead className="bg-gray-50 sticky top-0">
+          <thead className="bg-gray-50 sticky top-0 z-10">
+            {/* Toolbar row */}
+            <tr>
+              <th colSpan={3} className="border p-2">
+                <div className="flex items-center justify-start gap-2">
+                  <button
+                    onClick={() => setImportOpen(true)}
+                    onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && (e.preventDefault(), setImportOpen(true))}
+                    className="inline-flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-3 h-9 rounded text-sm"
+                    title="Import Brands (CSV)" aria-label="Import brands from CSV"
+                  >
+                    <ArrowUpTrayIcon className="w-5 h-5" />
+                    Import CSV
+                  </button>
+                  <button
+                    onClick={handleExport} disabled={exporting}
+                    onKeyDown={(e)=> (e.key==="Enter"||e.key===" ") && (e.preventDefault(), handleExport())}
+                    className={`inline-flex items-center gap-2 px-3 h-9 rounded text-sm border ${
+                      exporting ? "bg-gray-200 text-gray-600 cursor-not-allowed"
+                                : "bg-white hover:bg-gray-50 text-gray-800 border-gray-300"
+                    }`}
+                    title="Export all brands to CSV" aria-label="Export all brands to CSV"
+                  >
+                    <ArrowDownTrayIcon className="w-5 h-5" />
+                    {exporting ? "Exporting…" : "Export CSV"}
+                  </button>
+                </div>
+              </th>
+            </tr>
+            {/* column labels */}
             <tr>
               <th className="border p-2 text-left">Name</th>
               <th className="border p-2 text-left">Image</th>
               <th className="border p-2 text-center">Actions</th>
             </tr>
           </thead>
-        <tbody>
+
+          <tbody>
             {paged.length === 0 && !loading && (
               <tr>
-                <td className="border px-3 py-6 text-center text-gray-500" colSpan={3}>
-                  No brands found.
-                </td>
+                <td className="border px-3 py-6 text-center text-gray-500" colSpan={3}>No brands found.</td>
               </tr>
             )}
             {paged.map((b) => {
@@ -313,14 +317,8 @@ export default function Brands() {
                   <td className="border p-2">{b.name}</td>
                   <td className="border p-2">
                     {b.image ? (
-                      <img
-                        src={`/storage/${b.image}`}
-                        alt={b.name}
-                        className="w-16 h-16 object-contain border rounded bg-white"
-                      />
-                    ) : (
-                      <span className="text-gray-500 text-sm">No image</span>
-                    )}
+                      <img src={`/storage/${b.image}`} alt={b.name} className="w-16 h-16 object-contain border rounded bg-white" />
+                    ) : <span className="text-gray-500 text-sm">No image</span>}
                   </td>
                   <td className="border p-2">
                     <div className="flex gap-2 justify-center">
@@ -367,6 +365,13 @@ export default function Brands() {
           <button onClick={() => setPage(pageCount)} disabled={page === pageCount} className="px-3 py-1 border rounded disabled:opacity-50">Last ⏭</button>
         </div>
       </div>
+
+      {/* Import modal */}
+      <BrandImportModal
+        open={importOpen}
+        onClose={() => setImportOpen(false)}
+        onImported={fetchBrands}
+      />
     </div>
   );
 }

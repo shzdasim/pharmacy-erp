@@ -6,6 +6,7 @@ namespace App\Http\Controllers;
 use App\Models\Brand;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class BrandController extends Controller
 {
@@ -67,4 +68,28 @@ class BrandController extends Controller
         $brand->delete();
         return response()->json(null, 204);
     }
+    public function export(): StreamedResponse
+{
+    $file = 'brands_'.now()->format('Y-m-d_H-i-s').'.csv';
+
+    return response()->streamDownload(function () {
+        $out = fopen('php://output', 'w');
+        // UTF-8 BOM for Excel
+        fprintf($out, chr(0xEF).chr(0xBB).chr(0xBF));
+        // Header
+        fputcsv($out, ['name','image']);
+        // Rows
+        Brand::select('name','image')
+            ->orderBy('name')
+            ->chunk(1000, function ($chunk) use ($out) {
+                foreach ($chunk as $b) {
+                    fputcsv($out, [
+                        (string)($b->name ?? ''),
+                        (string)($b->image ?? ''), // relative path like brands/... or empty
+                    ]);
+                }
+            });
+        fclose($out);
+    }, $file, ['Content-Type' => 'text/csv; charset=UTF-8']);
+}
 }

@@ -5,6 +5,7 @@ use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\BatchController;
 use App\Http\Controllers\BrandController;
+use App\Http\Controllers\BrandImportController;
 use App\Http\Controllers\CategoryController;
 use App\Http\Controllers\CustomerController;
 use App\Http\Controllers\DashboardController;
@@ -26,6 +27,7 @@ Route::middleware('auth:sanctum')->post('/logout', [AuthController::class, 'logo
 Route::middleware('auth:sanctum')->group(function () {
     // Master data
     Route::apiResource('categories', CategoryController::class);
+    Route::get('/brands/export', [BrandController::class, 'export'])->name('brands.export');
     Route::apiResource('brands', BrandController::class);
     Route::apiResource('customers', CustomerController::class);
     Route::get('/suppliers/export', [SupplierController::class, 'export']);
@@ -77,6 +79,11 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/suppliers/import/template', [SupplierImportController::class, 'template']);
     Route::post('/suppliers/import/validate', [SupplierImportController::class, 'validateUpload']);
     Route::post('/suppliers/import/commit',    [SupplierImportController::class, 'commit']);
+
+    // Brands import
+    Route::get('/brands/import/template', [BrandImportController::class, 'template']);
+    Route::post('/brands/import/validate', [BrandImportController::class, 'validateUpload']);
+    Route::post('/brands/import/commit',    [BrandImportController::class, 'commit']);
 
 });
 
