@@ -8,12 +8,35 @@ import {
   PlusCircleIcon,
   MagnifyingGlassIcon,
   XMarkIcon,
+  ArrowUpTrayIcon,
+  ArrowDownTrayIcon,
 } from "@heroicons/react/24/solid";
 import Select from "react-select";
+import ProductImportModal from "../../components/ProductImportModal.jsx";
 
 export default function ProductsIndex() {
   const [rows, setRows] = useState([]);          // current page rows
   const [loading, setLoading] = useState(false);
+  // Import Export
+  const [importOpen, setImportOpen] = useState(false);
+  const [exporting, setExporting] = useState(false);
+
+const handleExport = async () => {
+  try {
+    setExporting(true);
+    const res = await axios.get("/api/products/export", { responseType: "blob" });
+    const stamp = new Date().toISOString().slice(0,19).replace(/[:T]/g,"-");
+    const filename = `products_${stamp}.csv`;
+    const blob = new Blob([res.data], { type: "text/csv;charset=utf-8" });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = filename; document.body.appendChild(a); a.click(); a.remove();
+    window.URL.revokeObjectURL(url);
+  } catch (e) {
+    console.error(e);
+    toast.error("Export failed");
+  } finally { setExporting(false); }
+};
 
   // search filters
   const [qName, setQName] = useState("");
@@ -290,6 +313,31 @@ export default function ProductsIndex() {
       <div className="w-full overflow-x-auto rounded border">
         <table className="w-full">
           <thead className="bg-gray-50 sticky top-0">
+            <tr>
+    <th colSpan={8} className="border p-2">
+      <div className="flex items-center justify-start gap-2">
+        <button
+          onClick={() => setImportOpen(true)}
+          className="inline-flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-3 h-9 rounded text-sm"
+          title="Import Products (CSV)" aria-label="Import products from CSV"
+        >
+          <ArrowUpTrayIcon className="w-5 h-5" />
+          Import CSV
+        </button>
+        <button
+          onClick={handleExport} disabled={exporting}
+          className={`inline-flex items-center gap-2 px-3 h-9 rounded text-sm border ${
+            exporting ? "bg-gray-200 text-gray-600 cursor-not-allowed"
+                      : "bg-white hover:bg-gray-50 text-gray-800 border-gray-300"
+          }`}
+          title="Export all products to CSV" aria-label="Export all products to CSV"
+        >
+          <ArrowDownTrayIcon className="w-5 h-5" />
+          {exporting ? "Exporting…" : "Export CSV"}
+        </button>
+      </div>
+    </th>
+  </tr>
             <tr>
               <th className="border px-2 py-2 text-left">
                 <input

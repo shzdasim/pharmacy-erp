@@ -12,6 +12,7 @@ use App\Http\Controllers\CustomerController;
 use App\Http\Controllers\CustomerImportController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\ProductController;
+use App\Http\Controllers\ProductImportController;
 use App\Http\Controllers\PurchaseInvoiceController;
 use App\Http\Controllers\PurchaseOrderController;
 use App\Http\Controllers\PurchaseReturnController;
@@ -43,6 +44,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('products/{product}/batches', [BatchController::class, 'index']);
     Route::get('products/available-quantity', [ProductController::class, 'availableQuantity']);
     Route::patch('/products/bulk-update-meta', [ProductController::class, 'bulkUpdateMeta']);
+    Route::get('/products/export', [ProductController::class, 'export'])->name('products.export');
     Route::apiResource('products', ProductController::class);
 
     // Purchases
@@ -98,7 +100,12 @@ Route::middleware('auth:sanctum')->group(function () {
     // Customers import
     Route::get('/customers/import/template', [CustomerImportController::class, 'template']);
     Route::post('/customers/import/validate', [CustomerImportController::class, 'validateUpload']);
-    Route::post('/customers/import/commit',    [CustomerImportController::class, 'commit']);    
+    Route::post('/customers/import/commit',    [CustomerImportController::class, 'commit']); 
+    
+    // Product import
+    Route::get('/products/import/template', [ProductImportController::class, 'template']);
+    Route::post('/products/import/validate', [ProductImportController::class, 'validateUpload']);
+    Route::post('/products/import/commit',    [ProductImportController::class, 'commit']);
 
 });
 
