@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Customer;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class CustomerController extends Controller
 {
@@ -77,4 +78,31 @@ class CustomerController extends Controller
         $customer->delete();
         return response()->json(null, 204);
     }
+    public function export(): StreamedResponse
+{
+    $file = 'customers_'.now()->format('Y-m-d_H-i-s').'.csv';
+
+    return response()->streamDownload(function () {
+        $out = fopen('php://output', 'w');
+        // UTF-8 BOM for Excel
+        fprintf($out, chr(0xEF).chr(0xBB).chr(0xBF));
+        // Header
+        fputcsv($out, ['name','email','phone','address']);
+
+        \App\Models\Customer::select('name','email','phone','address')
+            ->orderBy('name')
+            ->chunk(1000, function ($chunk) use ($out) {
+                foreach ($chunk as $c) {
+                    fputcsv($out, [
+                        (string)($c->name ?? ''),
+                        (string)($c->email ?? ''),
+                        (string)($c->phone ?? ''),
+                        (string)($c->address ?? ''),
+                    ]);
+                }
+            });
+
+        fclose($out);
+    }, $file, ['Content-Type' => 'text/csv; charset=UTF-8']);
+}
 }

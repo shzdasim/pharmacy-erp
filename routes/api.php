@@ -9,6 +9,7 @@ use App\Http\Controllers\BrandImportController;
 use App\Http\Controllers\CategoryController;
 use App\Http\Controllers\CategoryImportController;
 use App\Http\Controllers\CustomerController;
+use App\Http\Controllers\CustomerImportController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\ProductController;
 use App\Http\Controllers\PurchaseInvoiceController;
@@ -31,6 +32,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::apiResource('categories', CategoryController::class);
     Route::get('/brands/export', [BrandController::class, 'export'])->name('brands.export');
     Route::apiResource('brands', BrandController::class);
+    Route::get('/customers/export', [CustomerController::class, 'export'])->name('customers.export');
     Route::apiResource('customers', CustomerController::class);
     Route::get('/suppliers/export', [SupplierController::class, 'export']);
     Route::apiResource('suppliers', SupplierController::class);
@@ -91,6 +93,11 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/categories/import/template', [CategoryImportController::class, 'template']);
     Route::post('/categories/import/validate', [CategoryImportController::class, 'validateUpload']);
     Route::post('/categories/import/commit',    [CategoryImportController::class, 'commit']);
+
+    // Customers import
+    Route::get('/customers/import/template', [CustomerImportController::class, 'template']);
+    Route::post('/customers/import/validate', [CustomerImportController::class, 'validateUpload']);
+    Route::post('/customers/import/commit',    [CustomerImportController::class, 'commit']);    
 
 });
 
