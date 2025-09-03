@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Category;
 use Illuminate\Http\Request;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class CategoryController extends Controller
 {
@@ -45,4 +46,25 @@ class CategoryController extends Controller
         $category->delete();
         return response()->json(null, 204);
     }
+    public function export(): StreamedResponse
+{
+    $file = 'categories_'.now()->format('Y-m-d_H-i-s').'.csv';
+
+    return response()->streamDownload(function () {
+        $out = fopen('php://output', 'w');
+        // UTF-8 BOM for Excel
+        fprintf($out, chr(0xEF).chr(0xBB).chr(0xBF));
+        // Header
+        fputcsv($out, ['name']);
+        // Rows
+        \App\Models\Category::select('name')
+            ->orderBy('name')
+            ->chunk(1000, function ($chunk) use ($out) {
+                foreach ($chunk as $c) {
+                    fputcsv($out, [(string)($c->name ?? '')]);
+                }
+            });
+        fclose($out);
+    }, $file, ['Content-Type' => 'text/csv; charset=UTF-8']);
+}
 }

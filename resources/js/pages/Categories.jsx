@@ -6,23 +6,27 @@ import {
   CheckCircleIcon,
   PencilSquareIcon,
   TrashIcon,
+  ArrowUpTrayIcon,
+  ArrowDownTrayIcon,
 } from "@heroicons/react/24/solid";
+import CategoryImportModal from "../components/CategoryImportModel.jsx";
 
 export default function Categories() {
   const [categories, setCategories] = useState([]);
   const [form, setForm] = useState({ name: "" });
   const [editingId, setEditingId] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
 
-  // search + pagination
   const [qName, setQName] = useState("");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
 
-  // focus + save
+  const [importOpen, setImportOpen] = useState(false);
+  const [exporting, setExporting] = useState(false);
+
   const nameRef = useRef(null);
   const saveBtnRef = useRef(null);
-  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     document.title = "Categories - Pharmacy ERP";
@@ -32,7 +36,6 @@ export default function Categories() {
   const fetchCategories = async () => {
     try {
       setLoading(true);
-      // Backend returns products_count
       const res = await axios.get("/api/categories");
       setCategories(res.data || []);
     } catch (err) {
@@ -43,17 +46,12 @@ export default function Categories() {
     }
   };
 
-  // focus name on mount and when switching modes
-  useEffect(() => {
-    nameRef.current?.focus();
-  }, [editingId]);
+  useEffect(() => { nameRef.current?.focus(); }, [editingId]);
 
-  // Alt+S to save
   useEffect(() => {
     const onKeyDown = (e) => {
       if (e.altKey && (e.key || "").toLowerCase() === "s") {
-        e.preventDefault();
-        handleSave();
+        e.preventDefault(); handleSave();
       }
     };
     window.addEventListener("keydown", onKeyDown);
@@ -61,28 +59,20 @@ export default function Categories() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [form, editingId]);
 
-  // Enter in name -> focus Save button (do not submit)
   const onEnterFocusNext = (e) => {
-    if (e.key === "Enter") {
-      e.preventDefault();
-      saveBtnRef.current?.focus();
-    }
+    if (e.key === "Enter") { e.preventDefault(); saveBtnRef.current?.focus(); }
   };
 
   const resetForm = () => {
-    setForm({ name: "" });
-    setEditingId(null);
+    setForm({ name: "" }); setEditingId(null);
     setTimeout(() => nameRef.current?.focus(), 0);
   };
 
   const handleSave = async () => {
     if (saving) return;
-    const name = form.name.trim();
-    if (!name) {
-      toast.error("Name is required");
-      nameRef.current?.focus();
-      return;
-    }
+    const name = (form.name || "").trim();
+    if (!name) { toast.error("Name is required"); nameRef.current?.focus(); return; }
+
     try {
       setSaving(true);
       if (editingId) {
@@ -92,23 +82,14 @@ export default function Categories() {
         await axios.post("/api/categories", { name });
         toast.success("Category saved");
       }
-      resetForm();
-      fetchCategories();
+      resetForm(); fetchCategories();
     } catch (err) {
-      const msg =
-        err?.response?.data?.message ||
-        err?.response?.data?.errors?.name?.[0] ||
-        "Save failed";
+      const msg = err?.response?.data?.message || err?.response?.data?.errors?.name?.[0] || "Save failed";
       toast.error(msg);
-    } finally {
-      setSaving(false);
-    }
+    } finally { setSaving(false); }
   };
 
-  const handleEdit = (c) => {
-    setForm({ name: c.name || "" });
-    setEditingId(c.id);
-  };
+  const handleEdit = (c) => { setForm({ name: c.name || "" }); setEditingId(c.id); };
 
   const handleDelete = async (c) => {
     try {
@@ -116,20 +97,30 @@ export default function Categories() {
       setCategories((prev) => prev.filter((x) => x.id !== c.id));
       if (editingId === c.id) resetForm();
       toast.success("Category deleted");
-    } catch (err) {
-      const msg = err?.response?.data?.message || "Could not delete category.";
-      toast.error(msg);
-    }
+    } catch (err) { toast.error(err?.response?.data?.message || "Could not delete category."); }
   };
 
   const handleButtonKeyDown = (e, action) => {
-    if (e.key === "Enter" || e.key === " ") {
-      e.preventDefault();
-      action();
-    }
+    if (e.key === "Enter" || e.key === " ") { e.preventDefault(); action(); }
   };
 
-  // ===== search + pagination (client-side) =====
+  // Export all categories
+  const handleExport = async () => {
+    try {
+      setExporting(true);
+      const res = await axios.get("/api/categories/export", { responseType: "blob" });
+      const stamp = new Date().toISOString().slice(0,19).replace(/[:T]/g,"-");
+      const filename = `categories_${stamp}.csv`;
+      const blob = new Blob([res.data], { type: "text/csv;charset=utf-8" });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url; a.download = filename; document.body.appendChild(a); a.click(); a.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (e) { console.error(e); toast.error("Export failed"); }
+    finally { setExporting(false); }
+  };
+
+  // search + pagination
   const norm = (v) => (v ?? "").toString().toLowerCase().trim();
   const filtered = useMemo(() => {
     const needle = norm(qName);
@@ -137,14 +128,10 @@ export default function Categories() {
     return categories.filter((c) => norm(c.name).includes(needle));
   }, [categories, qName]);
 
-  useEffect(() => {
-    setPage(1);
-  }, [qName, pageSize]);
+  useEffect(() => { setPage(1); }, [qName, pageSize]);
 
   const pageCount = Math.max(1, Math.ceil(filtered.length / pageSize));
-  useEffect(() => {
-    if (page > pageCount) setPage(pageCount);
-  }, [page, pageCount]);
+  useEffect(() => { if (page > pageCount) setPage(pageCount); }, [page, pageCount]);
 
   const start = (page - 1) * pageSize;
   const paged = filtered.slice(start, start + pageSize);
@@ -165,36 +152,30 @@ export default function Categories() {
         </div>
       </div>
 
-      {/* compact form: small input; button on its own row with icon */}
-      <form onSubmit={(e) => e.preventDefault()} className="mb-4">
+      {/* form */}
+      <form onSubmit={(e)=>e.preventDefault()} className="mb-4">
         <div className="flex flex-col gap-2">
           <div className="flex flex-col md:flex-row md:items-end md:gap-2">
             <div className="w-full md:w-80">
               <label className="block text-xs text-gray-700 mb-1">Name</label>
               <input
-                type="text"
-                placeholder="Category Name"
+                type="text" placeholder="Category Name"
                 className="border rounded px-2 h-9 text-sm w-full"
                 value={form.name}
-                onChange={(e) => setForm({ name: e.target.value })}
+                onChange={(e)=>setForm({ name: e.target.value })}
                 onKeyDown={onEnterFocusNext}
-                ref={nameRef}
-                required
+                ref={nameRef} required
               />
             </div>
           </div>
 
           <div className="flex items-center justify-end">
             <button
-              type="button"
-              onClick={handleSave}
-              ref={saveBtnRef}
-              title="Save (Alt+S)"
-              aria-keyshortcuts="Alt+S"
+              type="button" onClick={handleSave} ref={saveBtnRef}
+              title="Save (Alt+S)" aria-keyshortcuts="Alt+S"
               className={`inline-flex items-center justify-center gap-2 px-4 h-10 rounded text-white text-sm min-w-[140px] md:w-44 ${
                 saving ? "bg-blue-400" : "bg-blue-600 hover:bg-blue-700"
-              }`}
-              disabled={saving}
+              }`} disabled={saving}
             >
               <CheckCircleIcon className="w-5 h-5" />
               {editingId ? (saving ? "Updating…" : "Update") : (saving ? "Saving…" : "Save")}
@@ -207,48 +188,64 @@ export default function Categories() {
       {/* meta */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-2">
         <div className="text-sm text-gray-600">
-          {loading ? (
-            "Loading…"
-          ) : (
-            <>
-              Showing{" "}
-              <strong>
-                {filtered.length === 0 ? 0 : start + 1}-{Math.min(filtered.length, start + pageSize)}
-              </strong>{" "}
-              of <strong>{categories.length}</strong>{" "}
-              {filtered.length !== categories.length && <> (filtered: <strong>{filtered.length}</strong>)</>}
+          {loading ? "Loading…" : (
+            <>Showing <strong>{filtered.length===0?0:start+1}-{Math.min(filtered.length, start+pageSize)}</strong> of <strong>{categories.length}</strong>
+              {filtered.length!==categories.length && <> (filtered: <strong>{filtered.length}</strong>)</>}
             </>
           )}
         </div>
         <div className="flex items-center gap-2">
           <label className="text-sm text-gray-600">Rows per page</label>
-          <select
-            value={pageSize}
-            onChange={(e) => setPageSize(Number(e.target.value))}
-            className="border rounded px-2 h-9 text-sm"
-          >
-            <option value={10}>10</option>
-            <option value={25}>25</option>
-            <option value={50}>50</option>
+          <select value={pageSize} onChange={(e)=>setPageSize(Number(e.target.value))}
+                  className="border rounded px-2 h-9 text-sm">
+            <option value={10}>10</option><option value={25}>25</option><option value={50}>50</option>
           </select>
         </div>
       </div>
 
-      {/* table */}
+      {/* table with toolbar in header */}
       <div className="w-full overflow-x-auto rounded border">
         <table className="w-full">
-          <thead className="bg-gray-50 sticky top-0">
+          <thead className="bg-gray-50 sticky top-0 z-10">
+            {/* Toolbar row */}
+            <tr>
+              <th colSpan={2} className="border p-2">
+                <div className="flex items-center justify-start gap-2">
+                  <button
+                    onClick={() => setImportOpen(true)}
+                    onKeyDown={(e)=> (e.key==="Enter"||e.key===" ") && (e.preventDefault(), setImportOpen(true))}
+                    className="inline-flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-3 h-9 rounded text-sm"
+                    title="Import Categories (CSV)" aria-label="Import categories from CSV"
+                  >
+                    <ArrowUpTrayIcon className="w-5 h-5" />
+                    Import CSV
+                  </button>
+                  <button
+                    onClick={handleExport} disabled={exporting}
+                    onKeyDown={(e)=> (e.key==="Enter"||e.key===" ") && (e.preventDefault(), handleExport())}
+                    className={`inline-flex items-center gap-2 px-3 h-9 rounded text-sm border ${
+                      exporting ? "bg-gray-200 text-gray-600 cursor-not-allowed"
+                                : "bg-white hover:bg-gray-50 text-gray-800 border-gray-300"
+                    }`}
+                    title="Export all categories to CSV" aria-label="Export all categories to CSV"
+                  >
+                    <ArrowDownTrayIcon className="w-5 h-5" />
+                    {exporting ? "Exporting…" : "Export CSV"}
+                  </button>
+                </div>
+              </th>
+            </tr>
+            {/* column labels */}
             <tr>
               <th className="border p-2 text-left">Name</th>
               <th className="border p-2 text-center">Actions</th>
             </tr>
           </thead>
+
           <tbody>
             {paged.length === 0 && !loading && (
               <tr>
-                <td className="border px-3 py-6 text-center text-gray-500" colSpan={2}>
-                  No categories found.
-                </td>
+                <td className="border px-3 py-6 text-center text-gray-500" colSpan={2}>No categories found.</td>
               </tr>
             )}
             {paged.map((c) => {
@@ -260,7 +257,7 @@ export default function Categories() {
                     <div className="flex gap-2 justify-center">
                       <button
                         onClick={() => handleEdit(c)}
-                        onKeyDown={(e) => handleButtonKeyDown(e, () => handleEdit(c))}
+                        onKeyDown={(e)=>handleButtonKeyDown(e, ()=>handleEdit(c))}
                         tabIndex={0}
                         className="bg-yellow-500 text-white px-3 h-9 text-sm rounded inline-flex items-center gap-1"
                         aria-label={`Edit category ${c.name}`}
@@ -270,17 +267,13 @@ export default function Categories() {
                       </button>
                       <button
                         onClick={() =>
-                          used
-                            ? toast.error("Cannot delete: category is used by products.")
-                            : handleDelete(c)
+                          used ? toast.error("Cannot delete: category is used by products.")
+                               : handleDelete(c)
                         }
-                        onKeyDown={(e) =>
-                          handleButtonKeyDown(e, () =>
-                            used
-                              ? toast.error("Cannot delete: category is used by products.")
-                              : handleDelete(c)
-                          )
-                        }
+                        onKeyDown={(e)=>handleButtonKeyDown(e, () =>
+                          used ? toast.error("Cannot delete: category is used by products.")
+                               : handleDelete(c)
+                        )}
                         tabIndex={0}
                         disabled={used}
                         title={used ? "Cannot delete: category is used by products." : "Delete"}
@@ -306,11 +299,18 @@ export default function Categories() {
         <div className="text-sm text-gray-600">Page {page} of {pageCount}</div>
         <div className="flex items-center gap-2">
           <button onClick={() => setPage(1)} disabled={page === 1} className="px-3 py-1 border rounded disabled:opacity-50">⏮ First</button>
-          <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page === 1} className="px-3 py-1 border rounded disabled:opacity-50">◀ Prev</button>
-          <button onClick={() => setPage((p) => Math.min(pageCount, p + 1))} disabled={page === pageCount} className="px-3 py-1 border rounded disabled:opacity-50">Next ▶</button>
-          <button onClick={() => setPage(pageCount)} disabled={page === pageCount} className="px-3 py-1 border rounded disabled:opacity-50">Last ⏭</button>
+          <button onClick={() => setPage((p)=>Math.max(1,p-1))} disabled={page===1} className="px-3 py-1 border rounded disabled:opacity-50">◀ Prev</button>
+          <button onClick={() => setPage((p)=>Math.min(pageCount,p+1))} disabled={page===pageCount} className="px-3 py-1 border rounded disabled:opacity-50">Next ▶</button>
+          <button onClick={() => setPage(pageCount)} disabled={page===pageCount} className="px-3 py-1 border rounded disabled:opacity-50">Last ⏭</button>
         </div>
       </div>
+
+      {/* Import modal */}
+      <CategoryImportModal
+        open={importOpen}
+        onClose={() => setImportOpen(false)}
+        onImported={fetchCategories}
+      />
     </div>
   );
 }

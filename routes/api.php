@@ -7,6 +7,7 @@ use App\Http\Controllers\BatchController;
 use App\Http\Controllers\BrandController;
 use App\Http\Controllers\BrandImportController;
 use App\Http\Controllers\CategoryController;
+use App\Http\Controllers\CategoryImportController;
 use App\Http\Controllers\CustomerController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\ProductController;
@@ -26,6 +27,7 @@ Route::middleware('auth:sanctum')->put('/profile', [AuthController::class, 'upda
 Route::middleware('auth:sanctum')->post('/logout', [AuthController::class, 'logout']);
 Route::middleware('auth:sanctum')->group(function () {
     // Master data
+    Route::get('/categories/export', [CategoryController::class, 'export'])->name('categories.export');
     Route::apiResource('categories', CategoryController::class);
     Route::get('/brands/export', [BrandController::class, 'export'])->name('brands.export');
     Route::apiResource('brands', BrandController::class);
@@ -84,6 +86,11 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/brands/import/template', [BrandImportController::class, 'template']);
     Route::post('/brands/import/validate', [BrandImportController::class, 'validateUpload']);
     Route::post('/brands/import/commit',    [BrandImportController::class, 'commit']);
+
+    // Categories import
+    Route::get('/categories/import/template', [CategoryImportController::class, 'template']);
+    Route::post('/categories/import/validate', [CategoryImportController::class, 'validateUpload']);
+    Route::post('/categories/import/commit',    [CategoryImportController::class, 'commit']);
 
 });
 
