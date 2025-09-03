@@ -116,11 +116,9 @@ export default function PurchaseInvoiceForm({ invoiceId, onSuccess }) {
   };
 
   const fetchProducts = async (q = "") => {
-  const { data } = await axios.get("/api/products/search", {
-    params: { q, limit: 30 }, // return the top 30 matches
-  });
-  setProducts(data); // array is fine; paginator also fine
-};
+    const { data } = await axios.get("/api/products/search", { params: { q, limit: 30 } });
+    setProducts(data);
+  };
 
   const fetchInvoice = async () => {
     const res = await axios.get(`/api/purchase-invoices/${invoiceId}`);
@@ -685,60 +683,64 @@ export default function PurchaseInvoiceForm({ invoiceId, onSuccess }) {
                     <ProductSearchInput
                       value={item.product_id}
                       onChange={(val) => {
-                        const selectedProduct = products.find((p) => p.id === val);
+                        // Accept either a product object (preferred) or an id
+                        const list = Array.isArray(products) ? products : (Array.isArray(products?.data) ? products.data : []);
+                        const selectedProduct = (val && typeof val === "object") ? val : list.find((p) => p?.id === val);
 
-                        const duplicateIndex = form.items.findIndex((it, idx) => {
-                          if (idx === i) return false;
-                          if (it.product_id !== selectedProduct?.id) return false;
+                        if (!selectedProduct) return;
 
-                          // Case 1: Other row has a batch
-                          if (it.batch && it.batch.trim() !== "") {
-                            // allow different batch, block same batch
-                            return it.batch === form.items[i]?.batch;
+                        // Fallback getters
+                        const get = (obj, keys, d="") => {
+                          for (const k of keys) {
+                            const v = obj?.[k];
+                            if (v !== undefined && v !== null && v !== "") return v;
                           }
+                          return d;
+                        };
 
-                          // Case 2: Other row has no batch → block duplicate outright
-                          return true;
-                        });
+                        const toNum = (x) => {
+                          const n = Number(x);
+                          return Number.isFinite(n) ? n : null;
+                        };
 
-                        if (duplicateIndex !== -1) {
-                          toast.error(
-                            form.items[duplicateIndex]?.batch
-                              ? `Product "${selectedProduct?.name}" with batch "${form.items[duplicateIndex].batch}" is already in row ${duplicateIndex + 1}`
-                              : `Product "${selectedProduct?.name}" is already in row ${duplicateIndex + 1}`
-                          );
-                          return; // ⛔ stop here
-                        }
+                        const packSize = toNum(get(selectedProduct, ["pack_size","packSize","packsize"]));
+                        const packPurchase = toNum(get(selectedProduct, ["pack_purchase_price","packPurchasePrice"]));
+                        const unitPurchase = toNum(get(selectedProduct, ["unit_purchase_price","unitPurchasePrice"])) ?? ((packPurchase != null && packSize) ? (packPurchase / packSize) : null);
+
+                        const packSale = toNum(get(selectedProduct, ["pack_sale_price","packSalePrice"]));
+                        const unitSale = toNum(get(selectedProduct, ["unit_sale_price","unitSalePrice"])) ?? ((packSale != null && packSize) ? (packSale / packSize) : null);
+
+                        const margin = get(selectedProduct, ["margin","margin_percentage","marginPercent"], "");
+                        const avg = get(selectedProduct, ["avg_price","average_price","avgPrice"], "");
 
                         const newItems = [...form.items];
-                        newItems[i] = recalcItem(
-                          {
-                            ...newItems[i],
-                            product_id: selectedProduct?.id || "",
-                            pack_size: selectedProduct?.pack_size || "",
-                            pack_purchase_price:
-                              selectedProduct?.pack_purchase_price ?? "",
-                            unit_purchase_price:
-                              selectedProduct?.unit_purchase_price ?? "",
-                            pack_sale_price: selectedProduct?.pack_sale_price ?? "",
-                            unit_sale_price: selectedProduct?.unit_sale_price ?? "",
-                            // don't overwrite batch here, keep whatever user enters
-                            batch: newItems[i].batch || "",
-                            // reset user-editable fields
-                            pack_quantity: "",
-                            unit_quantity: "",
-                            pack_bonus: "",
-                            unit_bonus: "",
-                            item_discount_percentage: "",
-                            margin: "",
-                            sub_total: "",
-                            avg_price: "",
-                            quantity: "",
-                          },
-                          selectedProduct
-                        );
+                        const prepared = {
+                          ...newItems[i],
+                          product_id: selectedProduct?.id || "",
+                          pack_size: packSize ?? "",
+                          pack_purchase_price: packPurchase ?? "",
+                          unit_purchase_price: unitPurchase ?? "",
+                          pack_sale_price: packSale ?? "",
+                          unit_sale_price: unitSale ?? "",
+                          // keep user batch
+                          batch: newItems[i].batch || "",
+                          // reset editables
+                          pack_quantity: "",
+                          unit_quantity: "",
+                          pack_bonus: "",
+                          unit_bonus: "",
+                          item_discount_percentage: "",
+                          margin: margin ?? "",
+                          sub_total: "",
+                          avg_price: avg ?? "",
+                          quantity: "",
+                        };
 
-                        setForm({ ...form, items: newItems });
+                        // Recalculate line and footer totals (field='product')
+                        newItems[i] = recalcItem(prepared, "product");
+                        let nextForm = { ...form, items: newItems };
+                        nextForm = recalcFooter(nextForm, "items");
+                        setForm(nextForm);
                         navigateToNextField("product", i);
                       }}
                       onKeyDown={(e) => handleProductKeyDown(e, i)}
