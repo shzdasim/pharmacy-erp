@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Product;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Validation\Rule;
 
 class ProductController extends Controller
@@ -69,13 +70,49 @@ public function availableQuantity(\Illuminate\Http\Request $request)
 
 
 
-    public function index()
-    {
-       return Product::with(['brand', 'category', 'supplier'])
-        ->withCount('batches')
-        ->orderBy('created_at', 'desc')
-        ->get();
+    public function index(Request $req)
+{
+    // page size: clamp between 1 and 100 (default 25 or what you like)
+    $perPage = max(1, min((int)$req->input('per_page', 25), 100));
+
+    // optional filters
+    $qName     = trim((string)$req->input('q_name', ''));
+    $qBrand    = trim((string)$req->input('q_brand', ''));
+    $qSupplier = trim((string)$req->input('q_supplier', ''));
+
+    $q = Product::query()
+        // Select only columns actually needed by index.jsx
+        ->select([
+            'id','product_code','name','image',
+            'category_id','brand_id','supplier_id',
+            'quantity',
+        ])
+        // Only pull id+name for relations to keep payload tiny
+        ->with([
+            'category:id,name',
+            'brand:id,name',
+            'supplier:id,name',
+        ])
+        // Count batches without loading them
+        ->withCount('batches');
+
+    if ($qName !== '') {
+        $q->where('name', 'like', "%{$qName}%");
     }
+    if ($qBrand !== '') {
+        $q->whereHas('brand', fn(Builder $b) => $b->where('name', 'like', "%{$qBrand}%"));
+    }
+    if ($qSupplier !== '') {
+        $q->whereHas('supplier', fn(Builder $s) => $s->where('name', 'like', "%{$qSupplier}%"));
+    }
+
+    $q->orderByDesc('id');
+
+    // Use paginate (not get!) so we don’t blow memory
+    $page = $q->paginate($perPage);
+
+    return response()->json($page);
+}
 
     // Store new product
     public function store(Request $request)

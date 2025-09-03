@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import axios from "axios";
 import { Link, useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
@@ -12,7 +12,7 @@ import {
 import Select from "react-select";
 
 export default function ProductsIndex() {
-  const [products, setProducts] = useState([]);
+  const [rows, setRows] = useState([]);          // current page rows
   const [loading, setLoading] = useState(false);
 
   // search filters
@@ -20,9 +20,11 @@ export default function ProductsIndex() {
   const [qBrand, setQBrand] = useState("");
   const [qSupplier, setQSupplier] = useState("");
 
-  // pagination
+  // pagination (server-side)
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
+  const [total, setTotal] = useState(0);
+  const [lastPage, setLastPage] = useState(1);
 
   // selection
   const [selectedIds, setSelectedIds] = useState(new Set());
@@ -34,6 +36,10 @@ export default function ProductsIndex() {
   const [suppliers, setSuppliers] = useState([]);
 
   const navigate = useNavigate();
+
+  // AbortController + debounce for fetches
+  const controllerRef = useRef(null);
+  const debounceRef = useRef(null);
 
   // === Keyboard shortcut: Alt+N => navigate to /products/create ===
   useEffect(() => {
@@ -52,12 +58,31 @@ export default function ProductsIndex() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [navigate]);
 
-  const fetchProducts = async () => {
+  const fetchProducts = async (signal) => {
     try {
       setLoading(true);
-      const res = await axios.get("/api/products"); // now returns batches_count
-      setProducts(res.data || []);
+      const { data } = await axios.get("/api/products", {
+        params: {
+          page,
+          per_page: pageSize,
+          q_name: qName.trim(),
+          q_brand: qBrand.trim(),
+          q_supplier: qSupplier.trim(),
+        },
+        signal,
+      });
+
+      // Expecting Laravel paginator shape
+      // { data: [...], total: N, last_page: M, per_page: K, current_page: P }
+      const items = Array.isArray(data?.data) ? data.data : Array.isArray(data) ? data : [];
+      setRows(items);
+      setTotal(Number(data?.total ?? items.length ?? 0));
+      const lp = Number(data?.last_page ?? 1);
+      setLastPage(lp);
+      // if filter change made page overflow, clamp
+      if (page > lp) setPage(lp || 1);
     } catch (err) {
+      if (axios.isCancel?.(err)) return;
       console.error("Error fetching products", err);
       toast.error("Failed to load products");
     } finally {
@@ -65,36 +90,31 @@ export default function ProductsIndex() {
     }
   };
 
+  // Initial + pager change fetch (non-debounced)
   useEffect(() => {
-    fetchProducts();
-  }, []);
+    if (controllerRef.current) controllerRef.current.abort();
+    const ctrl = new AbortController();
+    controllerRef.current = ctrl;
+    fetchProducts(ctrl.signal);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page, pageSize]);
 
-  const norm = (v) => (v ?? "").toString().toLowerCase().trim();
-
-  const filtered = useMemo(() => {
-    const nName = norm(qName);
-    const nBrand = norm(qBrand);
-    const nSupp = norm(qSupplier);
-    return products.filter((p) => {
-      const name = norm(p.name);
-      const brand = norm(p.brand?.name);
-      const supp = norm(p.supplier?.name);
-      return name.includes(nName) && brand.includes(nBrand) && supp.includes(nSupp);
-    });
-  }, [products, qName, qBrand, qSupplier]);
-
-  // reset to first page when filters/pageSize change
+  // Debounce filter changes (qName/qBrand/qSupplier)
   useEffect(() => {
-    setPage(1);
-  }, [qName, qBrand, qSupplier, pageSize]);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      setPage(1); // reset to first page on filter change
+      if (controllerRef.current) controllerRef.current.abort();
+      const ctrl = new AbortController();
+      controllerRef.current = ctrl;
+      fetchProducts(ctrl.signal);
+    }, 300);
+    return () => clearTimeout(debounceRef.current);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [qName, qBrand, qSupplier]);
 
-  const pageCount = Math.max(1, Math.ceil(filtered.length / pageSize));
-  useEffect(() => {
-    if (page > pageCount) setPage(pageCount);
-  }, [page, pageCount]);
-
-  const start = (page - 1) * pageSize;
-  const paged = filtered.slice(start, start + pageSize);
+  const start = rows.length ? (page - 1) * pageSize + 1 : 0;
+  const end = rows.length ? start + rows.length - 1 : 0;
 
   const handleDelete = async (product) => {
     const qty = Number(product.quantity || 0);
@@ -127,7 +147,11 @@ export default function ProductsIndex() {
                     copy.delete(product.id);
                     return copy;
                   });
-                  fetchProducts();
+                  // refresh current page
+                  if (controllerRef.current) controllerRef.current.abort();
+                  const ctrl = new AbortController();
+                  controllerRef.current = ctrl;
+                  fetchProducts(ctrl.signal);
                 } catch (err) {
                   const apiMsg =
                     err?.response?.data?.message ||
@@ -151,27 +175,24 @@ export default function ProductsIndex() {
     );
   };
 
-  // selection helpers
+  // selection helpers (operate on current page rows)
+  const pageAllChecked = rows.length > 0 && rows.every((p) => selectedIds.has(p.id));
+  const pageIndeterminate = rows.some((p) => selectedIds.has(p.id)) && !pageAllChecked;
+
+  const togglePageAll = (checked) => {
+    setSelectedIds((prev) => {
+      const copy = new Set(prev);
+      if (checked) rows.forEach((p) => copy.add(p.id));
+      else rows.forEach((p) => copy.delete(p.id));
+      return copy;
+    });
+  };
+
   const toggleOne = (id, checked) => {
     setSelectedIds((prev) => {
       const copy = new Set(prev);
       if (checked) copy.add(id);
       else copy.delete(id);
-      return copy;
-    });
-  };
-
-  const pageAllChecked = paged.length > 0 && paged.every((p) => selectedIds.has(p.id));
-  const pageIndeterminate = paged.some((p) => selectedIds.has(p.id)) && !pageAllChecked;
-
-  const togglePageAll = (checked) => {
-    setSelectedIds((prev) => {
-      const copy = new Set(prev);
-      if (checked) {
-        paged.forEach((p) => copy.add(p.id));
-      } else {
-        paged.forEach((p) => copy.delete(p.id));
-      }
       return copy;
     });
   };
@@ -230,33 +251,9 @@ export default function ProductsIndex() {
 
       {/* Search toolbar */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
-        <div className="relative">
-          <MagnifyingGlassIcon className="w-5 h-5 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-          <input
-            value={qName}
-            onChange={(e) => setQName(e.target.value)}
-            placeholder="Search by Product Name…"
-            className="w-full pl-10 pr-3 py-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
-        </div>
-        <div className="relative">
-          <MagnifyingGlassIcon className="w-5 h-5 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-          <input
-            value={qBrand}
-            onChange={(e) => setQBrand(e.target.value)}
-            placeholder="Search by Brand…"
-            className="w-full pl-10 pr-3 py-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
-        </div>
-        <div className="relative">
-          <MagnifyingGlassIcon className="w-5 h-5 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-          <input
-            value={qSupplier}
-            onChange={(e) => setQSupplier(e.target.value)}
-            placeholder="Search by Supplier…"
-            className="w-full pl-10 pr-3 py-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
-        </div>
+        <TextSearch value={qName} onChange={setQName} placeholder="Search by Product Name…" />
+        <TextSearch value={qBrand} onChange={setQBrand} placeholder="Search by Brand…" />
+        <TextSearch value={qSupplier} onChange={setQSupplier} placeholder="Search by Supplier…" />
       </div>
 
       {/* Meta */}
@@ -268,12 +265,9 @@ export default function ProductsIndex() {
             <span>
               Showing{" "}
               <strong>
-                {filtered.length === 0 ? 0 : start + 1}-{Math.min(filtered.length, start + pageSize)}
+                {rows.length === 0 ? 0 : start}-{end}
               </strong>{" "}
-              of <strong>{products.length}</strong>{" "}
-              {filtered.length !== products.length && (
-                <> (filtered: <strong>{filtered.length}</strong>)</>
-              )}
+              of <strong>{total}</strong>
             </span>
           )}
         </div>
@@ -287,11 +281,12 @@ export default function ProductsIndex() {
             <option value={10}>10</option>
             <option value={25}>25</option>
             <option value={50}>50</option>
+            <option value={100}>100</option>
           </select>
         </div>
       </div>
 
-      {/* Table */}
+      {/* Table (unchanged columns) */}
       <div className="w-full overflow-x-auto rounded border">
         <table className="w-full">
           <thead className="bg-gray-50 sticky top-0">
@@ -317,14 +312,14 @@ export default function ProductsIndex() {
             </tr>
           </thead>
           <tbody>
-            {paged.length === 0 && !loading && (
+            {rows.length === 0 && !loading && (
               <tr>
                 <td className="border px-3 py-6 text-center text-gray-500" colSpan={8}>
                   No products found.
                 </td>
               </tr>
             )}
-            {paged.map((p) => {
+            {rows.map((p) => {
               const qty = Number(p.quantity || 0);
               const hasBatches = Number(p.batches_count || 0) > 0;
               const deleteDisabled = qty > 0 || hasBatches;
@@ -395,14 +390,14 @@ export default function ProductsIndex() {
         </table>
       </div>
 
-      {/* Pagination */}
+      {/* Pagination (server) */}
       <div className="mt-4 flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between">
-        <div className="text-sm text-gray-600">Page {page} of {pageCount}</div>
+        <div className="text-sm text-gray-600">Page {page} of {lastPage}</div>
         <div className="flex items-center gap-2">
           <button onClick={() => setPage(1)} disabled={page === 1} className="px-3 py-1 border rounded disabled:opacity-50">⏮ First</button>
           <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page === 1} className="px-3 py-1 border rounded disabled:opacity-50">◀ Prev</button>
-          <button onClick={() => setPage((p) => Math.min(pageCount, p + 1))} disabled={page === pageCount} className="px-3 py-1 border rounded disabled:opacity-50">Next ▶</button>
-          <button onClick={() => setPage(pageCount)} disabled={page === pageCount} className="px-3 py-1 border rounded disabled:opacity-50">Last ⏭</button>
+          <button onClick={() => setPage((p) => Math.min(lastPage, p + 1))} disabled={page === lastPage} className="px-3 py-1 border rounded disabled:opacity-50">Next ▶</button>
+          <button onClick={() => setPage(lastPage)} disabled={page === lastPage} className="px-3 py-1 border rounded disabled:opacity-50">Last ⏭</button>
         </div>
       </div>
 
@@ -416,12 +411,30 @@ export default function ProductsIndex() {
           brands={brands}
           suppliers={suppliers}
           onSaved={async () => {
-            await fetchProducts();
+            // refetch current page
+            if (controllerRef.current) controllerRef.current.abort();
+            const ctrl = new AbortController();
+            controllerRef.current = ctrl;
+            await fetchProducts(ctrl.signal);
             setShowBulkModal(false);
             setSelectedIds(new Set());
           }}
         />
       )}
+    </div>
+  );
+}
+
+function TextSearch({ value, onChange, placeholder }) {
+  return (
+    <div className="relative">
+      <MagnifyingGlassIcon className="w-5 h-5 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+      <input
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        className="w-full pl-10 pr-3 py-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+      />
     </div>
   );
 }
@@ -494,7 +507,7 @@ function BulkEditModal({ onClose, selectedCount, selectedIds, categories, brands
                   options={catOptions}
                   value={catOpt}
                   onChange={setCatOpt}
-                  menuPortalTarget={document.body}
+                  menuPortalTarget={typeof document !== "undefined" ? document.body : null}
                   styles={selectStyles}
                   placeholder="(No change)"
                 />
@@ -509,7 +522,7 @@ function BulkEditModal({ onClose, selectedCount, selectedIds, categories, brands
                   options={brandOptions}
                   value={brandOpt}
                   onChange={setBrandOpt}
-                  menuPortalTarget={document.body}
+                  menuPortalTarget={typeof document !== "undefined" ? document.body : null}
                   styles={selectStyles}
                   placeholder="(No change)"
                 />
@@ -524,7 +537,7 @@ function BulkEditModal({ onClose, selectedCount, selectedIds, categories, brands
                   options={suppOptions}
                   value={suppOpt}
                   onChange={setSuppOpt}
-                  menuPortalTarget={document.body}
+                  menuPortalTarget={typeof document !== "undefined" ? document.body : null}
                   styles={selectStyles}
                   placeholder="(No change)"
                 />
