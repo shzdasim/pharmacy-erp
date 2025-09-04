@@ -123,6 +123,7 @@ export default function PurchaseInvoiceForm({ invoiceId, onSuccess }) {
   const fetchInvoice = async () => {
     const res = await axios.get(`/api/purchase-invoices/${invoiceId}`);
     setForm(res.data);
+    await ensureProductsForItems(res.data?.items || []);
   };
 
   const fetchNewCode = async () => {
@@ -287,41 +288,91 @@ export default function PurchaseInvoiceForm({ invoiceId, onSuccess }) {
     setTimeout(retry, 30);
   };
 
+
+  // Merge new products into state (by id, dedup)
+const upsertProducts = (list) => {
+  if (!Array.isArray(list)) return;
+  setProducts((prev) => {
+    const map = new Map((prev || []).map((p) => [p.id, p]));
+    list.forEach((p) => p?.id && map.set(p.id, p));
+    return Array.from(map.values());
+  });
+};
+
+// Make sure all product_ids used in items exist in products[]
+const ensureProductsForItems = async (items = []) => {
+  const ids = Array.from(new Set(items.map(it => it.product_id).filter(Boolean)));
+  if (ids.length === 0) return;
+
+  const have = new Set((products || []).map(p => p.id));
+  const missing = ids.filter(id => !have.has(id));
+  if (missing.length === 0) return;
+
+  // Try a batch endpoint first if you have one
+  try {
+    const { data } = await axios.get("/api/products/by-ids", {
+      params: { ids: missing.join(",") },
+    });
+    upsertProducts(data);
+    return;
+  } catch (_) { /* fall back to per-id */ }
+
+  // Fallback: fetch missing one-by-one (or via search)
+  const fetched = await Promise.all(
+    missing.map(async (id) => {
+      try {
+        const { data } = await axios.get(`/api/products/${id}`);
+        return data;
+      } catch {
+        try {
+          const { data } = await axios.get("/api/products/search", { params: { q: id, limit: 1 } });
+          return Array.isArray(data) ? data[0] : data?.data?.[0];
+        } catch {
+          return null;
+        }
+      }
+    })
+  );
+  upsertProducts(fetched.filter(Boolean));
+};
+
+
+
   // Helper function to focus on the same field in a different row
   const focusOnField = (field, rowIndex) => {
     setTimeout(() => {
       switch (field) {
         case "pack_quantity":
           if (packQuantityRefs.current[rowIndex]) {
-            packQuantityRefs.current[rowIndex].focus();
+            focusAndSelect(packQuantityRefs.current[rowIndex]);
             setCurrentField("pack_quantity");
             setCurrentRowIndex(rowIndex);
           }
           break;
         case "pack_purchase_price":
           if (packPurchasePriceRefs.current[rowIndex]) {
-            packPurchasePriceRefs.current[rowIndex].focus();
+            focusAndSelect(packPurchasePriceRefs.current[rowIndex]);
             setCurrentField("pack_purchase_price");
             setCurrentRowIndex(rowIndex);
           }
           break;
         case "item_discount":
           if (itemDiscountRefs.current[rowIndex]) {
-            itemDiscountRefs.current[rowIndex].focus();
+            focusAndSelect(itemDiscountRefs.current[rowIndex]);
             setCurrentField("item_discount");
             setCurrentRowIndex(rowIndex);
           }
           break;
         case "pack_bonus":
           if (packBonusRefs.current[rowIndex]) {
-            packBonusRefs.current[rowIndex].focus();
+            focusAndSelect(packBonusRefs.current[rowIndex]);
             setCurrentField("pack_bonus");
             setCurrentRowIndex(rowIndex);
           }
           break;
         case "pack_sale_price":
           if (packSalePriceRefs.current[rowIndex]) {
-            packSalePriceRefs.current[rowIndex].focus();
+            focusAndSelect(packSalePriceRefs.current[rowIndex]);
             setCurrentField("pack_sale_price");
             setCurrentRowIndex(rowIndex);
           }
@@ -339,13 +390,13 @@ export default function PurchaseInvoiceForm({ invoiceId, onSuccess }) {
       switch (currentFieldName) {
         case "supplier":
           if (invoiceNumberRef.current) {
-            invoiceNumberRef.current.focus();
+            focusAndSelect(invoiceNumberRef.current);
             setCurrentField("invoice_number");
           }
           break;
         case "invoice_number":
           if (invoiceAmountRef.current) {
-            invoiceAmountRef.current.focus();
+            focusAndSelect(invoiceAmountRef.current);
             setCurrentField("invoice_amount");
           }
           break;
@@ -384,10 +435,12 @@ export default function PurchaseInvoiceForm({ invoiceId, onSuccess }) {
           }
           break;
         case "pack_sale_price":
-          // Add new row and focus on product search of the new row
-          addItem();
-          // focusProductSearch will retry until the element exists
-          focusProductSearch(rowIndex + 1);
+          if (rowIndex < form.items.length - 1) {
+            focusProductSearch(rowIndex + 1);
+            } else {
+              addItem();
+              focusProductSearch(rowIndex + 1);
+            }
           break;
       }
     }, 50);
@@ -442,6 +495,16 @@ export default function PurchaseInvoiceForm({ invoiceId, onSuccess }) {
       }
     }
   };
+
+const zeroToEmpty = (v) => (v === 0 || v === "0" ? "" : (v ?? ""));
+const focusAndSelect = (el) => {
+  if (!el) return;
+  el.focus();
+  // select after focus to ensure it sticks
+  setTimeout(() => {
+    if (typeof el.select === "function") el.select();
+  }, 0);
+};
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -596,6 +659,7 @@ export default function PurchaseInvoiceForm({ invoiceId, onSuccess }) {
                   value={form.invoice_number}
                   onChange={handleChange}
                   onKeyDown={(e) => handleKeyDown(e, "invoice_number")}
+                  onFocus={(e) => e.target.select()}
                   className="border rounded w-full p-1 h-7 text-xs"
                 />
               </td>
@@ -608,6 +672,7 @@ export default function PurchaseInvoiceForm({ invoiceId, onSuccess }) {
                   value={form.invoice_amount}
                   onChange={handleChange}
                   onKeyDown={(e) => handleKeyDown(e, "invoice_amount")}
+                  onFocus={(e) => e.target.select()}
                   className="border rounded w-full p-1 h-7 text-xs"
                 />
               </td>
@@ -681,7 +746,7 @@ export default function PurchaseInvoiceForm({ invoiceId, onSuccess }) {
                 <td colSpan={1} className="border text-left w-[200px]">
                   <div ref={(el) => (productSearchRefs.current[i] = el)}>
                     <ProductSearchInput
-                      value={item.product_id}
+                      value={products.find(p => p.id === item.product_id) || item.product_id}
                       onChange={(val) => {
                         // Accept either a product object (preferred) or an id
                         const list = Array.isArray(products) ? products : (Array.isArray(products?.data) ? products.data : []);
@@ -718,9 +783,9 @@ export default function PurchaseInvoiceForm({ invoiceId, onSuccess }) {
                           ...newItems[i],
                           product_id: selectedProduct?.id || "",
                           pack_size: packSize ?? "",
-                          pack_purchase_price: packPurchase ?? "",
+                          pack_purchase_price: zeroToEmpty(packPurchase),
                           unit_purchase_price: unitPurchase ?? "",
-                          pack_sale_price: packSale ?? "",
+                          pack_sale_price: zeroToEmpty(packSale),
                           unit_sale_price: unitSale ?? "",
                           // keep user batch
                           batch: newItems[i].batch || "",
@@ -824,6 +889,7 @@ export default function PurchaseInvoiceForm({ invoiceId, onSuccess }) {
                     value={item.pack_quantity === 0 ? "" : item.pack_quantity}
                     onChange={(e) => handleItemChange(i, "pack_quantity", e.target.value)}
                     onKeyDown={(e) => handleKeyDown(e, "pack_quantity", i)}
+                    onFocus={(e) => e.target.select()}
                     className="border w-full h-6 text-[11px] px-1 appearance-none [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                   />
                 </td>
@@ -846,6 +912,7 @@ export default function PurchaseInvoiceForm({ invoiceId, onSuccess }) {
                     value={item.pack_purchase_price === 0 ? "" : item.pack_purchase_price}
                     onChange={(e) => handleItemChange(i, "pack_purchase_price", e.target.value)}
                     onKeyDown={(e) => handleKeyDown(e, "pack_purchase_price", i)}
+                    onFocus={(e) => e.target.select()}
                     className="border w-full h-6 text-[11px] px-1 appearance-none [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                   />
                 </td>
@@ -870,6 +937,7 @@ export default function PurchaseInvoiceForm({ invoiceId, onSuccess }) {
                       handleItemChange(i, "item_discount_percentage", e.target.value)
                     }
                     onKeyDown={(e) => handleKeyDown(e, "item_discount", i)}
+                    onFocus={(e) => e.target.select()}
                     className="border w-full h-6 text-[11px] px-1 appearance-none [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                   />
                 </td>
@@ -882,6 +950,7 @@ export default function PurchaseInvoiceForm({ invoiceId, onSuccess }) {
                     value={item.pack_bonus === 0 ? "" : item.pack_bonus}
                     onChange={(e) => handleItemChange(i, "pack_bonus", e.target.value)}
                     onKeyDown={(e) => handleKeyDown(e, "pack_bonus", i)}
+                    onFocus={(e) => e.target.select()}
                     className="border w-full h-6 text-[11px] px-1 appearance-none [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                   />
                 </td>
@@ -901,9 +970,10 @@ export default function PurchaseInvoiceForm({ invoiceId, onSuccess }) {
                   <input
                     ref={(el) => (packSalePriceRefs.current[i] = el)}
                     type="text"
-                    value={item.pack_sale_price ?? ""}
+                    value={item.pack_sale_price === 0 ? "" : item.pack_sale_price}
                     onChange={(e) => handleItemChange(i, "pack_sale_price", e.target.value)}
                     onKeyDown={(e) => handleKeyDown(e, "pack_sale_price", i)}
+                    onFocus={(e) => e.target.select()}
                     className="border w-full h-6 text-[11px] px-1 appearance-none [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                   />
                 </td>

@@ -10,12 +10,30 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class BrandController extends Controller
 {
-    public function index() {
-       // Return products_count so UI can disable Delete
-        return Brand::withCount('products')
-            ->orderBy('name')
-            ->get();
+    public function index(Request $req)
+{
+    // page size: clamp 1..100 (default 25)
+    $perPage = max(1, min((int)$req->input('per_page', 25), 100));
+
+    // simple name filter (like Products q_name)
+    $qName = trim((string)$req->input('q_name', ''));
+
+    $q = Brand::query()
+        ->select(['id','name','image'])
+        ->withCount('products');
+
+    if ($qName !== '') {
+        $q->where('name', 'like', "%{$qName}%");
     }
+
+    // keep brands alphabetic (or switch to ->orderByDesc('id') to mimic “latest first”)
+    $q->orderBy('name');
+
+    // IMPORTANT: paginate (not get)
+    $page = $q->paginate($perPage);
+
+    return response()->json($page);
+}
 
     public function store(Request $request) {
         $validated = $request->validate([
