@@ -127,6 +127,8 @@ useEffect(() => { setMarginPct(""); }, [saleId]);
   const fetchSale = async () => {
     const res = await axios.get(`/api/sale-invoices/${saleId}`);
     setForm(res.data);
+    await ensureProductsForItems(res.data?.items || []);
+    await ensureBatchesForItems(res.data?.items || []); // optional
   };
 
   const fetchNewCode = async () => {
@@ -350,6 +352,64 @@ useEffect(() => { setMarginPct(""); }, [saleId]);
       }, 60);
     } catch {}
   };
+
+
+  // Merge new products into state (by id, dedup)
+const upsertProducts = (list) => {
+  if (!Array.isArray(list)) return;
+  setProducts((prev) => {
+    const map = new Map((prev || []).map((p) => [String(p.id), p]));
+    list.forEach((p) => p?.id != null && map.set(String(p.id), p));
+    return Array.from(map.values());
+  });
+};
+
+// Ensure all product_ids in form.items exist in products[]
+const ensureProductsForItems = async (items = []) => {
+  const ids = Array.from(new Set(items.map(it => it.product_id).filter(Boolean))).map(String);
+  if (!ids.length) return;
+
+  const have = new Set((products || []).map(p => String(p.id)));
+  const missing = ids.filter(id => !have.has(id));
+  if (!missing.length) return;
+
+  try {
+    // Prefer a batch endpoint if available
+    const { data } = await axios.get("/api/products/by-ids", {
+      params: { ids: missing.join(",") },
+    });
+    const list = Array.isArray(data?.data) ? data.data : Array.isArray(data) ? data : [];
+    upsertProducts(list);
+    return;
+  } catch (_) {
+    // Fallback: fetch one-by-one
+  }
+
+  const fetched = await Promise.all(
+    missing.map(async (id) => {
+      try {
+        const { data } = await axios.get(`/api/products/${id}`);
+        return data;
+      } catch {
+        try {
+          const { data } = await axios.get("/api/products/search", { params: { q: id, limit: 1 } });
+          return Array.isArray(data?.data) ? data.data[0] : (Array.isArray(data) ? data[0] : null);
+        } catch {
+          return null;
+        }
+      }
+    })
+  );
+  upsertProducts(fetched.filter(Boolean));
+};
+const ensureBatchesForItems = async (items = []) => {
+  const productIds = Array.from(new Set(items.map(it => it.product_id).filter(Boolean)));
+  for (const pid of productIds) {
+    try { await fetchBatches(pid); } catch {}
+  }
+};
+
+
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -623,7 +683,7 @@ useEffect(() => { setMarginPct(""); }, [saleId]);
                 <td className="border text-left">
                   <div ref={(el) => (productRefs.current[i] = el)}>
                     <ProductSearchInput
-                      value={it.product_id}
+                      value={products.find(p => eqId(p.id, it.product_id)) || it.product_id}
                       onChange={(val) => handleProductSelect(i, val)}
                       onKeyDown={(e) => onKeyNav(e, i, "product")}
                       products={products}
