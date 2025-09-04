@@ -6,6 +6,7 @@ import React, {
   useImperativeHandle,
   useMemo,
 } from "react";
+import { createPortal } from "react-dom";
 
 const ProductSearchInput = forwardRef(
   ({ value, onChange, products, onRefreshProducts, onKeyDown: onKeyDownProp }, ref) => {
@@ -20,7 +21,9 @@ const ProductSearchInput = forwardRef(
     const didRefreshRef = useRef(false);
     const debounceRef = useRef(null);
 
-    // Normalize products => array
+    // === NEW: portal position state (keeps menu above sticky footer) ===
+    const [menuPos, setMenuPos] = useState(null); // {left, top, width}
+
     const items = useMemo(() => {
       if (Array.isArray(products)) return products;
       if (products && Array.isArray(products.data)) return products.data;
@@ -69,8 +72,13 @@ const ProductSearchInput = forwardRef(
       return () => document.removeEventListener("mousedown", handleClickOutside);
     }, []);
 
-    // Sync query to selected value
+    // === UPDATED: Sync query to selected value (id OR object) ===
     useEffect(() => {
+      if (!value) return;
+      if (typeof value === "object") {
+        setQuery(value?.name || "");
+        return;
+      }
       const selected = items.find((p) => p?.id === value);
       if (selected) setQuery(selected.name || "");
     }, [value, items]);
@@ -132,14 +140,91 @@ const ProductSearchInput = forwardRef(
       return () => clearTimeout(debounceRef.current);
     }, [query, onRefreshProducts, showDropdown]);
 
-    // Fallback getters with common API naming variations
-    const getPackSize = (p) =>
-      p?.pack_size ?? p?.packSize ?? p?.packsize ?? "";
-
+    // Fallback getters
+    const getPackSize = (p) => p?.pack_size ?? p?.packSize ?? p?.packsize ?? "";
     const getSupplierName = (p) => p?.supplier?.name || p?.supplier_name || "-";
     const getBrandName = (p) => p?.brand?.name || p?.brand_name || "-";
     const getMargin = (p) => p?.margin ?? p?.margin_percentage ?? p?.marginPercent ?? "-";
     const getAvgPrice = (p) => p?.avg_price ?? p?.average_price ?? p?.avgPrice ?? "-";
+
+    // === NEW: compute portal position under the input ===
+    const computeMenuPos = () => {
+      const el = wrapperRef.current;
+      if (!el) return;
+      const rect = el.getBoundingClientRect();
+      setMenuPos({
+        left: rect.left + window.scrollX,
+        top: rect.bottom + window.scrollY, // just under the input
+        width: Math.max(rect.width, 800),  // keep your old w-[800px] behavior
+      });
+    };
+
+    useEffect(() => {
+      if (!showDropdown) return;
+      computeMenuPos();
+      const onScroll = () => computeMenuPos();
+      const onResize = () => computeMenuPos();
+      window.addEventListener("scroll", onScroll, true);
+      window.addEventListener("resize", onResize);
+      return () => {
+        window.removeEventListener("scroll", onScroll, true);
+        window.removeEventListener("resize", onResize);
+      };
+    }, [showDropdown]);
+
+    // Portal dropdown markup
+    const dropdownNode =
+      showDropdown && filtered.length > 0 && menuPos
+        ? createPortal(
+            <div
+              ref={dropdownRef}
+              style={{
+                position: "absolute",
+                left: `${menuPos.left}px`,
+                top: `${menuPos.top}px`,
+                width: `${menuPos.width}px`,
+                zIndex: 9999, // stays above sticky footers
+              }}
+              className="max-h-60 overflow-auto border bg-white shadow-lg text-[11px]"
+            >
+              <table className="w-full border-collapse">
+                <thead className="bg-gray-100 sticky top-0">
+                  <tr className="text-left text-[10px]">
+                    <th colSpan="3" className="border px-1 w-1/3">Name</th>
+                    <th className="border px-1">Pack Size</th>
+                    <th className="border px-1">Quantity</th>
+                    <th className="border px-1">Pack Purchase</th>
+                    <th className="border px-1">Pack Sale</th>
+                    <th className="border px-1">Supplier</th>
+                    <th className="border px-1">Brand</th>
+                    <th className="border px-1">Margin %</th>
+                    <th className="border px-1">Avg. Price</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filtered.map((p, idx) => (
+                    <tr
+                      key={p.id}
+                      onClick={() => handleSelect(p)}
+                      className={`cursor-pointer ${idx === highlightIndex ? "bg-blue-100" : ""}`}
+                    >
+                      <td colSpan="3" className="border px-1 w-1/3">{p?.name}</td>
+                      <td className="border px-1">{getPackSize(p)}</td>
+                      <td className="border px-1">{p?.quantity}</td>
+                      <td className="border px-1">{p?.pack_purchase_price}</td>
+                      <td className="border px-1">{p?.pack_sale_price}</td>
+                      <td className="border px-1">{getSupplierName(p)}</td>
+                      <td className="border px-1">{getBrandName(p)}</td>
+                      <td className="border px-1">{getMargin(p)}</td>
+                      <td className="border px-1">{getAvgPrice(p)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>,
+            document.body
+          )
+        : null;
 
     return (
       <div ref={wrapperRef} className="relative w-full">
@@ -160,11 +245,13 @@ const ProductSearchInput = forwardRef(
           className="border w-full h-6 text-[11px] px-1"
           placeholder="Search product..."
         />
-        {showDropdown && filtered.length > 0 && (
+
+        {/* Fallback absolute (kept for safety if portal not mounted yet) */}
+        {showDropdown && filtered.length > 0 && !menuPos && (
           <div
             ref={dropdownRef}
             className="absolute left-0 right-0 max-h-60 overflow-auto 
-                       border bg-white shadow-lg z-20 text-[11px] w-[800px]"
+                       border bg-white shadow-lg z-[9999] text-[11px] w-[800px]"
           >
             <table className="w-full border-collapse">
               <thead className="bg-gray-100 sticky top-0">
@@ -202,6 +289,9 @@ const ProductSearchInput = forwardRef(
             </table>
           </div>
         )}
+
+        {/* Portal menu */}
+        {dropdownNode}
       </div>
     );
   }
