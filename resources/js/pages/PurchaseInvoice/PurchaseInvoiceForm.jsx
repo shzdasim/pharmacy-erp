@@ -384,10 +384,12 @@ export default function PurchaseInvoiceForm({ invoiceId, onSuccess }) {
           }
           break;
         case "pack_sale_price":
-          // Add new row and focus on product search of the new row
-          addItem();
-          // focusProductSearch will retry until the element exists
-          focusProductSearch(rowIndex + 1);
+          if (rowIndex < form.items.length - 1) {
+            focusProductSearch(rowIndex + 1);
+            } else {
+              addItem();
+              focusProductSearch(rowIndex + 1);
+            }
           break;
       }
     }, 50);
