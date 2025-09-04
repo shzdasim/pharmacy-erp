@@ -10,289 +10,295 @@ import { createPortal } from "react-dom";
 
 const ProductSearchInput = forwardRef(
   ({ value, onChange, products, onRefreshProducts, onKeyDown: onKeyDownProp }, ref) => {
-    const [query, setQuery] = useState("");
-    const [showDropdown, setShowDropdown] = useState(false);
+    // Displayed text in the small cell input
+    const [display, setDisplay] = useState("");
+    // Modal state
+    const [isOpen, setIsOpen] = useState(false);
+    const [search, setSearch] = useState("");
     const [highlightIndex, setHighlightIndex] = useState(0);
 
-    const wrapperRef = useRef(null);
-    const inputRef = useRef(null);
-    const dropdownRef = useRef(null);
+    // Refs
+    const triggerRef = useRef(null);
+    const searchRef = useRef(null);
+    const tableRef = useRef(null);
 
     const didRefreshRef = useRef(false);
     const debounceRef = useRef(null);
 
-    // === NEW: portal position state (keeps menu above sticky footer) ===
-    const [menuPos, setMenuPos] = useState(null); // {left, top, width}
-
+    // Normalize products => array
     const items = useMemo(() => {
       if (Array.isArray(products)) return products;
       if (products && Array.isArray(products.data)) return products.data;
       return [];
     }, [products]);
 
-    // Reset highlight if list shrinks
+    // Keep highlight in bounds when list changes
     useEffect(() => {
       if (highlightIndex >= items.length) setHighlightIndex(0);
-    }, [items, highlightIndex]);
+    }, [items.length, highlightIndex]);
 
-    // Refresh when opening (once per open)
+    // Sync display from value (works for id OR object)
     useEffect(() => {
-      if (showDropdown && onRefreshProducts && !didRefreshRef.current) {
-        didRefreshRef.current = true;
-        Promise.resolve(onRefreshProducts(query)).catch(() => {});
+      if (!value) {
+        setDisplay("");
+        return;
       }
-      if (!showDropdown) didRefreshRef.current = false;
-    }, [showDropdown, onRefreshProducts, query]);
-
-    // Listen to product:created events
-    useEffect(() => {
-      const handleProductCreated = () => {
-        if (onRefreshProducts) onRefreshProducts(query);
-      };
-      window.addEventListener("product:created", handleProductCreated);
-      return () => window.removeEventListener("product:created", handleProductCreated);
-    }, [onRefreshProducts, query]);
-
-    // Expose methods
-    useImperativeHandle(ref, () => ({
-      focus: () => inputRef.current?.focus(),
-      refresh: () => onRefreshProducts?.(query),
-      openMenu: () => setShowDropdown(true),
-      closeMenu: () => setShowDropdown(false),
-    }));
-
-    // Close on outside click
-    useEffect(() => {
-      function handleClickOutside(e) {
-        if (wrapperRef.current && !wrapperRef.current.contains(e.target)) {
-          setShowDropdown(false);
-        }
-      }
-      document.addEventListener("mousedown", handleClickOutside);
-      return () => document.removeEventListener("mousedown", handleClickOutside);
-    }, []);
-
-    // === UPDATED: Sync query to selected value (id OR object) ===
-    useEffect(() => {
-      if (!value) return;
       if (typeof value === "object") {
-        setQuery(value?.name || "");
+        setDisplay(value?.name || "");
         return;
       }
       const selected = items.find((p) => p?.id === value);
-      if (selected) setQuery(selected.name || "");
+      if (selected) setDisplay(selected.name || "");
     }, [value, items]);
+
+    // Expose methods to parent
+    useImperativeHandle(ref, () => ({
+      focus: () => triggerRef.current?.focus(),
+      refresh: () => onRefreshProducts?.(search),
+      openMenu: () => openModal(),
+      closeMenu: () => closeModal(),
+    }));
+
+    // Open/Close helpers
+    const openModal = (seedChar) => {
+      setIsOpen(true);
+      setHighlightIndex(0);
+      // Start with current display (easy refinement) or seed first typed char
+      setSearch(
+        typeof seedChar === "string" && seedChar.length === 1
+          ? seedChar
+          : (display || "")
+      );
+    };
+    const closeModal = () => setIsOpen(false);
+
+    // Lock page scroll while modal open
+    useEffect(() => {
+      if (!isOpen) return;
+      const prev = document.body.style.overflow;
+      document.body.style.overflow = "hidden";
+      return () => {
+        document.body.style.overflow = prev;
+      };
+    }, [isOpen]);
+
+    // Autofocus search input on open
+    useEffect(() => {
+      if (isOpen) {
+        // small delay to ensure portal is attached
+        setTimeout(() => searchRef.current?.focus(), 0);
+      }
+    }, [isOpen]);
+
+    // Refresh once per open
+    useEffect(() => {
+      if (isOpen && onRefreshProducts && !didRefreshRef.current) {
+        didRefreshRef.current = true;
+        Promise.resolve(onRefreshProducts(search)).catch(() => {});
+      }
+      if (!isOpen) didRefreshRef.current = false;
+    }, [isOpen, onRefreshProducts, search]);
+
+    // Listen to "product:created" to refresh list
+    useEffect(() => {
+      const handler = () => onRefreshProducts?.(search);
+      window.addEventListener("product:created", handler);
+      return () => window.removeEventListener("product:created", handler);
+    }, [onRefreshProducts, search]);
+
+    // Debounce remote typeahead while modal is open
+    useEffect(() => {
+      if (!onRefreshProducts || !isOpen) return;
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+      debounceRef.current = setTimeout(() => onRefreshProducts(search), 200);
+      return () => clearTimeout(debounceRef.current);
+    }, [search, onRefreshProducts, isOpen]);
 
     // Local filter (fallback if remote not used)
     const filtered = useMemo(() => {
-      const q = (query || "").toLowerCase().trim();
+      const q = (search || "").toLowerCase().trim();
       if (!q) return items;
       return items.filter((p) => (p?.name || "").toLowerCase().includes(q));
-    }, [items, query]);
+    }, [items, search]);
 
-    const handleSelect = (product) => {
-      setQuery(product?.name || "");
-      onChange?.(product);
-      setShowDropdown(false);
-    };
-
-    // Scroll highlighted row into view
-    useEffect(() => {
-      if (!showDropdown) return;
-      const rows = dropdownRef.current?.querySelectorAll("tbody tr");
-      if (!rows || rows.length === 0) return;
-      const el = rows[highlightIndex];
-      if (el) el.scrollIntoView({ block: "nearest", behavior: "smooth" });
-    }, [highlightIndex, showDropdown, filtered.length]);
-
-    const internalKeyDown = (e) => {
-      if (!showDropdown) {
-        if (e.key === "Enter") {
-          e.preventDefault();
-          // Let parent decide field navigation; we do not select here
-        }
-        return;
-      }
-
-      if (e.key === "ArrowDown") {
-        e.preventDefault();
-        setHighlightIndex((prev) => (prev < filtered.length - 1 ? prev + 1 : prev));
-      } else if (e.key === "ArrowUp") {
-        e.preventDefault();
-        setHighlightIndex((prev) => (prev > 0 ? prev - 1 : 0));
-      } else if (e.key === "Enter") {
-        e.preventDefault();
-        if (filtered[highlightIndex]) handleSelect(filtered[highlightIndex]);
-      } else if (e.key === "Escape") {
-        e.preventDefault();
-        setShowDropdown(false);
-      }
-    };
-
-    // Debounce remote typeahead
-    useEffect(() => {
-      if (!onRefreshProducts) return;
-      if (!showDropdown) return;
-      if (debounceRef.current) clearTimeout(debounceRef.current);
-      debounceRef.current = setTimeout(() => {
-        onRefreshProducts(query);
-      }, 200);
-      return () => clearTimeout(debounceRef.current);
-    }, [query, onRefreshProducts, showDropdown]);
-
-    // Fallback getters
+    // Helpers for columns
     const getPackSize = (p) => p?.pack_size ?? p?.packSize ?? p?.packsize ?? "";
     const getSupplierName = (p) => p?.supplier?.name || p?.supplier_name || "-";
     const getBrandName = (p) => p?.brand?.name || p?.brand_name || "-";
     const getMargin = (p) => p?.margin ?? p?.margin_percentage ?? p?.marginPercent ?? "-";
     const getAvgPrice = (p) => p?.avg_price ?? p?.average_price ?? p?.avgPrice ?? "-";
 
-    // === NEW: compute portal position under the input ===
-    const computeMenuPos = () => {
-      const el = wrapperRef.current;
-      if (!el) return;
-      const rect = el.getBoundingClientRect();
-      setMenuPos({
-        left: rect.left + window.scrollX,
-        top: rect.bottom + window.scrollY, // just under the input
-        width: Math.max(rect.width, 800),  // keep your old w-[800px] behavior
-      });
+    // Select handler
+    const handleSelect = (product) => {
+      setDisplay(product?.name || "");
+      onChange?.(product);     // parent will navigate to next field
+      closeModal();
     };
 
+    // Keep highlighted row visible
     useEffect(() => {
-      if (!showDropdown) return;
-      computeMenuPos();
-      const onScroll = () => computeMenuPos();
-      const onResize = () => computeMenuPos();
-      window.addEventListener("scroll", onScroll, true);
-      window.addEventListener("resize", onResize);
-      return () => {
-        window.removeEventListener("scroll", onScroll, true);
-        window.removeEventListener("resize", onResize);
-      };
-    }, [showDropdown]);
+      if (!isOpen) return;
+      const rows = tableRef.current?.querySelectorAll("tbody tr");
+      if (!rows || rows.length === 0) return;
+      const el = rows[highlightIndex];
+      if (el) el.scrollIntoView({ block: "nearest" });
+    }, [highlightIndex, isOpen, filtered.length]);
 
-    // Portal dropdown markup
-    const dropdownNode =
-      showDropdown && filtered.length > 0 && menuPos
-        ? createPortal(
-            <div
-              ref={dropdownRef}
-              style={{
-                position: "absolute",
-                left: `${menuPos.left}px`,
-                top: `${menuPos.top}px`,
-                width: `${menuPos.width}px`,
-                zIndex: 9999, // stays above sticky footers
-              }}
-              className="max-h-60 overflow-auto border bg-white shadow-lg text-[11px]"
-            >
-              <table className="w-full border-collapse">
-                <thead className="bg-gray-100 sticky top-0">
-                  <tr className="text-left text-[10px]">
-                    <th colSpan="3" className="border px-1 w-1/3">Name</th>
-                    <th className="border px-1">Pack Size</th>
-                    <th className="border px-1">Quantity</th>
-                    <th className="border px-1">Pack Purchase</th>
-                    <th className="border px-1">Pack Sale</th>
-                    <th className="border px-1">Supplier</th>
-                    <th className="border px-1">Brand</th>
-                    <th className="border px-1">Margin %</th>
-                    <th className="border px-1">Avg. Price</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filtered.map((p, idx) => (
-                    <tr
-                      key={p.id}
-                      onClick={() => handleSelect(p)}
-                      className={`cursor-pointer ${idx === highlightIndex ? "bg-blue-100" : ""}`}
-                    >
-                      <td colSpan="3" className="border px-1 w-1/3">{p?.name}</td>
-                      <td className="border px-1">{getPackSize(p)}</td>
-                      <td className="border px-1">{p?.quantity}</td>
-                      <td className="border px-1">{p?.pack_purchase_price}</td>
-                      <td className="border px-1">{p?.pack_sale_price}</td>
-                      <td className="border px-1">{getSupplierName(p)}</td>
-                      <td className="border px-1">{getBrandName(p)}</td>
-                      <td className="border px-1">{getMargin(p)}</td>
-                      <td className="border px-1">{getAvgPrice(p)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>,
-            document.body
-          )
-        : null;
+    // Keyboard inside modal
+    const handleModalKeyDown = (e) => {
+      if (!isOpen) return;
+      if (e.key === "Escape") {
+        e.preventDefault();
+        closeModal();
+      } else if (e.key === "ArrowDown") {
+        e.preventDefault();
+        setHighlightIndex((i) => (i < filtered.length - 1 ? i + 1 : i));
+      } else if (e.key === "ArrowUp") {
+        e.preventDefault();
+        setHighlightIndex((i) => (i > 0 ? i - 1 : 0));
+      } else if (e.key === "Enter") {
+        e.preventDefault();
+        if (filtered[highlightIndex]) handleSelect(filtered[highlightIndex]);
+      }
+    };
 
     return (
-      <div ref={wrapperRef} className="relative w-full">
+      <>
+        {/* Trigger (small cell input) */}
         <input
-          ref={inputRef}
+          ref={triggerRef}
           type="text"
-          value={query}
-          onChange={(e) => {
-            setQuery(e.target.value);
-            setShowDropdown(true);
-            setHighlightIndex(0);
-          }}
-          onFocus={() => setShowDropdown(true)}
+          value={display}
+          readOnly
+          placeholder="Search product…"
+          className="border w-full h-6 text-[11px] px-1 cursor-text"
+          onFocus={() => openModal()}
+          onClick={() => openModal()}
           onKeyDown={(e) => {
-            internalKeyDown(e);
-            if (!e.defaultPrevented) onKeyDownProp?.(e);
+            // If user starts typing, open modal and seed the first character
+            if (
+              !e.ctrlKey &&
+              !e.metaKey &&
+              !e.altKey &&
+              e.key.length === 1
+            ) {
+              e.preventDefault();
+              openModal(e.key);
+              return;
+            }
+            if (e.key === "Enter" || e.key === "ArrowDown") {
+              e.preventDefault();
+              openModal();
+              return;
+            }
+            // Allow parent to handle arrows/enter when modal isn't opening
+            onKeyDownProp?.(e);
           }}
-          className="border w-full h-6 text-[11px] px-1"
-          placeholder="Search product..."
         />
 
-        {/* Fallback absolute (kept for safety if portal not mounted yet) */}
-        {showDropdown && filtered.length > 0 && !menuPos && (
-          <div
-            ref={dropdownRef}
-            className="absolute left-0 right-0 max-h-60 overflow-auto 
-                       border bg-white shadow-lg z-[9999] text-[11px] w-[800px]"
-          >
-            <table className="w-full border-collapse">
-              <thead className="bg-gray-100 sticky top-0">
-                <tr className="text-left text-[10px]">
-                  <th colSpan="3" className="border px-1 w-1/3">Name</th>
-                  <th className="border px-1">Pack Size</th>
-                  <th className="border px-1">Quantity</th>
-                  <th className="border px-1">Pack Purchase</th>
-                  <th className="border px-1">Pack Sale</th>
-                  <th className="border px-1">Supplier</th>
-                  <th className="border px-1">Brand</th>
-                  <th className="border px-1">Margin %</th>
-                  <th className="border px-1">Avg. Price</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.map((p, idx) => (
-                  <tr
-                    key={p.id}
-                    onClick={() => handleSelect(p)}
-                    className={`cursor-pointer ${idx === highlightIndex ? "bg-blue-100" : ""}`}
+        {/* Modal */}
+        {isOpen &&
+          createPortal(
+            <div
+              className="fixed inset-0 z-[10000] flex items-center justify-center"
+              onKeyDown={handleModalKeyDown}
+            >
+              {/* Backdrop */}
+              <div
+                className="absolute inset-0 bg-black/40"
+                onClick={closeModal}
+              />
+              {/* Dialog */}
+              <div className="relative bg-white w-[92vw] max-w-5xl rounded-xl shadow-2xl border">
+                {/* Header */}
+                <div className="px-4 py-3 border-b flex items-center justify-between">
+                  <h3 className="text-sm font-semibold">Select Product</h3>
+                  <button
+                    type="button"
+                    onClick={closeModal}
+                    className="text-xs px-2 py-1 rounded hover:bg-gray-100"
+                    aria-label="Close"
                   >
-                    <td colSpan="3" className="border px-1 w-1/3">{p?.name}</td>
-                    <td className="border px-1">{getPackSize(p)}</td>
-                    <td className="border px-1">{p?.quantity}</td>
-                    <td className="border px-1">{p?.pack_purchase_price}</td>
-                    <td className="border px-1">{p?.pack_sale_price}</td>
-                    <td className="border px-1">{getSupplierName(p)}</td>
-                    <td className="border px-1">{getBrandName(p)}</td>
-                    <td className="border px-1">{getMargin(p)}</td>
-                    <td className="border px-1">{getAvgPrice(p)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+                    ✕
+                  </button>
+                </div>
 
-        {/* Portal menu */}
-        {dropdownNode}
-      </div>
+                {/* Search */}
+                <div className="p-3">
+                  <input
+                    ref={searchRef}
+                    type="text"
+                    value={search}
+                    onChange={(e) => {
+                      setSearch(e.target.value);
+                      setHighlightIndex(0);
+                    }}
+                    placeholder="Type to search… (Enter to select, Esc to close)"
+                    className="border w-full h-8 text-sm px-2 rounded"
+                  />
+                </div>
+
+                {/* Results */}
+                <div className="px-3 pb-3">
+                  <div className="border rounded overflow-hidden">
+                    <div className="max-h-[60vh] overflow-auto">
+                      <table ref={tableRef} className="w-full border-collapse text-[11px]">
+                        <thead className="bg-gray-100 sticky top-0">
+                          <tr className="text-left text-[10px]">
+                            <th colSpan="3" className="border px-1 w-1/3">Name</th>
+                            <th className="border px-1">Pack Size</th>
+                            <th className="border px-1">Quantity</th>
+                            <th className="border px-1">Pack Purchase</th>
+                            <th className="border px-1">Pack Sale</th>
+                            <th className="border px-1">Supplier</th>
+                            <th className="border px-1">Brand</th>
+                            <th className="border px-1">Margin %</th>
+                            <th className="border px-1">Avg. Price</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {filtered.map((p, idx) => (
+                            <tr
+                              key={p.id}
+                              onClick={() => handleSelect(p)}
+                              className={`cursor-pointer ${
+                                idx === highlightIndex ? "bg-blue-100" : ""
+                              }`}
+                              onMouseEnter={() => setHighlightIndex(idx)}
+                            >
+                              <td colSpan="3" className="border px-1 text-[15px] w-1/3">{p?.name}</td>
+                              <td className="border px-1">{getPackSize(p)}</td>
+                              <td className="border px-1">{p?.quantity}</td>
+                              <td className="border px-1">{p?.pack_purchase_price}</td>
+                              <td className="border px-1">{p?.pack_sale_price}</td>
+                              <td className="border px-1">{getSupplierName(p)}</td>
+                              <td className="border px-1">{getBrandName(p)}</td>
+                              <td className="border px-1">{getMargin(p)}</td>
+                              <td className="border px-1">{getAvgPrice(p)}</td>
+                            </tr>
+                          ))}
+                          {filtered.length === 0 && (
+                            <tr>
+                              <td colSpan={11} className="text-center py-6 text-gray-500">
+                                No products found
+                              </td>
+                            </tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Footer (tips) */}
+                <div className="px-4 py-2 border-t text-[10px] text-gray-600">
+                  ↑/↓ to navigate • Enter to select • Esc to close
+                </div>
+              </div>
+            </div>,
+            document.body
+          )}
+      </>
     );
   }
 );
