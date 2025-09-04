@@ -293,35 +293,35 @@ export default function PurchaseInvoiceForm({ invoiceId, onSuccess }) {
       switch (field) {
         case "pack_quantity":
           if (packQuantityRefs.current[rowIndex]) {
-            packQuantityRefs.current[rowIndex].focus();
+            focusAndSelect(packQuantityRefs.current[rowIndex]);
             setCurrentField("pack_quantity");
             setCurrentRowIndex(rowIndex);
           }
           break;
         case "pack_purchase_price":
           if (packPurchasePriceRefs.current[rowIndex]) {
-            packPurchasePriceRefs.current[rowIndex].focus();
+            focusAndSelect(packPurchasePriceRefs.current[rowIndex]);
             setCurrentField("pack_purchase_price");
             setCurrentRowIndex(rowIndex);
           }
           break;
         case "item_discount":
           if (itemDiscountRefs.current[rowIndex]) {
-            itemDiscountRefs.current[rowIndex].focus();
+            focusAndSelect(itemDiscountRefs.current[rowIndex]);
             setCurrentField("item_discount");
             setCurrentRowIndex(rowIndex);
           }
           break;
         case "pack_bonus":
           if (packBonusRefs.current[rowIndex]) {
-            packBonusRefs.current[rowIndex].focus();
+            focusAndSelect(packBonusRefs.current[rowIndex]);
             setCurrentField("pack_bonus");
             setCurrentRowIndex(rowIndex);
           }
           break;
         case "pack_sale_price":
           if (packSalePriceRefs.current[rowIndex]) {
-            packSalePriceRefs.current[rowIndex].focus();
+            focusAndSelect(packSalePriceRefs.current[rowIndex]);
             setCurrentField("pack_sale_price");
             setCurrentRowIndex(rowIndex);
           }
@@ -339,13 +339,13 @@ export default function PurchaseInvoiceForm({ invoiceId, onSuccess }) {
       switch (currentFieldName) {
         case "supplier":
           if (invoiceNumberRef.current) {
-            invoiceNumberRef.current.focus();
+            focusAndSelect(invoiceNumberRef.current);
             setCurrentField("invoice_number");
           }
           break;
         case "invoice_number":
           if (invoiceAmountRef.current) {
-            invoiceAmountRef.current.focus();
+            focusAndSelect(invoiceAmountRef.current);
             setCurrentField("invoice_amount");
           }
           break;
@@ -442,6 +442,16 @@ export default function PurchaseInvoiceForm({ invoiceId, onSuccess }) {
       }
     }
   };
+
+const zeroToEmpty = (v) => (v === 0 || v === "0" ? "" : (v ?? ""));
+const focusAndSelect = (el) => {
+  if (!el) return;
+  el.focus();
+  // select after focus to ensure it sticks
+  setTimeout(() => {
+    if (typeof el.select === "function") el.select();
+  }, 0);
+};
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -596,6 +606,7 @@ export default function PurchaseInvoiceForm({ invoiceId, onSuccess }) {
                   value={form.invoice_number}
                   onChange={handleChange}
                   onKeyDown={(e) => handleKeyDown(e, "invoice_number")}
+                  onFocus={(e) => e.target.select()}
                   className="border rounded w-full p-1 h-7 text-xs"
                 />
               </td>
@@ -608,6 +619,7 @@ export default function PurchaseInvoiceForm({ invoiceId, onSuccess }) {
                   value={form.invoice_amount}
                   onChange={handleChange}
                   onKeyDown={(e) => handleKeyDown(e, "invoice_amount")}
+                  onFocus={(e) => e.target.select()}
                   className="border rounded w-full p-1 h-7 text-xs"
                 />
               </td>
@@ -718,9 +730,9 @@ export default function PurchaseInvoiceForm({ invoiceId, onSuccess }) {
                           ...newItems[i],
                           product_id: selectedProduct?.id || "",
                           pack_size: packSize ?? "",
-                          pack_purchase_price: packPurchase ?? "",
+                          pack_purchase_price: zeroToEmpty(packPurchase),
                           unit_purchase_price: unitPurchase ?? "",
-                          pack_sale_price: packSale ?? "",
+                          pack_sale_price: zeroToEmpty(packSale),
                           unit_sale_price: unitSale ?? "",
                           // keep user batch
                           batch: newItems[i].batch || "",
@@ -824,6 +836,7 @@ export default function PurchaseInvoiceForm({ invoiceId, onSuccess }) {
                     value={item.pack_quantity === 0 ? "" : item.pack_quantity}
                     onChange={(e) => handleItemChange(i, "pack_quantity", e.target.value)}
                     onKeyDown={(e) => handleKeyDown(e, "pack_quantity", i)}
+                    onFocus={(e) => e.target.select()}
                     className="border w-full h-6 text-[11px] px-1 appearance-none [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                   />
                 </td>
@@ -846,6 +859,7 @@ export default function PurchaseInvoiceForm({ invoiceId, onSuccess }) {
                     value={item.pack_purchase_price === 0 ? "" : item.pack_purchase_price}
                     onChange={(e) => handleItemChange(i, "pack_purchase_price", e.target.value)}
                     onKeyDown={(e) => handleKeyDown(e, "pack_purchase_price", i)}
+                    onFocus={(e) => e.target.select()}
                     className="border w-full h-6 text-[11px] px-1 appearance-none [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                   />
                 </td>
@@ -870,6 +884,7 @@ export default function PurchaseInvoiceForm({ invoiceId, onSuccess }) {
                       handleItemChange(i, "item_discount_percentage", e.target.value)
                     }
                     onKeyDown={(e) => handleKeyDown(e, "item_discount", i)}
+                    onFocus={(e) => e.target.select()}
                     className="border w-full h-6 text-[11px] px-1 appearance-none [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                   />
                 </td>
@@ -882,6 +897,7 @@ export default function PurchaseInvoiceForm({ invoiceId, onSuccess }) {
                     value={item.pack_bonus === 0 ? "" : item.pack_bonus}
                     onChange={(e) => handleItemChange(i, "pack_bonus", e.target.value)}
                     onKeyDown={(e) => handleKeyDown(e, "pack_bonus", i)}
+                    onFocus={(e) => e.target.select()}
                     className="border w-full h-6 text-[11px] px-1 appearance-none [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                   />
                 </td>
@@ -901,9 +917,10 @@ export default function PurchaseInvoiceForm({ invoiceId, onSuccess }) {
                   <input
                     ref={(el) => (packSalePriceRefs.current[i] = el)}
                     type="text"
-                    value={item.pack_sale_price ?? ""}
+                    value={item.pack_sale_price === 0 ? "" : item.pack_sale_price}
                     onChange={(e) => handleItemChange(i, "pack_sale_price", e.target.value)}
                     onKeyDown={(e) => handleKeyDown(e, "pack_sale_price", i)}
+                    onFocus={(e) => e.target.select()}
                     className="border w-full h-6 text-[11px] px-1 appearance-none [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                   />
                 </td>
