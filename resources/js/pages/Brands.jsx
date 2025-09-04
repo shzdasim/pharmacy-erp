@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import axios from "axios";
 import toast from "react-hot-toast";
 import {
@@ -12,44 +12,39 @@ import {
 import BrandImportModal from "../components/BrandImportModal.jsx";
 
 export default function Brands() {
-  const [brands, setBrands] = useState([]);
+  // rows = current page rows (server-side)
+  const [rows, setRows] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [exporting, setExporting] = useState(false);
+
+  // form/edit
   const [form, setForm] = useState({ name: "", image: null });
   const [editingId, setEditingId] = useState(null);
   const [preview, setPreview] = useState(null);
-  const [loading, setLoading] = useState(false);
-  const [importOpen, setImportOpen] = useState(false);
-  const [exporting, setExporting] = useState(false);
   const [saving, setSaving] = useState(false);
 
-  // search + pagination
-  const [q, setQ] = useState("");
+  // import modal
+  const [importOpen, setImportOpen] = useState(false);
+
+  // search + server pagination (match Products)
+  const [qName, setQName] = useState("");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
+  const [total, setTotal] = useState(0);
+  const [lastPage, setLastPage] = useState(1);
 
   // focus + save
   const nameRef = useRef(null);
   const saveBtnRef = useRef(null);
 
-  useEffect(() => {
-    document.title = "Brands - Pharmacy ERP";
-    fetchBrands();
-  }, []);
+  // fetch control (match Products)
+  const controllerRef = useRef(null);
+  const debounceRef = useRef(null);
 
-  const fetchBrands = async () => {
-    try {
-      setLoading(true);
-      const res = await axios.get("/api/brands");
-      setBrands(res.data || []);
-    } catch (err) {
-      console.error("Failed to fetch brands", err);
-      toast.error("Failed to load brands");
-    } finally {
-      setLoading(false);
-    }
-  };
-
+  useEffect(() => { document.title = "Brands - Pharmacy ERP"; }, []);
   useEffect(() => { nameRef.current?.focus(); }, [editingId]);
 
+  // Keyboard shortcut Alt+S to save
   useEffect(() => {
     const onKeyDown = (e) => {
       if (e.altKey && (e.key || "").toLowerCase() === "s") {
@@ -69,7 +64,72 @@ export default function Brands() {
     }
   };
 
-  const handleInputChange = (e) => setForm({ ...form, [e.target.name]: e.target.value });
+  // === SERVER FETCH (identical shape to Products) ===
+  const fetchBrands = async (signal) => {
+    try {
+      setLoading(true);
+      const { data } = await axios.get("/api/brands", {
+        params: {
+          page,
+          per_page: pageSize,
+          q_name: qName.trim(),
+        },
+        signal,
+      });
+
+      // Expect Laravel paginator
+      // { data: [...], total, last_page, per_page, current_page }
+      const items = Array.isArray(data?.data)
+        ? data.data
+        : Array.isArray(data)
+        ? data
+        : [];
+
+      setRows(items);
+      setTotal(Number(data?.total ?? items.length ?? 0));
+      const lp = Number(data?.last_page ?? 1);
+      setLastPage(lp);
+
+      // clamp page if overflow (e.g., after filter)
+      if (page > lp) setPage(lp || 1);
+    } catch (err) {
+      if (axios.isCancel?.(err)) return;
+      console.error("Failed to fetch brands", err);
+      toast.error("Failed to load brands");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Initial + page/pageSize change (non-debounced)
+  useEffect(() => {
+    if (controllerRef.current) controllerRef.current.abort();
+    const ctrl = new AbortController();
+    controllerRef.current = ctrl;
+    fetchBrands(ctrl.signal);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page, pageSize]);
+
+  // Debounce search (qName)
+  useEffect(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      setPage(1); // reset to first page on filter change
+      if (controllerRef.current) controllerRef.current.abort();
+      const ctrl = new AbortController();
+      controllerRef.current = ctrl;
+      fetchBrands(ctrl.signal);
+    }, 300);
+    return () => clearTimeout(debounceRef.current);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [qName]);
+
+  const start = rows.length ? (page - 1) * pageSize + 1 : 0;
+  const end = rows.length ? start + rows.length - 1 : 0;
+
+  // form helpers
+  const handleInputChange = (e) =>
+    setForm({ ...form, [e.target.name]: e.target.value });
 
   const handleFileChange = (e) => {
     const file = e.target.files?.[0] ?? null;
@@ -101,20 +161,30 @@ export default function Brands() {
 
       if (editingId) {
         data.append("_method", "PUT");
-        await axios.post(`/api/brands/${editingId}`, data, { headers: { "Content-Type": "multipart/form-data" } });
+        await axios.post(`/api/brands/${editingId}`, data, {
+          headers: { "Content-Type": "multipart/form-data" },
+        });
         toast.success("Brand updated");
       } else {
-        await axios.post("/api/brands", data, { headers: { "Content-Type": "multipart/form-data" } });
+        await axios.post("/api/brands", data, {
+          headers: { "Content-Type": "multipart/form-data" },
+        });
         toast.success("Brand saved");
       }
 
       resetForm();
-      fetchBrands();
+
+      // refetch current page
+      if (controllerRef.current) controllerRef.current.abort();
+      const ctrl = new AbortController();
+      controllerRef.current = ctrl;
+      await fetchBrands(ctrl.signal);
     } catch (err) {
-      const msg = err?.response?.data?.message
-        || err?.response?.data?.errors?.name?.[0]
-        || err?.response?.data?.errors?.image?.[0]
-        || "Save failed";
+      const msg =
+        err?.response?.data?.message ||
+        err?.response?.data?.errors?.name?.[0] ||
+        err?.response?.data?.errors?.image?.[0] ||
+        "Save failed";
       toast.error(msg);
     } finally {
       setSaving(false);
@@ -130,23 +200,53 @@ export default function Brands() {
   const handleDelete = async (b) => {
     const used = Number(b.products_count || 0) > 0;
     if (used) return toast.error("Cannot delete: brand is used by products.");
-    try {
-      await axios.delete(`/api/brands/${b.id}`);
-      setBrands((prev) => prev.filter((x) => x.id !== b.id));
-      if (editingId === b.id) resetForm();
-      toast.success("Brand deleted");
-    } catch (err) {
-      toast.error(err?.response?.data?.message || "Could not delete brand.");
-    }
+
+    toast((t) => (
+      <span>
+        Delete brand <strong>{b.name}</strong>?
+        <div className="mt-2 flex gap-2">
+          <button
+            className="bg-red-600 text-white px-3 py-1 rounded"
+            onClick={async () => {
+              toast.dismiss(t.id);
+              try {
+                await axios.delete(`/api/brands/${b.id}`);
+                toast.success("Brand deleted");
+
+                // refetch current page (like Products)
+                if (controllerRef.current) controllerRef.current.abort();
+                const ctrl = new AbortController();
+                controllerRef.current = ctrl;
+                await fetchBrands(ctrl.signal);
+                if (editingId === b.id) resetForm();
+              } catch (err) {
+                toast.error(
+                  err?.response?.data?.message || "Could not delete brand."
+                );
+              }
+            }}
+          >
+            Yes
+          </button>
+          <button
+            className="bg-gray-300 px-3 py-1 rounded"
+            onClick={() => toast.dismiss(t.id)}
+          >
+            No
+          </button>
+        </div>
+      </span>
+    ));
   };
 
   const handleButtonKeyDown = (e, action) => {
     if (e.key === "Enter" || e.key === " ") {
-      e.preventDefault(); action();
+      e.preventDefault();
+      action();
     }
   };
 
-  // export all brands
+  // export all brands (unchanged)
   const handleExport = async () => {
     try {
       setExporting(true);
@@ -166,22 +266,6 @@ export default function Brands() {
     }
   };
 
-  // search + pagination
-  const norm = (v) => (v ?? "").toString().toLowerCase().trim();
-  const filtered = useMemo(() => {
-    const needle = norm(q);
-    if (!needle) return brands;
-    return brands.filter((b) => norm(b.name).includes(needle));
-  }, [brands, q]);
-
-  useEffect(() => { setPage(1); }, [q, pageSize]);
-
-  const pageCount = Math.max(1, Math.ceil(filtered.length / pageSize));
-  useEffect(() => { if (page > pageCount) setPage(pageCount); }, [page, pageCount]);
-
-  const start = (page - 1) * pageSize;
-  const paged = filtered.slice(start, start + pageSize);
-
   return (
     <div className="p-6">
       {/* header + search */}
@@ -190,8 +274,8 @@ export default function Brands() {
         <div className="relative w-full md:w-80">
           <MagnifyingGlassIcon className="w-5 h-5 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
           <input
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
+            value={qName}
+            onChange={(e) => setQName(e.target.value)}
             placeholder="Search brand by name…"
             className="w-full pl-10 pr-3 h-9 text-sm border rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
@@ -249,17 +333,22 @@ export default function Brands() {
         <div className="text-sm text-gray-600">
           {loading ? "Loading…" : (
             <>
-              Showing <strong>{filtered.length === 0 ? 0 : start + 1}-{Math.min(filtered.length, start + pageSize)}</strong>
-              {" "}of <strong>{brands.length}</strong>
-              {filtered.length !== brands.length && <> (filtered: <strong>{filtered.length}</strong>)</>}
+              Showing <strong>{rows.length === 0 ? 0 : start}-{end}</strong>
+              {" "}of <strong>{total}</strong>
             </>
           )}
         </div>
         <div className="flex items-center gap-2">
           <label className="text-sm text-gray-600">Rows per page</label>
-          <select value={pageSize} onChange={(e) => setPageSize(Number(e.target.value))}
-                  className="border rounded px-2 h-9 text-sm">
-            <option value={10}>10</option><option value={25}>25</option><option value={50}>50</option>
+          <select
+            value={pageSize}
+            onChange={(e) => setPageSize(Number(e.target.value))}
+            className="border rounded px-2 h-9 text-sm"
+          >
+            <option value={10}>10</option>
+            <option value={25}>25</option>
+            <option value={50}>50</option>
+            <option value={100}>100</option>
           </select>
         </div>
       </div>
@@ -305,12 +394,12 @@ export default function Brands() {
           </thead>
 
           <tbody>
-            {paged.length === 0 && !loading && (
+            {rows.length === 0 && !loading && (
               <tr>
                 <td className="border px-3 py-6 text-center text-gray-500" colSpan={3}>No brands found.</td>
               </tr>
             )}
-            {paged.map((b) => {
+            {rows.map((b) => {
               const used = Number(b.products_count || 0) > 0;
               return (
                 <tr key={b.id} className="odd:bg-white even:bg-gray-50 hover:bg-blue-50 transition-colors">
@@ -355,14 +444,14 @@ export default function Brands() {
         </table>
       </div>
 
-      {/* pagination */}
+      {/* pagination (server) */}
       <div className="mt-4 flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between">
-        <div className="text-sm text-gray-600">Page {page} of {pageCount}</div>
+        <div className="text-sm text-gray-600">Page {page} of {lastPage}</div>
         <div className="flex items-center gap-2">
           <button onClick={() => setPage(1)} disabled={page === 1} className="px-3 py-1 border rounded disabled:opacity-50">⏮ First</button>
           <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page === 1} className="px-3 py-1 border rounded disabled:opacity-50">◀ Prev</button>
-          <button onClick={() => setPage((p) => Math.min(pageCount, p + 1))} disabled={page === pageCount} className="px-3 py-1 border rounded disabled:opacity-50">Next ▶</button>
-          <button onClick={() => setPage(pageCount)} disabled={page === pageCount} className="px-3 py-1 border rounded disabled:opacity-50">Last ⏭</button>
+          <button onClick={() => setPage((p) => Math.min(lastPage, p + 1))} disabled={page === lastPage} className="px-3 py-1 border rounded disabled:opacity-50">Next ▶</button>
+          <button onClick={() => setPage(lastPage)} disabled={page === lastPage} className="px-3 py-1 border rounded disabled:opacity-50">Last ⏭</button>
         </div>
       </div>
 
@@ -370,7 +459,13 @@ export default function Brands() {
       <BrandImportModal
         open={importOpen}
         onClose={() => setImportOpen(false)}
-        onImported={fetchBrands}
+        onImported={() => {
+          // refetch after import to reflect new data
+          if (controllerRef.current) controllerRef.current.abort();
+          const ctrl = new AbortController();
+          controllerRef.current = ctrl;
+          fetchBrands(ctrl.signal);
+        }}
       />
     </div>
   );
