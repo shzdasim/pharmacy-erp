@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import axios from "axios";
 import Select from "react-select";
+import AsyncSelect from "react-select/async";
 import toast from "react-hot-toast";
 import { Link, useNavigate } from "react-router-dom";
 // FilePond imports
@@ -14,6 +15,10 @@ import "filepond-plugin-image-preview/dist/filepond-plugin-image-preview.css";
 
 registerPlugin(FilePondPluginImagePreview, FilePondPluginFileValidateType);
 
+// 👉 Normalize Laravel paginate payloads (or plain arrays) to a simple array
+const asList = (payload) =>
+  Array.isArray(payload) ? payload : (payload?.data ?? payload?.items ?? []);
+
 export default function ProductForm({ initialData = null, onSubmitSuccess }) {
   const isEdit = !!initialData;
   const navigate = useNavigate();
@@ -24,10 +29,12 @@ export default function ProductForm({ initialData = null, onSubmitSuccess }) {
   });
 
   const [categories, setCategories] = useState([]);
-  const [brands, setBrands] = useState([]);
   const [suppliers, setSuppliers] = useState([]);
   const [files, setFiles] = useState([]);
   const [batches, setBatches] = useState([]); // for batch table
+
+  // Keep a local option object for Brand (so AsyncSelect shows the label)
+  const [brandOption, setBrandOption] = useState(null);
 
   // === Refs for focus & navigation ===
   const nameRef = useRef(null);
@@ -38,17 +45,17 @@ export default function ProductForm({ initialData = null, onSubmitSuccess }) {
   const supplierSelectRef = useRef(null);
   const saveBtnRef = useRef(null);
 
+  // ---- Load dropdown data (categories + suppliers only; Brand is async search) ----
   const fetchDropdowns = async () => {
-    const [catRes, brandRes, supRes] = await Promise.all([
+    const [catRes, supRes] = await Promise.all([
       axios.get("/api/categories"),
-      axios.get("/api/brands"),
       axios.get("/api/suppliers"),
     ]);
-    setCategories(catRes.data);
-    setBrands(brandRes.data);
-    setSuppliers(supRes.data);
+    setCategories(asList(catRes.data));
+    setSuppliers(asList(supRes.data));
   };
 
+  // ---- Preload a new product code (for add mode) ----
   const fetchNewCodes = async () => {
     const res = await axios.get("/api/products/new-code");
     setForm((prev) => ({
@@ -58,6 +65,7 @@ export default function ProductForm({ initialData = null, onSubmitSuccess }) {
     }));
   };
 
+  // ---- Load batches on edit ----
   const fetchBatches = async () => {
     if (isEdit && initialData?.id) {
       try {
@@ -66,6 +74,18 @@ export default function ProductForm({ initialData = null, onSubmitSuccess }) {
       } catch (error) {
         console.error("Failed to fetch batches:", error);
       }
+    }
+  };
+
+  // ---- Preload selected Brand label on edit (so AsyncSelect shows it) ----
+  const preloadBrandOption = async (brandId) => {
+    if (!brandId) return;
+    try {
+      const res = await axios.get(`/api/brands/${brandId}`);
+      const b = res.data;
+      if (b?.id && b?.name) setBrandOption({ value: b.id, label: b.name });
+    } catch {
+      // ignore
     }
   };
 
@@ -86,7 +106,9 @@ export default function ProductForm({ initialData = null, onSubmitSuccess }) {
         ]);
       }
       fetchBatches();
+      if (initialData?.brand_id) preloadBrandOption(initialData.brand_id);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Focus Name on mount (and after re-renders)
@@ -130,6 +152,7 @@ export default function ProductForm({ initialData = null, onSubmitSuccess }) {
         // stay on form for adding another → reset relevant fields & refocus Name
         setForm({ narcotic: "no" });
         setFiles([]);
+        setBrandOption(null);
         fetchNewCodes();
         setTimeout(() => nameRef.current?.focus(), 50);
       }
@@ -188,6 +211,21 @@ export default function ProductForm({ initialData = null, onSubmitSuccess }) {
       padding: 0,
     }),
     menu: (base) => ({ ...base, fontSize: "12px" }),
+  };
+
+  // ===== Brand: async server-side search (searches the whole table) =====
+  const loadBrandOptions = async (inputValue) => {
+    try {
+      const res = await axios.get("/api/brands", {
+        params: {
+          q_name: inputValue || "",
+          per_page: 25, // tune page size if you like
+        },
+      });
+      return asList(res.data).map((b) => ({ value: b.id, label: b.name }));
+    } catch {
+      return [];
+    }
   };
 
   return (
@@ -309,72 +347,72 @@ export default function ProductForm({ initialData = null, onSubmitSuccess }) {
           ></textarea>
         </div>
 
-        {/* Row 5: Category, Brand, Supplier */}
-<div className="grid grid-cols-3 gap-4">
-  <div>
-    <label className="block font-medium">Category</label>
-    <Select
-      ref={categorySelectRef}
-      options={categories.map((c) => ({ value: c.id, label: c.name }))}
-      value={
-        categories
-          .map((c) => ({ value: c.id, label: c.name }))
-          .find((opt) => opt.value === form.category_id) || null
-      }
-      onChange={(opt) => {
-        setForm({ ...form, category_id: opt?.value });
-        // after keyboard Enter or mouse select → go to Brand
-        setTimeout(() => brandSelectRef.current?.focus(), 0);
-      }}
-      classNamePrefix="rs"
-      isSearchable
-      styles={smallSelectStyles}
-    />
-  </div>
+        {/* Row 5: Category, Brand (Async), Supplier */}
+        <div className="grid grid-cols-3 gap-4">
+          <div>
+            <label className="block font-medium">Category</label>
+            <Select
+              ref={categorySelectRef}
+              options={asList(categories).map((c) => ({ value: c.id, label: c.name }))}
+              value={
+                asList(categories)
+                  .map((c) => ({ value: c.id, label: c.name }))
+                  .find((opt) => opt.value === Number(form.category_id)) || null
+              }
+              onChange={(opt) => {
+                setForm({ ...form, category_id: opt?.value });
+                // after keyboard Enter or mouse select → go to Brand
+                setTimeout(() => brandSelectRef.current?.focus(), 0);
+              }}
+              classNamePrefix="rs"
+              isSearchable
+              styles={smallSelectStyles}
+            />
+          </div>
 
-  <div>
-    <label className="block font-medium">Brand</label>
-    <Select
-      ref={brandSelectRef}
-      options={brands.map((b) => ({ value: b.id, label: b.name }))}
-      value={
-        brands
-          .map((b) => ({ value: b.id, label: b.name }))
-          .find((opt) => opt.value === form.brand_id) || null
-      }
-      onChange={(opt) => {
-        setForm({ ...form, brand_id: opt?.value });
-        // after selection → go to Supplier
-        setTimeout(() => supplierSelectRef.current?.focus(), 0);
-      }}
-      classNamePrefix="rs"
-      isSearchable
-      styles={smallSelectStyles}
-    />
-  </div>
+          <div>
+            <label className="block font-medium">Brand</label>
+            <AsyncSelect
+              ref={brandSelectRef}
+              cacheOptions
+              defaultOptions // will call loadBrandOptions('') on open
+              loadOptions={loadBrandOptions}
+              value={brandOption}
+              onChange={(opt) => {
+                setBrandOption(opt || null);
+                setForm({ ...form, brand_id: opt?.value ?? null });
+                // after selection → go to Supplier
+                setTimeout(() => supplierSelectRef.current?.focus(), 0);
+              }}
+              classNamePrefix="rs"
+              isSearchable
+              styles={smallSelectStyles}
+              placeholder="Search brand..."
+              noOptionsMessage={() => "Type to search brands..."}
+            />
+          </div>
 
-  <div>
-    <label className="block font-medium">Supplier</label>
-    <Select
-      ref={supplierSelectRef}
-      options={suppliers.map((s) => ({ value: s.id, label: s.name }))}
-      value={
-        suppliers
-          .map((s) => ({ value: s.id, label: s.name }))
-          .find((opt) => opt.value === form.supplier_id) || null
-      }
-      onChange={(opt) => {
-        setForm({ ...form, supplier_id: opt?.value });
-        // after selection → jump to Save button
-        setTimeout(() => saveBtnRef.current?.focus(), 0);
-      }}
-      classNamePrefix="rs"
-      isSearchable
-      styles={smallSelectStyles}
-    />
-  </div>
-</div>
-
+          <div>
+            <label className="block font-medium">Supplier</label>
+            <Select
+              ref={supplierSelectRef}
+              options={asList(suppliers).map((s) => ({ value: s.id, label: s.name }))}
+              value={
+                asList(suppliers)
+                  .map((s) => ({ value: s.id, label: s.name }))
+                  .find((opt) => opt.value === Number(form.supplier_id)) || null
+              }
+              onChange={(opt) => {
+                setForm({ ...form, supplier_id: opt?.value });
+                // after selection → jump to Save button
+                setTimeout(() => saveBtnRef.current?.focus(), 0);
+              }}
+              classNamePrefix="rs"
+              isSearchable
+              styles={smallSelectStyles}
+            />
+          </div>
+        </div>
 
         {/* Row 6: Mini table (very small fields, no number arrows) */}
         <div>
