@@ -1,0 +1,53 @@
+{
+  "name": "laravel-desktop",
+  "version": "1.0.0",
+  "private": true,
+  "main": "main.js",
+  "scripts": {
+    "dev": "electron .",
+    "build:win": "electron-builder -w",
+    "build:mac": "electron-builder -m"
+  },
+  "devDependencies": {
+    "electron": "^31.2.0",
+    "electron-builder": "^24.13.3"
+  },
+  "build": {
+    "appId": "com.yourco.laraveldesktop",
+    "productName": "ERP Software",
+    "files": ["main.js", "preload.js", "package.json"],
+    "directories": { "buildResources": "build" },
+    "extraResources": [
+      {
+        "from": "../",
+        "to": "laravel",
+        "filter": [
+          "!desktop{,/**}",
+          "app{,/**}",
+          "bootstrap{,/**}",
+          "config{,/**}",
+          "database{,/**}",
+          "public{,/**}",
+          "resources{,/**}",
+          "routes{,/**}",
+          "storage{,/**}",
+          "vendor{,/**}",
+          "artisan",
+          "composer.json",
+          "composer.lock",
+          ".env.example"
+        ]
+      },
+      { "from": "build/php", "to": "php", "filter": ["**/*"] }
+    ],
+    "asarUnpack": ["**/laravel/**", "**/php/**"],
+    "win": { "target": ["nsis"], "icon": "build/icons/icon.ico" },
+    "nsis": { "oneClick": true, "perMachine": false, "allowToChangeInstallationDirectory": false },
+    "mac": {
+      "target": ["dmg"],
+      "category": "public.app-category.productivity",
+      "icon": "build/icons/icon.icns",
+      "hardenedRuntime": false
+    }
+  }
+}
