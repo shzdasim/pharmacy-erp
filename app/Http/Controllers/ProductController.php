@@ -11,33 +11,43 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class ProductController extends Controller
 {
+
     public function search(Request $req)
 {
-    $q = trim($req->input('q',''));
-    $limit = max(1, min((int)$req->input('limit', 30), 100));
+    $q     = trim($req->input('q', ''));
+    $ids   = $req->input('ids'); // can be array or comma-separated
+    $limit = max(1, min((int)$req->input('limit', 30), 1000));
 
     $query = Product::select([
-            'id','name','product_code',
-            'pack_size',
+            'id','name','product_code','pack_size',
             'unit_purchase_price','unit_sale_price',
             'pack_purchase_price','pack_sale_price',
-            'quantity',          // or expose available_units
-            'margin',            // or margin_percentage
+            'quantity','margin','avg_price',
             'brand_id','supplier_id'
         ])
         ->with(['brand:id,name','supplier:id,name'])
         ->orderBy('name');
 
-    if ($q !== '') {
-        $query->where('name','like',"%{$q}%");
-        // If you added FULLTEXT:
-        // $query->orWhereRaw('MATCH(name, description) AGAINST (? IN NATURAL LANGUAGE MODE)', [$q]);
+    // If ids are provided → return exactly those (no limit)
+    if ($ids) {
+        if (is_string($ids)) {
+            $ids = array_filter(array_map('intval', explode(',', $ids)));
+        }
+        if (is_array($ids) && count($ids)) {
+            return response()->json($query->whereIn('id', $ids)->get());
+        }
     }
 
-    return $query->limit($limit)->get();
+    if ($q !== '') {
+        $query->where(function (Builder $b) use ($q) {
+            $b->where('name', 'like', "%{$q}%")
+              ->orWhere('product_code', 'like', "%{$q}%")
+              ->orWhere('barcode', 'like', "%{$q}%");
+        });
+    }
+
+    return response()->json($query->limit($limit)->get());
 }
-
-
 
 public function generateNewCode()
 {

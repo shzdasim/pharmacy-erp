@@ -48,15 +48,15 @@ export default function PurchaseReturnForm({ returnId, initialData, onSuccess })
 
   const [suppliers, setSuppliers] = useState([]);
   const refreshProducts = async (q = "") => {
-  // In invoice mode, do not override the restricted product list
-  if (form.purchase_invoice_id) return;
-  try {
-    const { data } = await axios.get("/api/products/search", { params: { q, limit: 30 } });
-    setProducts(Array.isArray(data?.data) ? data.data : Array.isArray(data) ? data : []);
-  } catch (e) {}
-};
+    // In invoice mode, do not override the restricted product list
+    if (form.purchase_invoice_id) return;
+    try {
+      const { data } = await axios.get("/api/products/search", { params: { q, limit: 30 } });
+      setProducts(Array.isArray(data?.data) ? data.data : Array.isArray(data) ? data : []);
+    } catch (e) {}
+  };
 
-const [catalogProducts, setCatalogProducts] = useState([]);
+  const [catalogProducts, setCatalogProducts] = useState([]);
   const [products, setProducts] = useState([]);
   const [purchaseInvoices, setPurchaseInvoices] = useState([]);
 
@@ -66,6 +66,12 @@ const [catalogProducts, setCatalogProducts] = useState([]);
 
   const [currentField, setCurrentField] = useState(null);
   const [currentRowIndex, setCurrentRowIndex] = useState(0);
+
+  // per-row validation flags
+  const [rowErrors, setRowErrors] = useState([]); // [{ product: false, batch: false }]
+
+  // Track react-select menu state to mimic SaleReturn behavior
+  const [invoiceMenuOpen, setInvoiceMenuOpen] = useState(false);
 
   // ===== refs =====
   const supplierSelectRef = useRef(null);
@@ -83,6 +89,15 @@ const [catalogProducts, setCatalogProducts] = useState([]);
     packQuantityRefs.current = packQuantityRefs.current.slice(0, form.items.length);
     packPurchasePriceRefs.current = packPurchasePriceRefs.current.slice(0, form.items.length);
     itemDiscountRefs.current = itemDiscountRefs.current.slice(0, form.items.length);
+  }, [form.items.length]);
+
+  // keep rowErrors aligned with items length
+  useEffect(() => {
+    setRowErrors((prev) => {
+      const next = prev.slice(0, form.items.length);
+      while (next.length < form.items.length) next.push({ product: false, batch: false });
+      return next;
+    });
   }, [form.items.length]);
 
   // keep rowBatches aligned with items length
@@ -103,6 +118,23 @@ const [catalogProducts, setCatalogProducts] = useState([]);
     setRowBatches((prev) => {
       const next = prev.slice();
       next[rowIndex] = Array.isArray(list) ? list : [];
+      return next;
+    });
+  };
+
+  const setRowError = (idx, field) => {
+    setRowErrors((prev) => {
+      const next = prev.slice();
+      if (!next[idx]) next[idx] = { product: false, batch: false };
+      next[idx][field] = true;
+      return next;
+    });
+  };
+  const clearRowError = (idx, field) => {
+    setRowErrors((prev) => {
+      const next = prev.slice();
+      if (!next[idx]) next[idx] = { product: false, batch: false };
+      next[idx][field] = false;
       return next;
     });
   };
@@ -138,12 +170,39 @@ const [catalogProducts, setCatalogProducts] = useState([]);
     return maxK;
   };
 
+  // --- normalize product (richer for ProductSearchInput picker)
   const normalizeProduct = (src) => ({
     id: Number(firstDefined(src?.id, src?.product_id, src?.ProductId, src?.product?.id)),
     name: firstDefined(src?.name, src?.product_name, src?.product?.name, src?.title, src?.label),
+
+    // purchase size / prices
     pack_size: toNum(firstDefined(src?.pack_size, src?.product?.pack_size)),
     pack_purchase_price: toNum(firstDefined(src?.pack_purchase_price, src?.product?.pack_purchase_price)),
     unit_purchase_price: toNum(firstDefined(src?.unit_purchase_price, src?.product?.unit_purchase_price)),
+
+    // sale prices + stock + margin + avg price
+    pack_sale_price: toNum(firstDefined(src?.pack_sale_price, src?.product?.pack_sale_price)),
+    unit_sale_price: toNum(firstDefined(src?.unit_sale_price, src?.product?.unit_sale_price)),
+    quantity: toNum(firstDefined(src?.quantity, src?.product?.quantity)),
+    margin: toNum(firstDefined(src?.margin, src?.margin_percentage, src?.product?.margin)),
+
+    avg_price: toNum(
+      firstDefined(
+        src?.avg_price,
+        src?.average_unit_cost,
+        src?.average_price,
+        src?.avg_unit_price,
+        src?.product?.avg_price
+      )
+    ),
+
+    // relations (for picker columns)
+    brand_id: firstDefined(src?.brand_id, src?.product?.brand_id),
+    supplier_id: firstDefined(src?.supplier_id, src?.product?.supplier_id),
+    brand: firstDefined(src?.brand, src?.product?.brand) || null,
+    supplier: firstDefined(src?.supplier, src?.product?.supplier) || null,
+
+    // open-return support
     available_units: toNum(firstDefined(src?.available_units, src?.available_quantity, src?.stock_units, src?.quantity, src?.stock)),
   });
 
@@ -220,6 +279,19 @@ const [catalogProducts, setCatalogProducts] = useState([]);
     }, 50);
   };
 
+  // Helper: advance focus to first product field
+  const advanceToFirstProduct = () => {
+    setTimeout(() => {
+      const el = productSearchRefs.current?.[0]?.querySelector?.("input");
+      if (el) {
+        el.focus();
+        if (typeof el.select === "function") el.select();
+      }
+      setCurrentField("product");
+      setCurrentRowIndex(0);
+    }, 0);
+  };
+
   // ===== initial loads =====
   useEffect(() => {
     (async () => {
@@ -266,6 +338,13 @@ const [catalogProducts, setCatalogProducts] = useState([]);
     })();
   }, [returnId]);
 
+  // Focus Supplier first when creating a new return
+  useEffect(() => {
+    if (!returnId) {
+      setTimeout(() => supplierSelectRef.current?.focus?.(), 100);
+    }
+  }, [returnId]);
+
   // Alt+S to save
   useEffect(() => {
     const keyHandler = (e) => {
@@ -287,24 +366,73 @@ const [catalogProducts, setCatalogProducts] = useState([]);
     } catch (err) { console.error(err); }
   };
 
+  const fetchProductDetailsForIds = async (ids) => {
+    if (!ids?.length) return new Map();
+    try {
+      const { data } = await axios.get("/api/products/search", {
+        params: { ids: ids.join(",") },
+      });
+      const arr = Array.isArray(data?.data) ? data.data : Array.isArray(data) ? data : [];
+      const map = new Map();
+      for (const row of arr) {
+        const n = normalizeProduct(row);
+        if (n.quantity && !n.available_units) n.available_units = n.quantity;
+        map.set(String(n.id), n);
+      }
+      if (map.size) return map;
+    } catch (e) {}
+    const map = new Map();
+    await Promise.all(ids.map(async (id) => {
+      try {
+        const res = await axios.get("/api/products/available-quantity", { params: { product_id: id } });
+        const units = Number(res?.data?.available_units ?? 0);
+        map.set(String(id), { id, quantity: units, available_units: units });
+      } catch (e) {
+        map.set(String(id), { id, quantity: 0, available_units: 0 });
+      }
+    }));
+    return map;
+  };
+
   const loadInvoice = async (invoiceId) => {
     try {
       const res = await axios.get(`/api/purchase-invoices/${invoiceId}`);
       const items = Array.isArray(res.data?.items) ? res.data.items : [];
       setInvoiceItems(items);
 
+      // Build unique product list from invoice (keep invoice prices)
       const byId = new Map();
       for (const it of items) {
-        const p = normalizeProduct(it.product || it);
-        if (p.id && p.name && !byId.has(p.id)) {
-          p.pack_size = toNum(firstDefined(it.pack_size, p.pack_size));
-          p.pack_purchase_price = toNum(firstDefined(it.pack_purchase_price, p.pack_purchase_price));
-          p.unit_purchase_price = toNum(firstDefined(it.unit_purchase_price, p.unit_purchase_price));
-          byId.set(p.id, p);
-        }
+        let p = normalizeProduct(it.product || it);
+        if (!p.id || !p.name) continue;
+        p.pack_size           = toNum(firstDefined(it.pack_size, p.pack_size));
+        p.pack_purchase_price = toNum(firstDefined(it.pack_purchase_price, p.pack_purchase_price));
+        p.unit_purchase_price = toNum(firstDefined(it.unit_purchase_price, p.unit_purchase_price));
+        if (!byId.has(p.id)) byId.set(p.id, p);
       }
       const invoiceProducts = Array.from(byId.values());
-      setProducts(invoiceProducts.length ? invoiceProducts : catalogProducts);
+      const ids = invoiceProducts.map(p => p.id);
+
+      // fetch extra details
+      const detailsMap = await fetchProductDetailsForIds(ids);
+      const merged = invoiceProducts.map((p) => {
+        const d = detailsMap.get(String(p.id));
+        if (!d) return p;
+        return {
+          ...p,
+          quantity: toNum(firstDefined(p.quantity, d.quantity)),
+          available_units: toNum(firstDefined(p.available_units, d.available_units, d.quantity)),
+          pack_sale_price: toNum(firstDefined(p.pack_sale_price, d.pack_sale_price)),
+          unit_sale_price: toNum(firstDefined(p.unit_sale_price, d.unit_sale_price)),
+          margin: toNum(firstDefined(p.margin, d.margin)),
+          avg_price: toNum(firstDefined(p.avg_price, d.avg_price)),
+          brand_id: firstDefined(p.brand_id, d.brand_id),
+          supplier_id: firstDefined(p.supplier_id, d.supplier_id),
+          brand: p.brand || d.brand || null,
+          supplier: p.supplier || d.supplier || null,
+        };
+      });
+      setProducts(merged.length ? merged : catalogProducts);
     } catch (err) {
       console.error(err);
       setInvoiceItems([]);
@@ -339,7 +467,6 @@ const [catalogProducts, setCatalogProducts] = useState([]);
     if (availabilityCache.current.has(key)) return availabilityCache.current.get(key);
 
     if (fallbackFromCatalog && !batchOrNull) {
-      // prefer product-level availability from cached product object
       const prod =
         products.find((p) => eqPid(firstDefined(p.id, p.value), productId)) ||
         catalogProducts.find((p) => eqPid(firstDefined(p.id, p.value), productId));
@@ -368,7 +495,6 @@ const [catalogProducts, setCatalogProducts] = useState([]);
     let list = productBatchCache.current.get(pid);
 
     if (!Array.isArray(list)) {
-      // try to fetch using the same endpoint as open returns
       list = await fetchBatchesForOpenReturn(productId);
     }
 
@@ -380,7 +506,6 @@ const [catalogProducts, setCatalogProducts] = useState([]);
       return toNum(found.available_units);
     }
 
-    // fallback
     return await fetchAvailableUnits(productId, batchNumber);
   };
 
@@ -400,9 +525,9 @@ const [catalogProducts, setCatalogProducts] = useState([]);
       setForm((prev) => ({ ...prev, supplier_id: v, purchase_invoice_id: "" }));
       await fetchPurchaseInvoices(v);
       setInvoiceItems([]);
+      setRowErrors([]);
       productBatchCache.current = new Map(); // reset open-mode cache
       setRowBatches([]);
-      // Open return default: allow full catalog until invoice chosen
       setProducts(catalogProducts);
       setForm((prev) => {
         const items = prev.items.map((it) => ({
@@ -426,15 +551,16 @@ const [catalogProducts, setCatalogProducts] = useState([]);
     }
 
     if (field === "purchase_invoice_id") {
-      setForm((prev) => ({ ...prev, purchase_invoice_id: v }));
-      if (v) {
-        await loadInvoice(v);
+      const id = v;
+      setForm((prev) => ({ ...prev, purchase_invoice_id: id }));
+      if (id) {
+        await loadInvoice(id);
       } else {
-        // Open return: no invoice selected → show all products
         setInvoiceItems([]);
         setProducts(catalogProducts);
       }
-      productBatchCache.current = new Map(); // switching modes resets batch cache
+      setRowErrors([]);
+      productBatchCache.current = new Map();
       setRowBatches([]);
       setForm((prev) => {
         const items = prev.items.map((it) => ({
@@ -449,9 +575,18 @@ const [catalogProducts, setCatalogProducts] = useState([]);
         }));
         return recalcFooter({ ...prev, items }, "invoice_change");
       });
+
+      // After selecting an invoice, go to the first Product search
       setTimeout(() => {
-        productSearchRefs.current[0]?.querySelector("input")?.focus?.();
+        const el = productSearchRefs.current?.[0]?.querySelector?.("input");
+        if (el) {
+          el.focus();
+          if (typeof el.select === "function") el.select();
+        }
+        setCurrentField("product");
+        setCurrentRowIndex(0);
       }, 50);
+
       return;
     }
   };
@@ -498,6 +633,17 @@ const [catalogProducts, setCatalogProducts] = useState([]);
       const openBatches = await fetchBatchesForOpenReturn(selectedId);
 
       if (openBatches.length === 0) {
+        // uniqueness (no batch scenario)
+        const dupPI = findDuplicateProductIndex(selectedId, index);
+        if (dupPI !== -1) {
+          toast.error(`Duplicate product "${productNameById(selectedId)}" already used in row ${dupPI + 1}.`);
+          setRowError(index, "product");
+          focusProductSearch(index);
+          return;
+        } else {
+          clearRowError(index, "product");
+        }
+
         // No batches → product-level availability
         const totalAvail = await fetchAvailableUnits(selectedId, null);
         newItems[index] = recalcItem(
@@ -511,13 +657,14 @@ const [catalogProducts, setCatalogProducts] = useState([]);
       }
 
       // Has batches in open mode
+      clearRowError(index, "product");
       setBatchesForRow(index, openBatches);
       if (openBatches.length === 1) {
-        // auto-apply single batch — use batch list's available_units first
         const b = openBatches[0];
         const dupPB = findDuplicateProductBatchIndex(selectedId, b.batch_number, index);
         if (dupPB !== -1) {
           toast.error(`Row ${dupPB + 1} already has "${productNameById(selectedId)}" with batch "${b.batch_number}".`);
+          setRowError(index, "batch");
           focusProductSearch(index);
           return;
         }
@@ -533,6 +680,7 @@ const [catalogProducts, setCatalogProducts] = useState([]);
           },
           "open_batch_auto_apply"
         );
+        clearRowError(index, "batch");
         setForm((prev) => recalcFooter({ ...prev, items: newItems }, "items"));
         focusOnField("pack_quantity", index);
         return;
@@ -548,6 +696,17 @@ const [catalogProducts, setCatalogProducts] = useState([]);
 
     // INVOICE MODE
     if (batchOptsInvoice.length === 0) {
+      // uniqueness (no batch on invoice)
+      const dupPI2 = findDuplicateProductIndex(selectedId, index);
+      if (dupPI2 !== -1) {
+        toast.error(`Duplicate product "${productNameById(selectedId)}" already used in row ${dupPI2 + 1}.`);
+        setRowError(index, "product");
+        focusProductSearch(index);
+        return;
+      } else {
+        clearRowError(index, "product");
+      }
+
       // No batches for this product on invoice → product-level availability
       const totalAvail = await fetchAvailableUnits(selectedId, null);
       newItems[index] = recalcItem(
@@ -561,12 +720,14 @@ const [catalogProducts, setCatalogProducts] = useState([]);
     }
 
     setBatchesForRow(index, batchOptsInvoice);
+    clearRowError(index, "product");
 
     if (batchOptsInvoice.length === 1) {
       const b = batchOptsInvoice[0];
       const dupPB = findDuplicateProductBatchIndex(selectedId, b.batch_number, index);
       if (dupPB !== -1) {
         toast.error(`Row ${dupPB + 1} already has product "${productNameById(selectedId)}" with batch "${b.batch_number}". Choose a different row or batch.`);
+        setRowError(index, "batch");
         focusProductSearch(index);
         return;
       }
@@ -588,6 +749,7 @@ const [catalogProducts, setCatalogProducts] = useState([]);
         },
         "batch_auto_apply_invoice"
       );
+      clearRowError(index, "batch");
       setForm((prev) => recalcFooter({ ...prev, items: upd3 }, "items"));
       focusOnField("pack_quantity", index);
       return;
@@ -622,6 +784,7 @@ const [catalogProducts, setCatalogProducts] = useState([]);
       const dupIndex2 = findDuplicateProductBatchIndex(ensurePid, bn, index);
       if (dupIndex2 !== -1) {
         toast.error(`Duplicate (product + batch) in row ${dupIndex2 + 1}. Use a unique batch for the same product.`);
+        setRowError(index, "batch");
         const updDup = [...form.items];
         updDup[index] = recalcItem(
           { ...updDup[index], batch: "", expiry: "", available_units: 0 },
@@ -636,9 +799,9 @@ const [catalogProducts, setCatalogProducts] = useState([]);
 
     if (!bn) {
       // Clearing batch
+      clearRowError(index, "batch");
       const upd = [...form.items];
       if (form.purchase_invoice_id) {
-        // invoice mode: if product truly has no batches → product-level availability; else 0 until chosen
         const hasB = productHasBatches(ensurePid);
         if (hasB) {
           upd[index] = recalcItem({ ...upd[index], batch: "", expiry: "", available_units: 0 }, "batch_cleared_invoice_has_batches");
@@ -647,7 +810,6 @@ const [catalogProducts, setCatalogProducts] = useState([]);
           upd[index] = recalcItem({ ...upd[index], batch: "", expiry: "", available_units: toNum(totalAvail) }, "batch_cleared_invoice_no_batches");
         }
       } else {
-        // open mode: rely on cache to decide
         const cached = productBatchCache.current.get(String(ensurePid)) || [];
         if (cached.length > 0) {
           upd[index] = recalcItem({ ...upd[index], batch: "", expiry: "", available_units: 0 }, "batch_cleared_open_has_batches");
@@ -671,6 +833,7 @@ const [catalogProducts, setCatalogProducts] = useState([]);
         return;
       }
       const avail = await getBatchAvailability(ensurePid, bn);
+      clearRowError(index, "batch");
       upd[index] = recalcItem(
         {
           ...upd[index],
@@ -695,6 +858,7 @@ const [catalogProducts, setCatalogProducts] = useState([]);
         return;
       }
       const avail = toNum(firstDefined(matchedOpen.available_units, await fetchAvailableUnits(ensurePid, bn)));
+      clearRowError(index, "batch");
       upd[index] = recalcItem(
         {
           ...upd[index],
@@ -727,8 +891,12 @@ const [catalogProducts, setCatalogProducts] = useState([]);
     }
     if (e.key === "ArrowDown") {
       e.preventDefault();
-      const nextRow = Math.min(form.items.length - 1, rowIndex + 1);
-      focusProductSearch(nextRow);
+      if (rowIndex === form.items.length - 1) {
+        addItem();
+        setTimeout(() => focusProductSearch(rowIndex + 1), 150);
+      } else {
+        focusProductSearch(rowIndex + 1);
+      }
     }
     if (e.key === "ArrowUp") {
       e.preventDefault();
@@ -753,8 +921,13 @@ const [catalogProducts, setCatalogProducts] = useState([]);
     }
     if (e.key === "ArrowDown") {
       e.preventDefault();
-      const nextRow = Math.min(form.items.length - 1, rowIndex + 1);
-      focusOnField(field, nextRow);
+      if (rowIndex === form.items.length - 1) {
+        addItem();
+        setTimeout(() => focusProductSearch(rowIndex + 1), 150);
+      } else {
+        const nextRow = Math.min(form.items.length - 1, rowIndex + 1);
+        focusOnField(field, nextRow);
+      }
     }
     if (e.key === "ArrowUp") {
       e.preventDefault();
@@ -774,6 +947,11 @@ const [catalogProducts, setCatalogProducts] = useState([]);
     const newItems = form.items.filter((_, i) => i !== index);
     const newForm = recalcFooter({ ...form, items: newItems }, "items");
     setForm(newForm);
+    setRowErrors((prev) => {
+      const next = prev.slice();
+      next.splice(index, 1);
+      return next;
+    });
   };
 
   // -------- submit with validations --------
@@ -786,8 +964,6 @@ const [catalogProducts, setCatalogProducts] = useState([]);
       }
 
       // Uniqueness validation
-      // If product has batches -> uniqueness by (product + batch)
-      // If product does not have batches -> product must be unique
       {
         const seen = new Map(); // key → row
         for (let i = 0; i < form.items.length; i++) {
@@ -801,9 +977,11 @@ const [catalogProducts, setCatalogProducts] = useState([]);
             const firstRow = seen.get(key);
             if (hasBatches && batchKey) {
               toast.error(`Duplicate product & batch in rows ${firstRow + 1} and ${i + 1}. Use a unique batch for the same product.`);
+              setRowError(i, "batch");
               setCurrentField("batch"); setCurrentRowIndex(i);
             } else {
               toast.error(`Duplicate product without batch in rows ${firstRow + 1} and ${i + 1}. This product can only appear once when no batch is available.`);
+              setRowError(i, "product");
               focusProductSearch(i);
             }
             return;
@@ -823,6 +1001,7 @@ const [catalogProducts, setCatalogProducts] = useState([]);
         if (productHasBatches(it.product_id)) {
           if (!it.batch) {
             toast.error(`Row ${i + 1}: Please pick a batch for this product.`);
+            setRowError(i, "batch");
             setCurrentField("batch"); setCurrentRowIndex(i);
             return;
           }
@@ -833,6 +1012,16 @@ const [catalogProducts, setCatalogProducts] = useState([]);
           if (!available) {
             available = await fetchAvailableUnits(it.product_id, null);
           }
+        }
+        // Block saving if availability is zero
+        if (toNum(available) <= 0) {
+          toast.error(`Row ${i + 1}: "${productNameById(it.product_id)}" has Avail.Q (Units) of 0.`);
+          if (productHasBatches(it.product_id)) {
+            setCurrentField("batch"); setCurrentRowIndex(i);
+          } else {
+            focusProductSearch(i);
+          }
+          return;
         }
 
         if (returnedUnits > toNum(available)) {
@@ -881,6 +1070,12 @@ const [catalogProducts, setCatalogProducts] = useState([]);
   const navigate = useNavigate();
   const INDEX_ROUTE = "/purchase-returns";
   const handleCancel = () => navigate(INDEX_ROUTE);
+
+  // Build invoiceOptions once
+  const invoiceOptions = purchaseInvoices.map((inv) => ({
+    value: inv.id,
+    label: inv.posted_number,
+  }));
 
   // ===== render =====
   return (
@@ -931,22 +1126,28 @@ const [catalogProducts, setCatalogProducts] = useState([]);
                   <label className="block text-[10px]">Purchase Invoice (optional)</label>
                   <Select
                     ref={purchaseInvoiceRef}
-                    options={purchaseInvoices.map((inv) => ({
-                      value: inv.id,
-                      label: inv.posted_number,
-                    }))}
-                    value={
-                      purchaseInvoices
-                        .map((inv) => ({ value: inv.id, label: inv.posted_number }))
-                        .find((inv) => inv.value === form.purchase_invoice_id) || null
-                    }
+                    options={invoiceOptions}
+                    value={invoiceOptions.find((inv) => inv.value === form.purchase_invoice_id) || null}
                     onChange={(val) => handleSelectChange("purchase_invoice_id", val)}
+                    onMenuOpen={() => setInvoiceMenuOpen(true)}
+                    onMenuClose={() => setInvoiceMenuOpen(false)}
                     onKeyDown={(e) => {
                       if (e.key === "Enter") {
-                        e.preventDefault();
-                        setTimeout(() => {
-                          productSearchRefs.current[0]?.querySelector("input")?.focus();
-                        }, 50);
+                        // If the menu is CLOSED and nothing is selected, treat Enter as "skip invoice" like SaleReturn
+                        if (!invoiceMenuOpen && !form.purchase_invoice_id) {
+                          e.preventDefault();
+                          // Ensure we're in open-return mode
+                          setInvoiceItems([]);
+                          setProducts(catalogProducts);
+                          productBatchCache.current = new Map();
+                          setRowBatches([]);
+                          setRowErrors([]);
+                          setForm((prev) => recalcFooter(prev));
+                          // Focus the first Product
+                          advanceToFirstProduct();
+                        }
+                        // If menu is OPEN, do NOTHING here so react-select can commit the highlighted option.
+                        // handleSelectChange will then move focus to Product automatically.
                       }
                     }}
                     isSearchable
@@ -1032,12 +1233,17 @@ const [catalogProducts, setCatalogProducts] = useState([]);
 
                   {/* Product Search */}
                   <td colSpan={1} className="border text-left w-[200px]">
-                    <div ref={(el) => (productSearchRefs.current[i] = el)}>
+                    <div
+                      ref={(el) => (productSearchRefs.current[i] = el)}
+                      onFocusCapture={() => { if (!form.purchase_invoice_id) refreshProducts(""); }}
+                      className={rowErrors[i]?.product ? "ring-2 ring-red-500 rounded" : ""}
+                    >
                       <ProductSearchInput
                         value={item.product_id}
                         onChange={(val) => handleProductSelect(i, val)}
                         onKeyDown={(e) => handleProductKeyDown(e, i)}
                         products={products}
+                        onRefreshProducts={refreshProducts}
                       />
                     </div>
                   </td>
@@ -1054,21 +1260,23 @@ const [catalogProducts, setCatalogProducts] = useState([]);
 
                   {/* Batch */}
                   <td className="border w-16">
-                    <BatchSearchInput
-                      ref={(el) => {
-                        if (el && currentField === "batch" && currentRowIndex === i) {
-                          setTimeout(() => el.focus(), 50);
-                        }
-                      }}
-                      value={item.batch}
-                      batches={rowBatches[i] || []}
-                      onChange={(batchNumber) => handleBatchSelect(i, { value: batchNumber })}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" && item.batch) {
-                          e.preventDefault();
-                        }
-                      }}
-                    />
+                    <div className={rowErrors[i]?.batch ? "ring-2 ring-red-500 rounded" : ""}>
+                      <BatchSearchInput
+                        ref={(el) => {
+                          if (el && currentField === "batch" && currentRowIndex === i) {
+                            setTimeout(() => el.focus(), 50);
+                          }
+                        }}
+                        value={item.batch}
+                        batches={rowBatches[i] || []}
+                        onChange={(batchNumber) => handleBatchSelect(i, { value: batchNumber })}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" && item.batch) {
+                            e.preventDefault();
+                          }
+                        }}
+                      />
+                    </div>
                   </td>
 
                   {/* Expiry */}

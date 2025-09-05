@@ -1,14 +1,3 @@
-// src/pages/sales-returns/SaleReturnForm.jsx
-// Unit-based Sale Return (open return & invoice return modes)
-// Tweaks applied earlier + new ones:
-// A) Enter on invoice select respects open/close, prevents skipping.
-// B) Invoice mode keeps rich product data.
-// C) Open return shows Available Qty (and column title changes dynamically).
-// D) Footer fields blank-when-zero; empty treated as 0.
-// E) Prevent duplicate products across rows; prevent duplicate (product+batch) pairs.
-// F) Validate return qty <= allowed; highlight red; block save.
-// G) Arrow ↑/↓ navigation across rows for Product/Batch/Qty/Disc. ArrowDown on last row in Qty/Disc adds row and focuses next row Product.
-
 import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
