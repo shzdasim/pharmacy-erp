@@ -340,10 +340,11 @@ export default function PurchaseReturnForm({ returnId, initialData, onSuccess })
 
   // Focus Supplier first when creating a new return
   useEffect(() => {
-    if (!returnId) {
-      setTimeout(() => supplierSelectRef.current?.focus?.(), 100);
-    }
-  }, [returnId]);
+  if (!returnId) {
+    // we also pass autoFocus below, but this guarantees focus even if timing changes
+    supplierSelectRef.current?.focus?.();
+  }
+}, [returnId]);
 
   // Alt+S to save
   useEffect(() => {
@@ -1112,14 +1113,17 @@ export default function PurchaseReturnForm({ returnId, initialData, onSuccess })
                 <td className="border p-1 w-1/3">
                   <label className="block text-[10px]">Supplier *</label>
                   <SupplierSearchInput
-                    ref={supplierSelectRef}
-                    value={form.supplier_id}
-                    onChange={(id) => {
-                      handleSelectChange("supplier_id", { value: id });
-                      setTimeout(() => purchaseInvoiceRef.current?.focus(), 50);
-                    }}
-                    suppliers={suppliers}
-                  />
+    ref={supplierSelectRef}
+    value={form.supplier_id}
+    suppliers={suppliers}
+    autoFocus={!returnId} // ✅ focus only in create mode
+    onChange={(id) => {
+      // keep your existing behavior
+      handleSelectChange("supplier_id", { value: id });
+      // then move focus to invoice picker
+      setTimeout(() => purchaseInvoiceRef.current?.focus?.(), 50);
+    }}
+  />
                 </td>
 
                 <td className="border p-1 w-1/3">
