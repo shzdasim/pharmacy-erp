@@ -9,6 +9,19 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class CategoryController extends Controller
 {
+    public function search(Request $req)
+{
+    $q     = trim($req->input('q', ''));
+    $limit = max(1, min((int)$req->input('limit', 20), 100));
+
+    $query = Category::select('id','name')->orderBy('name');
+
+    if ($q !== '') {
+        $query->where('name','like',"%{$q}%");
+    }
+
+    return $query->limit($limit)->get();
+}
     public function index() {
         return response()->json(
             Category::withCount('products')

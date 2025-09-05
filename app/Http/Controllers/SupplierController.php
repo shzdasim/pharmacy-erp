@@ -9,6 +9,19 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class SupplierController extends Controller
 {
+    public function search(Request $req)
+{
+    $q     = trim($req->input('q', ''));
+    $limit = max(1, min((int)$req->input('limit', 20), 100));
+
+    $query = Supplier::select('id','name')->orderBy('name');
+
+    if ($q !== '') {
+        $query->where('name','like',"%{$q}%");
+    }
+
+    return $query->limit($limit)->get();
+}
     /**
      * Display a listing of the resource.
      */

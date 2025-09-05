@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import axios from "axios";
 import { Link, useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
@@ -12,31 +12,45 @@ import {
   ArrowDownTrayIcon,
 } from "@heroicons/react/24/solid";
 import Select from "react-select";
+import AsyncSelect from "react-select/async";
 import ProductImportModal from "../../components/ProductImportModal.jsx";
 
+/** ---- helpers ---- */
+const normalizeList = (payload) => {
+  if (Array.isArray(payload)) return payload;
+  if (Array.isArray(payload?.data)) return payload.data;
+  if (Array.isArray(payload?.items)) return payload.items;
+  return [];
+};
+
+// small debounce that returns a promise (for AsyncSelect loadOptions)
+const debouncePromise = (fn, wait = 300) => {
+  let timeout;
+  let pendingReject;
+  return (...args) =>
+    new Promise((resolve, reject) => {
+      if (timeout) clearTimeout(timeout);
+      if (pendingReject) pendingReject("debounced");
+      pendingReject = reject;
+      timeout = setTimeout(async () => {
+        try {
+          const res = await fn(...args);
+          resolve(res);
+        } catch (e) {
+          reject(e);
+        } finally {
+          pendingReject = null;
+        }
+      }, wait);
+    });
+};
+
 export default function ProductsIndex() {
-  const [rows, setRows] = useState([]);          // current page rows
+  const [rows, setRows] = useState([]); // current page rows
   const [loading, setLoading] = useState(false);
-  // Import Export
+  // Import / Export
   const [importOpen, setImportOpen] = useState(false);
   const [exporting, setExporting] = useState(false);
-
-const handleExport = async () => {
-  try {
-    setExporting(true);
-    const res = await axios.get("/api/products/export", { responseType: "blob" });
-    const stamp = new Date().toISOString().slice(0,19).replace(/[:T]/g,"-");
-    const filename = `products_${stamp}.csv`;
-    const blob = new Blob([res.data], { type: "text/csv;charset=utf-8" });
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url; a.download = filename; document.body.appendChild(a); a.click(); a.remove();
-    window.URL.revokeObjectURL(url);
-  } catch (e) {
-    console.error(e);
-    toast.error("Export failed");
-  } finally { setExporting(false); }
-};
 
   // search filters
   const [qName, setQName] = useState("");
@@ -53,26 +67,20 @@ const handleExport = async () => {
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [showBulkModal, setShowBulkModal] = useState(false);
 
-  // lookups for modal
-  const [categories, setCategories] = useState([]);
-  const [brands, setBrands] = useState([]);
-  const [suppliers, setSuppliers] = useState([]);
-
   const navigate = useNavigate();
 
   // AbortController + debounce for fetches
   const controllerRef = useRef(null);
   const debounceRef = useRef(null);
 
-  // === Keyboard shortcut: Alt+N => navigate to /products/create ===
+  // === Alt+N => /products/create ===
   useEffect(() => {
     const onKeyDown = (e) => {
       if (!e.altKey) return;
       const key = (e.key || "").toLowerCase();
       if (key !== "n") return;
       const tag = (e.target?.tagName || "").toLowerCase();
-      const isTyping =
-        ["input", "textarea", "select"].includes(tag) || e.target?.isContentEditable;
+      const isTyping = ["input", "textarea", "select"].includes(tag) || e.target?.isContentEditable;
       if (isTyping) return;
       e.preventDefault();
       navigate("/products/create");
@@ -80,6 +88,29 @@ const handleExport = async () => {
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [navigate]);
+
+  const handleExport = async () => {
+    try {
+      setExporting(true);
+      const res = await axios.get("/api/products/export", { responseType: "blob" });
+      const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
+      const filename = `products_${stamp}.csv`;
+      const blob = new Blob([res.data], { type: "text/csv;charset=utf-8" });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (e) {
+      console.error(e);
+      toast.error("Export failed");
+    } finally {
+      setExporting(false);
+    }
+  };
 
   const fetchProducts = async (signal) => {
     try {
@@ -95,14 +126,12 @@ const handleExport = async () => {
         signal,
       });
 
-      // Expecting Laravel paginator shape
-      // { data: [...], total: N, last_page: M, per_page: K, current_page: P }
+      // Normalize Laravel paginator or array
       const items = Array.isArray(data?.data) ? data.data : Array.isArray(data) ? data : [];
       setRows(items);
       setTotal(Number(data?.total ?? items.length ?? 0));
       const lp = Number(data?.last_page ?? 1);
       setLastPage(lp);
-      // if filter change made page overflow, clamp
       if (page > lp) setPage(lp || 1);
     } catch (err) {
       if (axios.isCancel?.(err)) return;
@@ -113,7 +142,7 @@ const handleExport = async () => {
     }
   };
 
-  // Initial + pager change fetch (non-debounced)
+  // Initial + pager change (non-debounced)
   useEffect(() => {
     if (controllerRef.current) controllerRef.current.abort();
     const ctrl = new AbortController();
@@ -126,7 +155,7 @@ const handleExport = async () => {
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => {
-      setPage(1); // reset to first page on filter change
+      setPage(1);
       if (controllerRef.current) controllerRef.current.abort();
       const ctrl = new AbortController();
       controllerRef.current = ctrl;
@@ -164,31 +193,24 @@ const handleExport = async () => {
                 try {
                   await axios.delete(`/api/products/${product.id}`);
                   toast.success("Product deleted");
-                  // also unselect if it was selected
                   setSelectedIds((prev) => {
                     const copy = new Set(prev);
                     copy.delete(product.id);
                     return copy;
                   });
-                  // refresh current page
                   if (controllerRef.current) controllerRef.current.abort();
                   const ctrl = new AbortController();
                   controllerRef.current = ctrl;
                   fetchProducts(ctrl.signal);
                 } catch (err) {
-                  const apiMsg =
-                    err?.response?.data?.message ||
-                    "Delete failed";
+                  const apiMsg = err?.response?.data?.message || "Delete failed";
                   toast.error(apiMsg);
                 }
               }}
             >
               Yes
             </button>
-            <button
-              className="bg-gray-300 px-3 py-1 rounded"
-              onClick={() => toast.dismiss(t.id)}
-            >
+            <button className="bg-gray-300 px-3 py-1 rounded" onClick={() => toast.dismiss(t.id)}>
               No
             </button>
           </div>
@@ -220,22 +242,8 @@ const handleExport = async () => {
     });
   };
 
-  // bulk modal open: fetch lookups on first open
-  const openBulkModal = async () => {
-    try {
-      setShowBulkModal(true);
-      const reqs = [];
-      if (categories.length === 0) reqs.push(axios.get("/api/categories"));
-      if (brands.length === 0) reqs.push(axios.get("/api/brands"));
-      if (suppliers.length === 0) reqs.push(axios.get("/api/suppliers"));
-      const res = await Promise.all(reqs);
-      let ci = 0;
-      if (categories.length === 0) setCategories(res[ci++].data || []);
-      if (brands.length === 0) setBrands(res[ci++].data || []);
-      if (suppliers.length === 0) setSuppliers(res[ci++]?.data || []);
-    } catch (e) {
-      console.warn("Lookup endpoints missing; modal still opens.", e);
-    }
+  const openBulkModal = () => {
+    setShowBulkModal(true); // async selects will fetch as user types
   };
 
   return (
@@ -286,11 +294,8 @@ const handleExport = async () => {
             <span>Loading…</span>
           ) : (
             <span>
-              Showing{" "}
-              <strong>
-                {rows.length === 0 ? 0 : start}-{end}
-              </strong>{" "}
-              of <strong>{total}</strong>
+              Showing <strong>{rows.length === 0 ? 0 : start}-{end}</strong> of{" "}
+              <strong>{total}</strong>
             </span>
           )}
         </div>
@@ -309,35 +314,39 @@ const handleExport = async () => {
         </div>
       </div>
 
-      {/* Table (unchanged columns) */}
+      {/* Table */}
       <div className="w-full overflow-x-auto rounded border">
         <table className="w-full">
           <thead className="bg-gray-50 sticky top-0">
             <tr>
-    <th colSpan={8} className="border p-2">
-      <div className="flex items-center justify-start gap-2">
-        <button
-          onClick={() => setImportOpen(true)}
-          className="inline-flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-3 h-9 rounded text-sm"
-          title="Import Products (CSV)" aria-label="Import products from CSV"
-        >
-          <ArrowUpTrayIcon className="w-5 h-5" />
-          Import CSV
-        </button>
-        <button
-          onClick={handleExport} disabled={exporting}
-          className={`inline-flex items-center gap-2 px-3 h-9 rounded text-sm border ${
-            exporting ? "bg-gray-200 text-gray-600 cursor-not-allowed"
-                      : "bg-white hover:bg-gray-50 text-gray-800 border-gray-300"
-          }`}
-          title="Export all products to CSV" aria-label="Export all products to CSV"
-        >
-          <ArrowDownTrayIcon className="w-5 h-5" />
-          {exporting ? "Exporting…" : "Export CSV"}
-        </button>
-      </div>
-    </th>
-  </tr>
+              <th colSpan={8} className="border p-2">
+                <div className="flex items-center justify-start gap-2">
+                  <button
+                    onClick={() => setImportOpen(true)}
+                    className="inline-flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-3 h-9 rounded text-sm"
+                    title="Import Products (CSV)"
+                    aria-label="Import products from CSV"
+                  >
+                    <ArrowUpTrayIcon className="w-5 h-5" />
+                    Import CSV
+                  </button>
+                  <button
+                    onClick={handleExport}
+                    disabled={exporting}
+                    className={`inline-flex items-center gap-2 px-3 h-9 rounded text-sm border ${
+                      exporting
+                        ? "bg-gray-200 text-gray-600 cursor-not-allowed"
+                        : "bg-white hover:bg-gray-50 text-gray-800 border-gray-300"
+                    }`}
+                    title="Export all products to CSV"
+                    aria-label="Export all products to CSV"
+                  >
+                    <ArrowDownTrayIcon className="w-5 h-5" />
+                    {exporting ? "Exporting…" : "Export CSV"}
+                  </button>
+                </div>
+              </th>
+            </tr>
             <tr>
               <th className="border px-2 py-2 text-left">
                 <input
@@ -440,12 +449,38 @@ const handleExport = async () => {
 
       {/* Pagination (server) */}
       <div className="mt-4 flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between">
-        <div className="text-sm text-gray-600">Page {page} of {lastPage}</div>
+        <div className="text-sm text-gray-600">
+          Page {page} of {lastPage}
+        </div>
         <div className="flex items-center gap-2">
-          <button onClick={() => setPage(1)} disabled={page === 1} className="px-3 py-1 border rounded disabled:opacity-50">⏮ First</button>
-          <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page === 1} className="px-3 py-1 border rounded disabled:opacity-50">◀ Prev</button>
-          <button onClick={() => setPage((p) => Math.min(lastPage, p + 1))} disabled={page === lastPage} className="px-3 py-1 border rounded disabled:opacity-50">Next ▶</button>
-          <button onClick={() => setPage(lastPage)} disabled={page === lastPage} className="px-3 py-1 border rounded disabled:opacity-50">Last ⏭</button>
+          <button
+            onClick={() => setPage(1)}
+            disabled={page === 1}
+            className="px-3 py-1 border rounded disabled:opacity-50"
+          >
+            ⏮ First
+          </button>
+          <button
+            onClick={() => setPage((p) => Math.max(1, p - 1))}
+            disabled={page === 1}
+            className="px-3 py-1 border rounded disabled:opacity-50"
+          >
+            ◀ Prev
+          </button>
+          <button
+            onClick={() => setPage((p) => Math.min(lastPage, p + 1))}
+            disabled={page === lastPage}
+            className="px-3 py-1 border rounded disabled:opacity-50"
+          >
+            Next ▶
+          </button>
+          <button
+            onClick={() => setPage(lastPage)}
+            disabled={page === lastPage}
+            className="px-3 py-1 border rounded disabled:opacity-50"
+          >
+            Last ⏭
+          </button>
         </div>
       </div>
 
@@ -455,11 +490,7 @@ const handleExport = async () => {
           onClose={() => setShowBulkModal(false)}
           selectedCount={selectedIds.size}
           selectedIds={[...selectedIds]}
-          categories={categories}
-          brands={brands}
-          suppliers={suppliers}
           onSaved={async () => {
-            // refetch current page
             if (controllerRef.current) controllerRef.current.abort();
             const ctrl = new AbortController();
             controllerRef.current = ctrl;
@@ -469,12 +500,9 @@ const handleExport = async () => {
           }}
         />
       )}
+
       {/* Import modal */}
-<ProductImportModal
-  open={importOpen}
-  onClose={() => setImportOpen(false)}
-  onImported={fetchProducts}
-/>
+      <ProductImportModal open={importOpen} onClose={() => setImportOpen(false)} onImported={fetchProducts} />
     </div>
   );
 }
@@ -493,22 +521,40 @@ function TextSearch({ value, onChange, placeholder }) {
   );
 }
 
-/** Bulk edit modal with react-select (searchable) */
-function BulkEditModal({ onClose, selectedCount, selectedIds, categories, brands, suppliers, onSaved }) {
+/** Bulk edit modal with react-select/async (remote search) */
+function BulkEditModal({ onClose, selectedCount, selectedIds, onSaved }) {
   const [saving, setSaving] = useState(false);
 
-  // react-select controlled values (single select)
+  // selected values
   const [catOpt, setCatOpt] = useState(null);
   const [brandOpt, setBrandOpt] = useState(null);
   const [suppOpt, setSuppOpt] = useState(null);
 
-  const catOptions = (categories || []).map((c) => ({ value: c.id, label: c.name }));
-  const brandOptions = (brands || []).map((b) => ({ value: b.id, label: b.name }));
-  const suppOptions = (suppliers || []).map((s) => ({ value: s.id, label: s.name }));
-
   const selectStyles = {
     menuPortal: (base) => ({ ...base, zIndex: 9999 }),
   };
+
+  // remote fetchers
+  const fetchOptions = async (endpoint, inputValue) => {
+    const { data } = await axios.get(endpoint, {
+      params: { q: inputValue || "", limit: 20 },
+    });
+    const list = normalizeList(data);
+    return list.map((i) => ({ value: i.id, label: i.name }));
+  };
+
+  const loadCategories = useMemo(
+    () => debouncePromise((input) => fetchOptions("/api/categories/search", input), 300),
+    []
+  );
+  const loadBrands = useMemo(
+    () => debouncePromise((input) => fetchOptions("/api/brands/search", input), 300),
+    []
+  );
+  const loadSuppliers = useMemo(
+    () => debouncePromise((input) => fetchOptions("/api/suppliers/search", input), 300),
+    []
+  );
 
   const submit = async () => {
     if (!catOpt && !brandOpt && !suppOpt) {
@@ -554,11 +600,13 @@ function BulkEditModal({ onClose, selectedCount, selectedIds, categories, brands
             <div className="grid grid-cols-1 gap-4">
               <div>
                 <label className="block text-sm font-medium mb-1">Category</label>
-                <Select
+                <AsyncSelect
                   classNamePrefix="rs"
+                  cacheOptions
+                  defaultOptions // calls loadOptions once on mount with ""
+                  loadOptions={loadCategories}
                   isSearchable
                   isClearable
-                  options={catOptions}
                   value={catOpt}
                   onChange={setCatOpt}
                   menuPortalTarget={typeof document !== "undefined" ? document.body : null}
@@ -569,11 +617,13 @@ function BulkEditModal({ onClose, selectedCount, selectedIds, categories, brands
 
               <div>
                 <label className="block text-sm font-medium mb-1">Brand</label>
-                <Select
+                <AsyncSelect
                   classNamePrefix="rs"
+                  cacheOptions
+                  defaultOptions
+                  loadOptions={loadBrands}
                   isSearchable
                   isClearable
-                  options={brandOptions}
                   value={brandOpt}
                   onChange={setBrandOpt}
                   menuPortalTarget={typeof document !== "undefined" ? document.body : null}
@@ -584,11 +634,13 @@ function BulkEditModal({ onClose, selectedCount, selectedIds, categories, brands
 
               <div>
                 <label className="block text-sm font-medium mb-1">Supplier</label>
-                <Select
+                <AsyncSelect
                   classNamePrefix="rs"
+                  cacheOptions
+                  defaultOptions
+                  loadOptions={loadSuppliers}
                   isSearchable
                   isClearable
-                  options={suppOptions}
                   value={suppOpt}
                   onChange={setSuppOpt}
                   menuPortalTarget={typeof document !== "undefined" ? document.body : null}
@@ -604,7 +656,9 @@ function BulkEditModal({ onClose, selectedCount, selectedIds, categories, brands
               Cancel
             </button>
             <button
-              className={`px-4 py-2 rounded text-white ${saving ? "bg-emerald-400" : "bg-emerald-600 hover:bg-emerald-700"}`}
+              className={`px-4 py-2 rounded text-white ${
+                saving ? "bg-emerald-400" : "bg-emerald-600 hover:bg-emerald-700"
+              }`}
               onClick={submit}
               disabled={saving}
             >

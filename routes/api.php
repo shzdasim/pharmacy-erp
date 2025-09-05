@@ -28,6 +28,10 @@ Route::middleware(['auth:sanctum'])->get('/user', [AuthController::class, 'user'
 Route::middleware('auth:sanctum')->put('/profile', [AuthController::class, 'updateProfile']);
 Route::middleware('auth:sanctum')->post('/logout', [AuthController::class, 'logout']);
 Route::middleware('auth:sanctum')->group(function () {
+
+    Route::get('/brands/search',    [BrandController::class, 'search']);
+    Route::get('/categories/search',[CategoryController::class, 'search']);
+    Route::get('/suppliers/search', [SupplierController::class, 'search']);
     // Master data
     Route::get('/categories/export', [CategoryController::class, 'export'])->name('categories.export');
     Route::apiResource('categories', CategoryController::class);
