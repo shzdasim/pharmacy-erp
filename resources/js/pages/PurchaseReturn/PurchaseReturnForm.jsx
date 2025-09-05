@@ -708,11 +708,11 @@ export default function PurchaseReturnForm({ returnId, initialData, onSuccess })
         clearRowError(index, "product");
       }
 
-      // No batches for this product on invoice → product-level availability
-      const totalAvail = await fetchAvailableUnits(selectedId, null);
+      // No batches for this product on invoice → use units purchased on that invoice
+      const totalUnits = unitsOnInvoiceForProduct(selectedId);
       newItems[index] = recalcItem(
-        { ...newItems[index], available_units: toNum(totalAvail) },
-        "set_available_units_no_batch_invoice"
+        { ...newItems[index], available_units: toNum(totalUnits) },
+        "set_available_units_no_batch_invoice_unitsPurchased"
       );
       setBatchesForRow(index, []);
       setForm((prev) => recalcFooter({ ...prev, items: newItems }, "items"));
@@ -733,7 +733,7 @@ export default function PurchaseReturnForm({ returnId, initialData, onSuccess })
         return;
       }
 
-      const avail = await getBatchAvailability(selectedId, b.batch_number);
+      const avail = unitsOnInvoiceForProductBatch(selectedId, b.batch_number);
       const upd3 = [...form.items];
       upd3[index] = recalcItem(
         {
@@ -743,7 +743,7 @@ export default function PurchaseReturnForm({ returnId, initialData, onSuccess })
           expiry: b.expiry || "",
           pack_size: toNum(firstDefined(b.pack_size, upd3[index].pack_size)),
           pack_purchased_quantity: toNum(b.pack_quantity), // reference only
-          available_units: toNum(avail),                    // used for validation
+          available_units: toNum(avail),                   // used for validation
           pack_purchase_price: toNum(firstDefined(b.pack_purchase_price, upd3[index].pack_purchase_price)),
           unit_purchase_price: toNum(firstDefined(b.unit_purchase_price, upd3[index].unit_purchase_price)),
           item_discount_percentage: toNum(b.item_discount_percentage),
@@ -833,7 +833,7 @@ export default function PurchaseReturnForm({ returnId, initialData, onSuccess })
         toast.error("Selected batch not found on this invoice.");
         return;
       }
-      const avail = await getBatchAvailability(ensurePid, bn);
+      const avail = unitsOnInvoiceForProductBatch(ensurePid, bn);
       clearRowError(index, "batch");
       upd[index] = recalcItem(
         {
@@ -843,7 +843,7 @@ export default function PurchaseReturnForm({ returnId, initialData, onSuccess })
           expiry: matched.expiry || "",
           pack_size: toNum(firstDefined(matched.pack_size, upd[index].pack_size)),
           pack_purchased_quantity: toNum(matched.pack_quantity),
-          available_units: toNum(avail),
+          available_units: toNum(avail), // ✅ units purchased (qty + bonus) for that batch
           pack_purchase_price: toNum(firstDefined(matched.pack_purchase_price, upd[index].pack_purchase_price)),
           unit_purchase_price: toNum(firstDefined(matched.unit_purchase_price, upd[index].unit_purchase_price)),
           item_discount_percentage: toNum(firstDefined(matched.item_discount_percentage, 0)),
@@ -1077,6 +1077,42 @@ export default function PurchaseReturnForm({ returnId, initialData, onSuccess })
     value: inv.id,
     label: inv.posted_number,
   }));
+
+  // ========== Helpers for invoice-based units ==========
+const unitsFromInvoiceItem = (it) => {
+  const uq = toNum(firstDefined(it?.unit_quantity, it?.unit_qty, it?.units, it?.quantity_units, 0));
+  const ub = toNum(firstDefined(it?.unit_bonus, it?.bonus_units, it?.free_units, 0));
+  return uq + ub; // ✅ units purchased on that invoice line (qty + bonus)
+};
+
+const unitsOnInvoiceForProduct = (productId) =>
+  invoiceItemsForProduct(productId).reduce((sum, it) => sum + unitsFromInvoiceItem(it), 0);
+
+const unitsOnInvoiceForProductBatch = (productId, batchNumber) => {
+  const m = invoiceItems.find(
+    (it) => eqPid(it.product_id, productId) && String(it.batch ?? "") === String(batchNumber ?? "")
+  );
+  return m ? unitsFromInvoiceItem(m) : 0;
+};
+useEffect(() => {
+  // Only when editing AND invoice-based
+  if (!returnId || !form.purchase_invoice_id || !invoiceItems?.length) return;
+
+  setForm((prev) => {
+    const items = prev.items.map((row) => {
+      if (!row?.product_id) return row;
+
+      // If a batch is selected, use that batch's units; otherwise sum across the product on invoice
+      const u = row.batch
+        ? unitsOnInvoiceForProductBatch(row.product_id, row.batch)
+        : unitsOnInvoiceForProduct(row.product_id);
+
+      return recalcItem({ ...row, available_units: toNum(u) }, "hydrate_available_units_invoice_edit");
+    });
+    return recalcFooter({ ...prev, items }, "hydrate_available_units_invoice_edit_footer");
+  });
+}, [returnId, form.purchase_invoice_id, invoiceItems]);
+
 
   // ===== render =====
   return (
