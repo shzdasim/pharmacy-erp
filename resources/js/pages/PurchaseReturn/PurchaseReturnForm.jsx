@@ -292,6 +292,44 @@ export default function PurchaseReturnForm({ returnId, initialData, onSuccess })
     }, 0);
   };
 
+  
+  // Helper: hydrate Avail.Q for OPEN-RETURN edit (live product available + original Unit.Q)
+  const hydrateOpenEditAvail = async (items) => {
+    const ids = Array.from(new Set(items.map((it) => it.product_id).filter(Boolean)));
+    const liveMap = new Map();
+
+    // Try batch fetch via /products/search first
+    try {
+      const map = await fetchProductDetailsForIds(ids);
+      ids.forEach((id) => {
+        const d = map.get(String(id));
+        const live = Number(d?.available_units ?? d?.quantity ?? 0);
+        liveMap.set(String(id), isNaN(live) ? 0 : live);
+      });
+    } catch (e) {
+      // ignore, we'll fill below
+    }
+
+    // Fill any missing via /available-quantity
+    await Promise.all(ids.map(async (id) => {
+      if (liveMap.has(String(id))) return;
+      try {
+        const res = await axios.get("/api/products/available-quantity", { params: { product_id: id } });
+        const live = Number(res?.data?.available_units ?? res?.data?.available_quantity ?? res?.data?.quantity ?? 0);
+        liveMap.set(String(id), isNaN(live) ? 0 : live);
+      } catch (e) {
+        liveMap.set(String(id), 0);
+      }
+    }));
+
+    return items.map((row) => {
+      if (!row?.product_id) return row;
+      const live = Number(liveMap.get(String(row.product_id)) ?? 0);
+      const returnedUnitsAtCreation = Number(row.return_unit_quantity ?? 0);
+      return recalcItem({ ...row, available_units: live + returnedUnitsAtCreation }, "open_edit_inline_hydrate");
+    });
+  };
+
   // ===== initial loads =====
   useEffect(() => {
     (async () => {
@@ -309,6 +347,20 @@ export default function PurchaseReturnForm({ returnId, initialData, onSuccess })
       } catch (err) { console.error(err); }
     })();
   }, []);
+
+  const mergeProductsIntoLists = (arr) => {
+    if (!Array.isArray(arr) || !arr.length) return;
+    setProducts((prev) => {
+      const seen = new Set(prev.map((p) => String(p.id)));
+      const extra = arr.filter((p) => !seen.has(String(p.id)));
+      return [...extra, ...prev];
+    });
+    setCatalogProducts((prev) => {
+      const seen = new Set(prev.map((p) => String(p.id)));
+      const extra = arr.filter((p) => !seen.has(String(p.id)));
+      return [...extra, ...prev];
+    });
+  };
 
   useEffect(() => {
     if (!returnId) return;
@@ -333,18 +385,33 @@ export default function PurchaseReturnForm({ returnId, initialData, onSuccess })
         };
         setForm((prev) => recalcFooter({ ...prev, ...normalized }, "init"));
         if (normalized.supplier_id) await fetchPurchaseInvoices(normalized.supplier_id);
-        if (normalized.purchase_invoice_id) await loadInvoice(normalized.purchase_invoice_id);
+        if (normalized.purchase_invoice_id) {
+          await loadInvoice(normalized.purchase_invoice_id);
+        } else {
+          // ===== OPEN-RETURN EDIT MODE =====
+          // 1) Ensure product names exist in lists for ProductSearchInput
+          const ids = Array.from(new Set((normalized.items || []).map((it) => it.product_id).filter((x) => x)));
+          if (ids.length) {
+            const map = await fetchProductDetailsForIds(ids);
+            const arr = Array.from(map.values());
+            mergeProductsIntoLists(arr);
+          }
+          // 2) Hydrate Avail.Q (Units) = live stock + original Unit.Q from this return
+          const hydratedItems = await hydrateOpenEditAvail(normalized.items);
+          setForm((prev) => recalcFooter({ ...prev, ...normalized, items: hydratedItems }, "open_edit_inline_hydrate_footer"));
+          return; // we've already set the form including hydration
+        }
       } catch (err) { console.error(err); }
     })();
   }, [returnId]);
 
   // Focus Supplier first when creating a new return
   useEffect(() => {
-  if (!returnId) {
-    // we also pass autoFocus below, but this guarantees focus even if timing changes
-    supplierSelectRef.current?.focus?.();
-  }
-}, [returnId]);
+    if (!returnId) {
+      // we also pass autoFocus below, but this guarantees focus even if timing changes
+      supplierSelectRef.current?.focus?.();
+    }
+  }, [returnId]);
 
   // Alt+S to save
   useEffect(() => {
@@ -387,9 +454,9 @@ export default function PurchaseReturnForm({ returnId, initialData, onSuccess })
       try {
         const res = await axios.get("/api/products/available-quantity", { params: { product_id: id } });
         const units = Number(res?.data?.available_units ?? 0);
-        map.set(String(id), { id, quantity: units, available_units: units });
+        map.set(String(id), { id, quantity: units, available_units: units, name: `#${id}` });
       } catch (e) {
-        map.set(String(id), { id, quantity: 0, available_units: 0 });
+        map.set(String(id), { id, quantity: 0, available_units: 0, name: `#${id}` });
       }
     }));
     return map;
@@ -1079,39 +1146,39 @@ export default function PurchaseReturnForm({ returnId, initialData, onSuccess })
   }));
 
   // ========== Helpers for invoice-based units ==========
-const unitsFromInvoiceItem = (it) => {
-  const uq = toNum(firstDefined(it?.unit_quantity, it?.unit_qty, it?.units, it?.quantity_units, 0));
-  const ub = toNum(firstDefined(it?.unit_bonus, it?.bonus_units, it?.free_units, 0));
-  return uq + ub; // ✅ units purchased on that invoice line (qty + bonus)
-};
+  const unitsFromInvoiceItem = (it) => {
+    const uq = toNum(firstDefined(it?.unit_quantity, it?.unit_qty, it?.units, it?.quantity_units, 0));
+    const ub = toNum(firstDefined(it?.unit_bonus, it?.bonus_units, it?.free_units, 0));
+    return uq + ub; // ✅ units purchased on that invoice line (qty + bonus)
+  };
 
-const unitsOnInvoiceForProduct = (productId) =>
-  invoiceItemsForProduct(productId).reduce((sum, it) => sum + unitsFromInvoiceItem(it), 0);
+  const unitsOnInvoiceForProduct = (productId) =>
+    invoiceItemsForProduct(productId).reduce((sum, it) => sum + unitsFromInvoiceItem(it), 0);
 
-const unitsOnInvoiceForProductBatch = (productId, batchNumber) => {
-  const m = invoiceItems.find(
-    (it) => eqPid(it.product_id, productId) && String(it.batch ?? "") === String(batchNumber ?? "")
-  );
-  return m ? unitsFromInvoiceItem(m) : 0;
-};
-useEffect(() => {
-  // Only when editing AND invoice-based
-  if (!returnId || !form.purchase_invoice_id || !invoiceItems?.length) return;
+  const unitsOnInvoiceForProductBatch = (productId, batchNumber) => {
+    const m = invoiceItems.find(
+      (it) => eqPid(it.product_id, productId) && String(it.batch ?? "") === String(batchNumber ?? "")
+    );
+    return m ? unitsFromInvoiceItem(m) : 0;
+  };
+  useEffect(() => {
+    // Only when editing AND invoice-based
+    if (!returnId || !form.purchase_invoice_id || !invoiceItems?.length) return;
 
-  setForm((prev) => {
-    const items = prev.items.map((row) => {
-      if (!row?.product_id) return row;
+    setForm((prev) => {
+      const items = prev.items.map((row) => {
+        if (!row?.product_id) return row;
 
-      // If a batch is selected, use that batch's units; otherwise sum across the product on invoice
-      const u = row.batch
-        ? unitsOnInvoiceForProductBatch(row.product_id, row.batch)
-        : unitsOnInvoiceForProduct(row.product_id);
+        // If a batch is selected, use that batch's units; otherwise sum across the product on invoice
+        const u = row.batch
+          ? unitsOnInvoiceForProductBatch(row.product_id, row.batch)
+          : unitsOnInvoiceForProduct(row.product_id);
 
-      return recalcItem({ ...row, available_units: toNum(u) }, "hydrate_available_units_invoice_edit");
+        return recalcItem({ ...row, available_units: toNum(u) }, "hydrate_available_units_invoice_edit");
+      });
+      return recalcFooter({ ...prev, items }, "hydrate_available_units_invoice_edit_footer");
     });
-    return recalcFooter({ ...prev, items }, "hydrate_available_units_invoice_edit_footer");
-  });
-}, [returnId, form.purchase_invoice_id, invoiceItems]);
+  }, [returnId, form.purchase_invoice_id, invoiceItems]);
 
 
   // ===== render =====
@@ -1149,17 +1216,17 @@ useEffect(() => {
                 <td className="border p-1 w-1/3">
                   <label className="block text-[10px]">Supplier *</label>
                   <SupplierSearchInput
-    ref={supplierSelectRef}
-    value={form.supplier_id}
-    suppliers={suppliers}
-    autoFocus={!returnId} // ✅ focus only in create mode
-    onChange={(id) => {
-      // keep your existing behavior
-      handleSelectChange("supplier_id", { value: id });
-      // then move focus to invoice picker
-      setTimeout(() => purchaseInvoiceRef.current?.focus?.(), 50);
-    }}
-  />
+                    ref={supplierSelectRef}
+                    value={form.supplier_id}
+                    suppliers={suppliers}
+                    autoFocus={!returnId} // ✅ focus only in create mode
+                    onChange={(id) => {
+                      // keep your existing behavior
+                      handleSelectChange("supplier_id", { value: id });
+                      // then move focus to invoice picker
+                      setTimeout(() => purchaseInvoiceRef.current?.focus?.(), 50);
+                    }}
+                  />
                 </td>
 
                 <td className="border p-1 w-1/3">
