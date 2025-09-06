@@ -6,6 +6,7 @@ use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Hash;
 
 class AuthController extends Controller
 {
@@ -77,5 +78,22 @@ public function logout(Request $request): \Illuminate\Http\JsonResponse
     $request->user()->currentAccessToken()?->delete();
     return response()->json(['message' => 'Logged out']);
 }
+
+public function confirmPassword(Request $request)
+    {
+        $request->validate([
+            'password' => 'required|string',
+        ]);
+
+        $user = $request->user(); // via sanctum
+
+        if (!$user || !Hash::check($request->password, $user->password)) {
+            return response()->json(['message' => 'Invalid password'], 422);
+        }
+
+        // You might add throttle/rate-limit here if you wish
+
+        return response()->json(['ok' => true], 200);
+    }
 
 }

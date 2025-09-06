@@ -168,7 +168,14 @@ export default function ProductsIndex() {
   const start = rows.length ? (page - 1) * pageSize + 1 : 0;
   const end = rows.length ? start + rows.length - 1 : 0;
 
-  const handleDelete = async (product) => {
+  // ===== NEW: secure delete modal state & handlers =====
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [deleteStep, setDeleteStep] = useState(1); // 1 = confirm, 2 = password
+  const [deletingProduct, setDeletingProduct] = useState(null); // { id, name }
+  const [password, setPassword] = useState("");
+  const [deleting, setDeleting] = useState(false);
+
+  const openDeleteModal = (product) => {
     const qty = Number(product.quantity || 0);
     const hasBatches = Number(product.batches_count || 0) > 0;
 
@@ -181,43 +188,54 @@ export default function ProductsIndex() {
       return;
     }
 
-    toast(
-      (t) => (
-        <span>
-          Are you sure you want to delete this product?
-          <div className="mt-2 flex gap-2">
-            <button
-              className="bg-red-600 text-white px-3 py-1 rounded"
-              onClick={async () => {
-                toast.dismiss(t.id);
-                try {
-                  await axios.delete(`/api/products/${product.id}`);
-                  toast.success("Product deleted");
-                  setSelectedIds((prev) => {
-                    const copy = new Set(prev);
-                    copy.delete(product.id);
-                    return copy;
-                  });
-                  if (controllerRef.current) controllerRef.current.abort();
-                  const ctrl = new AbortController();
-                  controllerRef.current = ctrl;
-                  fetchProducts(ctrl.signal);
-                } catch (err) {
-                  const apiMsg = err?.response?.data?.message || "Delete failed";
-                  toast.error(apiMsg);
-                }
-              }}
-            >
-              Yes
-            </button>
-            <button className="bg-gray-300 px-3 py-1 rounded" onClick={() => toast.dismiss(t.id)}>
-              No
-            </button>
-          </div>
-        </span>
-      ),
-      { duration: 5000 }
-    );
+    setDeletingProduct({ id: product.id, name: product.name });
+    setPassword("");
+    setDeleteStep(1);
+    setDeleteModalOpen(true);
+  };
+
+  const closeDeleteModal = () => {
+    if (deleting) return;
+    setDeleteModalOpen(false);
+    setDeleteStep(1);
+    setDeletingProduct(null);
+    setPassword("");
+  };
+
+  const proceedToPassword = () => setDeleteStep(2);
+
+  const confirmAndDelete = async () => {
+    if (!deletingProduct?.id) return;
+    try {
+      setDeleting(true);
+      // 1) confirm password (Sanctum-protected)
+      await axios.post("/api/auth/confirm-password", { password });
+      // 2) delete product
+      await axios.delete(`/api/products/${deletingProduct.id}`);
+
+      toast.success("Product deleted");
+
+      setSelectedIds((prev) => {
+        const copy = new Set(prev);
+        copy.delete(deletingProduct.id);
+        return copy;
+      });
+
+      closeDeleteModal();
+
+      // refresh current page
+      if (controllerRef.current) controllerRef.current.abort();
+      const ctrl = new AbortController();
+      controllerRef.current = ctrl;
+      fetchProducts(ctrl.signal);
+    } catch (err) {
+      const apiMsg =
+        err?.response?.data?.message ||
+        (err?.response?.status === 422 ? "Incorrect password" : "Delete failed");
+      toast.error(apiMsg);
+    } finally {
+      setDeleting(false);
+    }
   };
 
   // selection helpers (operate on current page rows)
@@ -426,7 +444,7 @@ export default function ProductsIndex() {
                         Edit
                       </Link>
                       <button
-                        onClick={() => handleDelete(p)}
+                        onClick={() => openDeleteModal(p)}
                         disabled={deleteDisabled}
                         title={deleteTitle}
                         className={`px-3 py-1 rounded flex items-center gap-1 ${
@@ -503,6 +521,87 @@ export default function ProductsIndex() {
 
       {/* Import modal */}
       <ProductImportModal open={importOpen} onClose={() => setImportOpen(false)} onImported={fetchProducts} />
+
+      {/* ===== NEW: Delete confirmation modal ===== */}
+      {deleteModalOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) closeDeleteModal();
+          }}
+        >
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-5">
+            {deleteStep === 1 && (
+              <div>
+                <h2 className="text-lg font-semibold mb-2">Delete product?</h2>
+                <p className="text-sm text-gray-600">
+                  {deletingProduct?.name ? (
+                    <>
+                      Are you sure you want to delete <strong>{deletingProduct.name}</strong>?{" "}
+                    </>
+                  ) : (
+                    "Are you sure you want to delete this product? "
+                  )}
+                  This action cannot be undone.
+                </p>
+                <div className="mt-4 flex justify-end gap-2">
+                  <button className="px-3 py-1 rounded border" onClick={closeDeleteModal}>
+                    Cancel
+                  </button>
+                  <button
+                    className="px-3 py-1 rounded bg-red-600 text-white hover:bg-red-700"
+                    onClick={proceedToPassword}
+                  >
+                    Yes, continue
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {deleteStep === 2 && (
+              <div>
+                <h2 className="text-lg font-semibold mb-2">Confirm with password</h2>
+                <p className="text-sm text-gray-600">
+                  For security, please re-enter your password to delete this product.
+                </p>
+                <input
+                  type="password"
+                  autoFocus
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="Your password"
+                  className="mt-3 w-full border rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") confirmAndDelete();
+                    if (e.key === "Escape") closeDeleteModal();
+                  }}
+                />
+                <div className="mt-4 flex justify-between">
+                  <button
+                    className="px-3 py-1 rounded border"
+                    onClick={() => setDeleteStep(1)}
+                    disabled={deleting}
+                  >
+                    ← Back
+                  </button>
+                  <div className="flex gap-2">
+                    <button className="px-3 py-1 rounded border" onClick={closeDeleteModal} disabled={deleting}>
+                      Cancel
+                    </button>
+                    <button
+                      className="px-3 py-1 rounded bg-red-600 text-white hover:bg-red-700 disabled:opacity-60"
+                      onClick={confirmAndDelete}
+                      disabled={deleting || password.trim() === ""}
+                    >
+                      {deleting ? "Deleting…" : "Confirm & Delete"}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -603,7 +702,7 @@ function BulkEditModal({ onClose, selectedCount, selectedIds, onSaved }) {
                 <AsyncSelect
                   classNamePrefix="rs"
                   cacheOptions
-                  defaultOptions // calls loadOptions once on mount with ""
+                  defaultOptions
                   loadOptions={loadCategories}
                   isSearchable
                   isClearable

@@ -55,36 +55,48 @@ export default function PurchaseReturnsIndex() {
     }
   };
 
-  const handleDelete = async (id) => {
-    const confirmed = await new Promise((resolve) => {
-      toast((t) => (
-        <div className="flex flex-col">
-          <p>Are you sure you want to delete this return?</p>
-          <div className="flex justify-end gap-2 mt-2">
-            <button
-              className="bg-gray-300 px-3 py-1 rounded"
-              onClick={() => { toast.dismiss(t.id); resolve(false); }}
-            >
-              Cancel
-            </button>
-            <button
-              className="bg-red-500 text-white px-3 py-1 rounded"
-              onClick={() => { toast.dismiss(t.id); resolve(true); }}
-            >
-              Delete
-            </button>
-          </div>
-        </div>
-      ));
-    });
-    if (!confirmed) return;
+  // ===== NEW: secure delete modal state & handlers =====
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [deleteStep, setDeleteStep] = useState(1); // 1 = confirm, 2 = password
+  const [deletingId, setDeletingId] = useState(null);
+  const [password, setPassword] = useState("");
+  const [deleting, setDeleting] = useState(false);
 
+  const openDeleteModal = (id) => {
+    setDeletingId(id);
+    setPassword("");
+    setDeleteStep(1);
+    setDeleteModalOpen(true);
+  };
+
+  const closeDeleteModal = () => {
+    if (deleting) return;
+    setDeleteModalOpen(false);
+    setDeleteStep(1);
+    setDeletingId(null);
+    setPassword("");
+  };
+
+  const proceedToPassword = () => setDeleteStep(2);
+
+  const confirmAndDelete = async () => {
+    if (!deletingId) return;
     try {
-      await axios.delete(`/api/purchase-returns/${id}`);
+      setDeleting(true);
+      // 1) verify password (Sanctum-protected)
+      await axios.post("/api/auth/confirm-password", { password });
+      // 2) delete return
+      await axios.delete(`/api/purchase-returns/${deletingId}`);
       toast.success("Return deleted successfully");
+      closeDeleteModal();
       fetchReturns();
-    } catch {
-      toast.error("Failed to delete return");
+    } catch (err) {
+      const msg =
+        err?.response?.data?.message ||
+        (err?.response?.status === 422 ? "Incorrect password" : "Failed to delete return");
+      toast.error(msg);
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -221,7 +233,7 @@ export default function PurchaseReturnsIndex() {
                         Edit
                       </Link>
                       <button
-                        onClick={() => handleDelete(ret.id)}
+                        onClick={() => openDeleteModal(ret.id)}
                         className="bg-red-600 text-white px-3 py-1 rounded inline-flex items-center gap-1 hover:bg-red-700"
                         title="Delete"
                       >
@@ -247,6 +259,80 @@ export default function PurchaseReturnsIndex() {
           <button onClick={() => setPage(pageCount)} disabled={page === pageCount} className="px-3 py-1 border rounded disabled:opacity-50">Last ⏭</button>
         </div>
       </div>
+
+      {/* ===== NEW: Delete confirmation modal ===== */}
+      {deleteModalOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) closeDeleteModal();
+          }}
+        >
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-5">
+            {deleteStep === 1 && (
+              <div>
+                <h2 className="text-lg font-semibold mb-2">Delete return?</h2>
+                <p className="text-sm text-gray-600">
+                  Are you sure you want to delete this return? This action cannot be undone.
+                </p>
+                <div className="mt-4 flex justify-end gap-2">
+                  <button className="px-3 py-1 rounded border" onClick={closeDeleteModal}>
+                    Cancel
+                  </button>
+                  <button
+                    className="px-3 py-1 rounded bg-red-600 text-white hover:bg-red-700"
+                    onClick={proceedToPassword}
+                  >
+                    Yes, continue
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {deleteStep === 2 && (
+              <div>
+                <h2 className="text-lg font-semibold mb-2">Confirm with password</h2>
+                <p className="text-sm text-gray-600">
+                  For security, please re-enter your password to delete this return.
+                </p>
+                <input
+                  type="password"
+                  autoFocus
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="Your password"
+                  className="mt-3 w-full border rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") confirmAndDelete();
+                    if (e.key === "Escape") closeDeleteModal();
+                  }}
+                />
+                <div className="mt-4 flex justify-between">
+                  <button
+                    className="px-3 py-1 rounded border"
+                    onClick={() => setDeleteStep(1)}
+                    disabled={deleting}
+                  >
+                    ← Back
+                  </button>
+                  <div className="flex gap-2">
+                    <button className="px-3 py-1 rounded border" onClick={closeDeleteModal} disabled={deleting}>
+                      Cancel
+                    </button>
+                    <button
+                      className="px-3 py-1 rounded bg-red-600 text-white hover:bg-red-700 disabled:opacity-60"
+                      onClick={confirmAndDelete}
+                      disabled={deleting || password.trim() === ""}
+                    >
+                      {deleting ? "Deleting…" : "Confirm & Delete"}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
