@@ -20,6 +20,7 @@ use App\Http\Controllers\ReportsController;
 use App\Http\Controllers\SaleInvoiceController;
 use App\Http\Controllers\SaleReturnController;
 use App\Http\Controllers\SettingController;
+use App\Http\Controllers\StockAdjustmentController;
 use App\Http\Controllers\SupplierController;
 use App\Http\Controllers\SupplierImportController;
 
@@ -113,6 +114,13 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/products/import/validate', [ProductImportController::class, 'validateUpload']);
     Route::post('/products/import/commit',    [ProductImportController::class, 'commit']);
 
+    // Stock Adjustments
+    Route::get('/stock-adjustments', [StockAdjustmentController::class, 'index']);
+    Route::post('/stock-adjustments', [StockAdjustmentController::class, 'store']);
+    Route::get('/stock-adjustments/new-code', [StockAdjustmentController::class, 'newCode']);
+    Route::get('/stock-adjustments/{id}', [StockAdjustmentController::class, 'show']);
+    Route::put('/stock-adjustments/{id}', [StockAdjustmentController::class, 'update']);
+    Route::delete('/stock-adjustments/{id}', [StockAdjustmentController::class, 'destroy']);
 });
 
 

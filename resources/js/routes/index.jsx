@@ -31,6 +31,9 @@ import CostOfSaleReport from "../pages/Reports/CostOfSaleReport.jsx";
 import PurchaseDetailReport from "../pages/Reports/PurchaseDetailReport.jsx";
 import SaleDetailReport from "../pages/Reports/SaleDetailReport.jsx";
 import Setting from "../pages/Setting.jsx";
+import StockAdjustmentsIndex from "../pages/stock-adjustments/index.jsx";
+import CreateStockAdjustment from "../pages/stock-adjustments/Create.jsx";
+import EditStockAdjustment from "../pages/stock-adjustments/Edit.jsx";
 
 export default function AppRoutes() {
   return (
@@ -318,6 +321,37 @@ export default function AppRoutes() {
         <ProtectedRoute>
           <DashboardLayout>
             <Setting />
+          </DashboardLayout>
+        </ProtectedRoute>
+      }
+      />
+      {/* Stock Adjustments */}
+      <Route
+      path="stock-adjustments"
+      element= {
+        <ProtectedRoute>
+          <DashboardLayout>
+            <StockAdjustmentsIndex />
+          </DashboardLayout>
+        </ProtectedRoute>
+      }
+      />
+      <Route
+      path="stock-adjustments/create"
+      element= {
+        <ProtectedRoute>
+          <DashboardLayout>
+            <CreateStockAdjustment />
+          </DashboardLayout>
+        </ProtectedRoute>
+      }
+      />
+      <Route
+      path="stock-adjustments/:id/edit"
+      element= {
+        <ProtectedRoute>
+          <DashboardLayout>
+            <EditStockAdjustment />
           </DashboardLayout>
         </ProtectedRoute>
       }

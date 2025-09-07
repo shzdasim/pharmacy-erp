@@ -1,0 +1,628 @@
+import { useEffect, useRef, useState } from "react";
+import axios from "axios";
+import toast from "react-hot-toast";
+import ProductSearchInput from "../../components/ProductSearchInput.jsx";
+import BatchSearchInput from "../../components/BatchSearchInput.jsx";
+
+export default function StockAdjustmentForm({ adjustmentId, onSuccess }){
+  const [products, setProducts] = useState([]);
+  const [batchesByProduct, setBatchesByProduct] = useState({}); // { [productId]: [{batch_number, expiry, available_units}, ...] }
+
+  const [form, setForm] = useState({
+    posted_number: "",
+    posted_date: new Date().toISOString().slice(0,10),
+    note: "",
+    items: [
+      { product_id: "", batch_number: "", expiry: "", pack_size: "", available_qty: "", actual_qty: "", diff_qty: "", unit_purchase_price: "", worth_adjusted: "" }
+    ],
+    total_worth: 0,
+  });
+
+  // row-level error flags for red highlights
+  const [rowErrors, setRowErrors] = useState({
+    product: [false],
+    batch: [false],
+  });
+
+  // Refs for keyboard nav
+  const noteRef = useRef(null);
+  const productCellRefs = useRef([]); // wrapper cells; used to focus inner input
+  const actualRefs = useRef([]);      // actual qty inputs
+
+  // ---------- Helpers ----------
+  const to2 = (v) => {
+    const n = Number(v);
+    if (!Number.isFinite(n)) return "";
+    return n.toFixed(2);
+  };
+
+  const mergeProducts = (list) => {
+    if (!Array.isArray(list) || list.length === 0) return;
+    setProducts(prev => {
+      const byId = new Map((prev || []).map(p => [String(p.id), p]));
+      for (const p of list) {
+        if (p && p.id != null) byId.set(String(p.id), p);
+      }
+      return Array.from(byId.values());
+    });
+  };
+
+  const batchesFor = (productId) => {
+    const arr = batchesByProduct[String(productId)];
+    return Array.isArray(arr) ? arr : [];
+  };
+
+  const usedBatchesForProduct = (productId, excludeRowIndex) => {
+    return form.items
+      .map((r, idx) => (idx === excludeRowIndex ? "" : r.product_id === productId ? r.batch_number : ""))
+      .filter(Boolean);
+  };
+
+  const isProductDuplicate = (productId, rowIndex) => {
+    if (!productId) return false;
+    return form.items.some((r, idx) => idx !== rowIndex && r.product_id === productId);
+  };
+
+  const isBatchDuplicate = (productId, batchNumber, rowIndex) => {
+    if (!productId || !batchNumber) return false;
+    return form.items.some(
+      (r, idx) =>
+        idx !== rowIndex &&
+        r.product_id === productId &&
+        (r.batch_number || "") === (batchNumber || "")
+    );
+  };
+
+  const setErrorFlag = (rowIndex, type, value) => {
+    setRowErrors(prev => {
+      const next = { product: [...(prev.product||[])], batch: [...(prev.batch||[])] };
+      if (type === "product") next.product[rowIndex] = !!value;
+      if (type === "batch") next.batch[rowIndex] = !!value;
+      return next;
+    });
+  };
+
+  const syncErrorsLength = (len) => {
+    setRowErrors(prev => ({
+      product: Array.from({ length: len }, (_, i) => prev.product?.[i] ?? false),
+      batch: Array.from({ length: len }, (_, i) => prev.batch?.[i] ?? false),
+    }));
+  };
+
+  const focusProduct = (rowIndex) => {
+    const cell = productCellRefs.current[rowIndex];
+    if (!cell) return;
+    const input = cell.querySelector("input");
+    input?.focus();
+    input?.select?.();
+  };
+
+  const focusActual = (rowIndex) => {
+    const el = actualRefs.current[rowIndex];
+    el?.focus();
+    el?.select?.();
+  };
+
+  const recalc = (state)=>{
+    const items = (state.items||[]).map(it=>{
+      const av = Number(it.available_qty||0);
+      const ac = Number(it.actual_qty||0);
+      const diff = ac - av;
+      const unit = Number(it.unit_purchase_price||0);
+      const worth = Math.abs(diff) * unit;
+      return { ...it, diff_qty: Number.isFinite(diff)?diff:"", worth_adjusted: Number.isFinite(worth)?worth:"" };
+    });
+    const total = items.reduce((s,it)=> s + Number(it.worth_adjusted||0), 0);
+    return { ...state, items, total_worth: total };
+  };
+
+  // ---------- Effects ----------
+  useEffect(()=>{ (async()=>{
+    // 1) load a default search list (for new rows / user search)
+    await fetchProducts("");
+
+    // 2) load the record OR code
+    if(adjustmentId){
+      await fetchOne(); // this will hydrate missing pack_size from product master
+    } else {
+      await fetchNewCode();
+    }
+    setTimeout(()=>noteRef.current?.focus(), 80);
+  })(); }, [adjustmentId]);
+
+  // Alt+S save
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.altKey && (e.key === "s" || e.key === "S")) {
+        e.preventDefault();
+        handleSubmit(new Event("submit"));
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [form, adjustmentId]);
+
+  // ---------- Data fetchers ----------
+  const fetchProducts = async(q="")=>{
+    const { data } = await axios.get('/api/products/search', { params: { q, limit: 30 } });
+    const list = Array.isArray(data?.data) ? data.data : Array.isArray(data) ? data : [];
+    setProducts(list);
+  };
+
+  const fetchProductById = async (id) => {
+    try {
+      const { data } = await axios.get(`/api/products/${id}`);
+      const p = data?.data ?? data;
+      return p && p.id != null ? p : null;
+    } catch {
+      return null;
+    }
+  };
+
+  // Return fetched products so caller can hydrate rows immediately
+  const ensureProductsLoaded = async (ids=[]) => {
+    if (!Array.isArray(ids) || ids.length === 0) return [];
+    const existingIds = new Set((products || []).map(p => String(p.id)));
+    const toFetch = ids.filter(id => !existingIds.has(String(id)));
+    if (toFetch.length === 0) return [];
+    const fetched = (await Promise.all(toFetch.map(id => fetchProductById(id)))).filter(Boolean);
+    mergeProducts(fetched);
+    return fetched; // <— allow caller to use them right away
+  };
+
+  const fetchBatches = async(productId)=>{
+    const key = String(productId||"");
+    if(!key) return [];
+    if(Array.isArray(batchesByProduct[key])) return batchesByProduct[key];
+    try {
+      const { data } = await axios.get(`/api/products/${productId}/batches`);
+      const list = Array.isArray(data?.data) ? data.data : Array.isArray(data) ? data : [];
+      setBatchesByProduct(prev => ({ ...prev, [key]: list }));
+      return list;
+    } catch {
+      setBatchesByProduct(prev => ({ ...prev, [key]: [] }));
+      return [];
+    }
+  };
+
+  const fetchOne = async()=>{
+    const { data } = await axios.get(`/api/stock-adjustments/${adjustmentId}`);
+    const record = data?.data ?? data;
+
+    // basic map from API
+    let mapped = {
+      posted_number: record.posted_number,
+      posted_date: record.posted_date,
+      note: record.note,
+      items: (record.items||[]).map(it=>({
+        product_id: it.product_id,
+        batch_number: it.batch_number || "",
+        expiry: it.expiry || "",
+        pack_size: it.pack_size || "",            // might be empty in DB — we’ll hydrate below
+        available_qty: it.previous_qty,
+        actual_qty: it.actual_qty,
+        diff_qty: it.diff_qty,
+        unit_purchase_price: it.unit_purchase_price,
+        worth_adjusted: it.worth_adjusted,
+      })),
+      total_worth: record.total_worth,
+    };
+
+    setForm(mapped);
+    syncErrorsLength((record.items||[]).length || 1);
+
+    // ensure product options exist for each used product so ProductSearchInput can display them
+    const uniquePids = Array.from(new Set((record.items||[]).map(it=>it.product_id))).filter(Boolean);
+
+    // fetch any missing product masters and also build a byId map
+    const fetched = await ensureProductsLoaded(uniquePids);
+    const all = [...products, ...fetched];
+    const byId = new Map(all.map(p => [String(p.id), p]));
+
+    // preload batch options too (optional)
+    await Promise.all(uniquePids.map(pid => fetchBatches(pid)));
+
+    // HYDRATE missing fields (esp. pack_size) from product master
+    mapped = recalc({
+      ...mapped,
+      items: mapped.items.map(row => {
+        const p = byId.get(String(row.product_id)) || {};
+        const packFromProd = p.pack_size ?? p.packSize ?? "";
+        const unitFromProd = p.unit_purchase_price ?? p.unitPurchasePrice ?? "";
+        const availFromProd = p.available_units ?? p.available_quantity ?? p.quantity_on_hand ?? p.quantity ?? "";
+
+        return {
+          ...row,
+          pack_size: row.pack_size || (packFromProd ?? ""),
+          unit_purchase_price: row.unit_purchase_price ?? unitFromProd ?? "",
+          available_qty: row.available_qty ?? availFromProd ?? "",
+        };
+      }),
+    });
+
+    setForm(mapped);
+  };
+
+  const fetchNewCode = async()=>{
+    const { data } = await axios.get('/api/stock-adjustments/new-code');
+    setForm(prev=>({ ...prev, posted_number: (data?.data?.posted_number ?? data.posted_number) }));
+  };
+
+  // ---------- Row actions ----------
+  const onSelectProduct = async (rowIndex, selected)=>{
+    const list = Array.isArray(products) ? products : (Array.isArray(products?.data) ? products.data : []);
+    const p = (selected && typeof selected === 'object') ? selected : list.find(x=>x?.id===selected);
+    if(!p) return;
+
+    // Check uniqueness across rows
+    if (isProductDuplicate(p.id, rowIndex)) {
+      setErrorFlag(rowIndex, "product", true);
+      toast.error(`Row ${rowIndex+1}: product already selected in another row`);
+      setTimeout(()=>focusProduct(rowIndex), 0);
+      return;
+    }
+    setErrorFlag(rowIndex, "product", false);
+    setErrorFlag(rowIndex, "batch", false);
+
+    const get = (obj, keys, d="") => { for(const k of keys){ const v=obj?.[k]; if(v!==undefined && v!==null && v!=="") return v; } return d; };
+    const toNum = (x)=>{ const n=Number(x); return Number.isFinite(n)?n:null; };
+
+    const available = toNum(get(p, ['available_units','available_quantity','quantity_on_hand','quantity'], 0)) ?? 0;
+    const unitCost = toNum(get(p, ['unit_purchase_price','unitPurchasePrice'], 0)) ?? 0;
+    const packSize = toNum(get(p, ['pack_size','packSize'], ""));
+
+    const items=[...form.items];
+    items[rowIndex] = {
+      ...items[rowIndex],
+      product_id: p.id,
+      available_qty: available,
+      unit_purchase_price: unitCost ?? "",
+      pack_size: packSize ?? "",
+      batch_number: "",
+      expiry: "",
+      actual_qty: "",
+      diff_qty: "",
+      worth_adjusted: "",
+    };
+    setForm(prev=> recalc({ ...prev, items }));
+
+    await fetchBatches(p.id);
+    setTimeout(()=>focusActual(rowIndex), 0);
+  };
+
+  const onItemChange = (i, field, raw)=>{
+    let value = raw;
+    if(['actual_qty','unit_purchase_price'].includes(field)){
+      if(!/^\d*\.?\d*$/.test(value)) return; // numeric while typing
+    }
+    const items=[...form.items];
+    items[i] = { ...items[i], [field]: value };
+    setForm(prev=> recalc({ ...prev, items }));
+  };
+
+  const onUnitCostBlur = (i) => {
+    const items=[...form.items];
+    const val = items[i]?.unit_purchase_price;
+    if (val === "" || val === null || val === undefined) return;
+    items[i] = { ...items[i], unit_purchase_price: to2(val) };
+    setForm(prev=> recalc({ ...prev, items }));
+  };
+
+  const onBatchChange = (i, batchNumber)=>{
+    const row = form.items[i];
+    const productId = row.product_id;
+
+    if (isBatchDuplicate(productId, batchNumber, i)) {
+      setErrorFlag(i, "batch", true);
+      toast.error(`Row ${i+1}: this batch is already used for the selected product`);
+      return;
+    }
+    setErrorFlag(i, "batch", false);
+
+    const list = batchesFor(productId);
+    const selected = list.find(b => b.batch_number === batchNumber);
+
+    const items=[...form.items];
+    items[i] = {
+      ...row,
+      batch_number: batchNumber || "",
+      expiry: selected?.expiry || row.expiry || "",
+      available_qty: (selected?.available_units ?? row.available_qty) ?? "",
+    };
+    setForm(prev=> recalc({ ...prev, items }));
+  };
+
+  const addRow = ()=> {
+    setForm(prev=>({
+      ...prev,
+      items: [...prev.items, {
+        product_id:"", batch_number:"", expiry:"", pack_size:"",
+        available_qty:"", actual_qty:"", diff_qty:"",
+        unit_purchase_price:"", worth_adjusted:""
+      }]
+    }));
+    setRowErrors(prev => ({
+      product: [...prev.product, false],
+      batch: [...prev.batch, false],
+    }));
+  };
+
+  const removeRow = (i)=> {
+    setForm(prev=>{
+      if (prev.items.length <= 1) return prev;
+      const nextItems = prev.items.filter((_,idx)=>idx!==i);
+      setRowErrors(curr => ({
+        product: curr.product.filter((_,idx)=>idx!==i),
+        batch: curr.batch.filter((_,idx)=>idx!==i),
+      }));
+      return { ...prev, items: nextItems };
+    });
+  };
+
+  // ---------- Keyboard handlers ----------
+  const onNoteKeyDown = (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      focusProduct(0);
+    }
+  };
+
+  const onActualKeyDown = (rowIndex) => (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      if (rowIndex === form.items.length - 1) {
+        addRow();
+        setTimeout(()=>focusProduct(rowIndex + 1), 0);
+      } else {
+        focusProduct(rowIndex + 1);
+      }
+    }
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      if (rowIndex === form.items.length - 1) {
+        addRow();
+        setTimeout(()=>focusProduct(rowIndex + 1), 0);
+      } else {
+        focusActual(rowIndex + 1);
+      }
+    }
+    if (e.key === "ArrowUp") {
+      e.preventDefault();
+      if (rowIndex > 0) focusActual(rowIndex - 1);
+    }
+  };
+
+  // ---------- Submit ----------
+  const handleSubmit = async(e)=>{
+    if (e && typeof e.preventDefault === "function") e.preventDefault();
+
+    for (const [idx, it] of form.items.entries()) {
+      if (!it.product_id) { toast.error(`Row ${idx+1}: select product`); setErrorFlag(idx,"product",true); return; }
+      if (isProductDuplicate(it.product_id, idx)) { toast.error(`Row ${idx+1}: duplicate product`); setErrorFlag(idx,"product",true); return; }
+      if (it.actual_qty === "" || isNaN(Number(it.actual_qty))) { toast.error(`Row ${idx+1}: enter Actual Qty`); return; }
+
+      const bArr = batchesFor(it.product_id);
+      if (Array.isArray(bArr) && bArr.length > 0 && !it.batch_number) { toast.error(`Row ${idx+1}: select batch`); setErrorFlag(idx,"batch",true); return; }
+
+      if (it.batch_number && isBatchDuplicate(it.product_id, it.batch_number, idx)) {
+        toast.error(`Row ${idx+1}: duplicate batch for this product`);
+        setErrorFlag(idx,"batch",true);
+        return;
+      }
+    }
+
+    const payload = {
+      posted_number: form.posted_number,
+      posted_date: form.posted_date,
+      note: form.note,
+      items: form.items
+        .filter(it=> it.product_id && it.actual_qty !== "")
+        .map(it=>({
+          product_id: it.product_id,
+          actual_qty: Number(it.actual_qty||0),
+          unit_purchase_price: Number(it.unit_purchase_price||0),
+          batch_number: it.batch_number || null,
+          expiry: it.expiry || null,
+          pack_size: it.pack_size || null,
+        })),
+    };
+
+    try{
+      if(adjustmentId){
+        await axios.put(`/api/stock-adjustments/${adjustmentId}`, payload);
+        toast.success('Stock adjustment updated');
+      }else{
+        await axios.post('/api/stock-adjustments', payload);
+        toast.success('Stock adjustment created');
+      }
+      onSuccess?.();
+    }catch(err){
+      toast.error(err?.response?.data?.message || 'Save failed');
+    }
+  };
+
+  // ---------- Render ----------
+  return (
+    <form className="flex flex-col" style={{ minHeight: '74vh', maxHeight: '80vh' }}>
+      {/* Header */}
+      <div className="sticky top-0 bg-white shadow p-2 z-10">
+        <h2 className="text-sm font-bold mb-2">Stock Adjustment (Enter to move, Alt+S to save)</h2>
+        <table className="w-full border-collapse text-xs">
+          <tbody>
+            <tr>
+              <td className="border p-1 w-1/6">
+                <label className="block text-[10px]">Posted Number</label>
+                <input type="text" readOnly value={form.posted_number||""} className="bg-gray-100 border rounded w-full p-1 h-7 text-xs" />
+              </td>
+              <td className="border p-1 w-1/6">
+                <label className="block text-[10px]">Posted Date</label>
+                <input type="date" value={form.posted_date} onChange={e=>setForm(prev=>({ ...prev, posted_date: e.target.value }))} className="border rounded w-full p-1 h-7 text-xs" />
+              </td>
+              <td className="border p-1">
+                <label className="block text-[10px]">Note (Reason) *</label>
+                <input
+                  ref={noteRef}
+                  type="text"
+                  value={form.note}
+                  onChange={e=>setForm(prev=>({ ...prev, note: e.target.value }))}
+                  onKeyDown={onNoteKeyDown}
+                  className="border rounded w-full p-1 h-7 text-xs"
+                />
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      {/* Items */}
+      <div className="flex-1 overflow-auto p-1">
+        <h2 className="text-xs font-bold mb-1">Items</h2>
+        <table className="w-full border-collapse text-[11px]">
+          <thead className="sticky top-0 bg-gray-100 z-5">
+            <tr>
+              <th className="border w-6">#</th>
+              <th className="border w-[220px] text-left">Product</th>
+              <th className="border w-28">Batch</th>
+              <th className="border w-24">Expiry</th>
+              <th className="border w-24">Pack Size</th>
+              <th className="border w-24">Available Qty</th>
+              <th className="border w-24">Actual Qty *</th>
+              <th className="border w-24">Diff</th>
+              <th className="border w-28">Unit Cost</th>
+              <th className="border w-28">Worth Adjusted</th>
+              <th className="border w-6">+</th>
+            </tr>
+          </thead>
+          <tbody>
+            {form.items.map((it,i)=> {
+              const productId = it.product_id;
+              const batchList = batchesFor(productId);
+              const usedForThisProduct = usedBatchesForProduct(productId, i);
+
+              const productCellError = rowErrors.product?.[i];
+              const batchCellError = rowErrors.batch?.[i];
+
+              return (
+              <tr key={i} className="text-center">
+                <td className="border">
+                  <button type="button" onClick={()=>removeRow(i)} className="bg-red-500 text-white px-1 rounded text-[10px]">X</button>
+                </td>
+
+                {/* PRODUCT */}
+                <td
+                  className={`border text-left ${productCellError ? "ring-2 ring-red-500" : ""}`}
+                  ref={el => (productCellRefs.current[i] = el)}
+                  title={productCellError ? "Duplicate product not allowed" : ""}
+                >
+                  <ProductSearchInput
+                    value={products.find(p=>p.id===productId) || productId}
+                    onChange={(val)=> onSelectProduct(i, val)}
+                    products={products}
+                    onRefreshProducts={fetchProducts}
+                  />
+                </td>
+
+                {/* BATCH */}
+                <td
+                  className={`border ${batchCellError ? "ring-2 ring-red-500" : ""}`}
+                  title={batchCellError ? "Duplicate batch for this product not allowed" : ""}
+                >
+                  <BatchSearchInput
+                    value={it.batch_number}
+                    onChange={(bn)=> onBatchChange(i, bn)}
+                    batches={batchList}
+                    usedBatches={usedForThisProduct}
+                  />
+                </td>
+
+                <td className="border">
+                  <input
+                    type="date"
+                    value={it.expiry ?? ''}
+                    onChange={e=>onItemChange(i,'expiry',e.target.value)}
+                    className="border w-full h-6 text-[11px] px-1"
+                  />
+                </td>
+                <td className="border">
+                  <input
+                    value={it.pack_size ?? ''}
+                    readOnly
+                    className="border w-full h-6 text-[11px] px-1 bg-gray-100"
+                  />
+                </td>
+                <td className="border">
+                  <input
+                    readOnly
+                    value={it.available_qty ?? ''}
+                    className="border w-full h-6 text-[11px] px-1 bg-gray-100"
+                  />
+                </td>
+                <td className="border">
+                  <input
+                    id={`actual-${i}`}
+                    ref={el => (actualRefs.current[i] = el)}
+                    value={it.actual_qty ?? ''}
+                    onChange={e=>onItemChange(i,'actual_qty', e.target.value)}
+                    onKeyDown={onActualKeyDown(i)}
+                    className="border w-full h-6 text-[11px] px-1"
+                  />
+                </td>
+                <td className="border">
+                  <input
+                    readOnly
+                    value={it.diff_qty ?? ''}
+                    className="border w-full h-6 text-[11px] px-1 bg-gray-100"
+                  />
+                </td>
+                <td className="border">
+                  <input
+                    value={to2(it.unit_purchase_price ?? '')}
+                    readOnly
+                    onChange={e=>onItemChange(i,'unit_purchase_price', e.target.value)}
+                    onBlur={()=>onUnitCostBlur(i)}
+                    className="border w-full h-6 text-[11px] px-1"
+                  />
+                </td>
+                <td className="border">
+                  <input
+                    readOnly
+                    value={to2(it.worth_adjusted)}
+                    className="border w-full h-6 text-[11px] px-1 bg-gray-100"
+                  />
+                </td>
+                <td className="border">
+                  <button type="button" onClick={()=>{ addRow(); setTimeout(()=>focusProduct(i+1),0); }} className="bg-blue-500 text-white px-1 rounded text-[10px]">+</button>
+                </td>
+              </tr>
+            )})}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Footer */}
+      <div className="sticky bottom-0 bg-white shadow p-2 z-10">
+        <table className="w-full border-collapse text-xs">
+          <tbody>
+            <tr>
+              <td className="border p-1 w-1/6">
+                <label className="block text-[10px]">Total Worth Adjusted</label>
+                <input readOnly value={to2(form.total_worth)} className="border rounded w-full p-1 h-7 text-xs bg-gray-100" />
+              </td>
+              <td className="border p-1 text-right align-middle">
+                <button
+                  type="button"
+                  onClick={handleSubmit}
+                  className="bg-green-600 text-white px-8 py-3 rounded text-sm hover:bg-green-700 transition inline-flex items-center justify-center"
+                  title="Save (Alt+S)"
+                >
+                  {adjustmentId ? 'Update Adjustment' : 'Create Adjustment'}
+                  <span className="ml-2 hidden sm:inline text-[10px] opacity-80 border rounded px-1 py-0.5">Alt+S</span>
+                </button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </form>
+  );
+}
