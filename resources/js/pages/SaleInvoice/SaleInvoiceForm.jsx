@@ -23,6 +23,7 @@ export default function SaleInvoiceForm({ saleId, onSuccess }) {
     item_discount: "",
     gross_amount: "",
     total: "",
+    total_recieve: "", // mirror of purchase total_paid
     items: [
       {
         product_id: "",
@@ -37,11 +38,17 @@ export default function SaleInvoiceForm({ saleId, onSuccess }) {
       },
     ],
   });
-// near other useState hooks
-const [marginPct, setMarginPct] = useState("");
-const navigate = useNavigate();
-// optional: clear when switching create/update
-useEffect(() => { setMarginPct(""); }, [saleId]);
+
+  // Auto-sync total_recieve with total until user edits
+  const [receiveTouched, setReceiveTouched] = useState(false);
+
+  // Misc state
+  const [marginPct, setMarginPct] = useState("");
+  const navigate = useNavigate();
+  useEffect(() => {
+    setMarginPct("");
+    setReceiveTouched(false);
+  }, [saleId]);
 
   const [customers, setCustomers] = useState([]);
   const [products, setProducts] = useState([]);
@@ -65,9 +72,9 @@ useEffect(() => { setMarginPct(""); }, [saleId]);
       }
       setTimeout(() => {
         if (!focusedOnce.current && !saleId) {
-         productRefs.current[0]?.querySelector?.("input")?.focus?.();
-         focusedOnce.current = true;
-       }
+          productRefs.current[0]?.querySelector?.("input")?.focus?.();
+          focusedOnce.current = true;
+        }
       }, 80);
     })();
   }, [saleId]);
@@ -83,6 +90,28 @@ useEffect(() => { setMarginPct(""); }, [saleId]);
     return () => document.removeEventListener("keydown", handle);
   }, [form]);
 
+  // ===== utils/helpers =====
+  const to2 = (n) => Number(parseFloat(n || 0).toFixed(2));
+  const asISODate = (s) => {
+    if (!s) return "";
+    const d = new Date(s);
+    if (!isNaN(d.getTime())) return d.toISOString().slice(0, 10);
+    const m = /^(\d{2})[\/-](\d{2})[\/-](\d{4})$/.exec(String(s));
+    if (m) return `${m[3]}-${m[2]}-${m[1]}`;
+    return String(s);
+  };
+  const sanitizeNumberInput = (value, allowDecimal = false) => {
+    if (value === "") return "";
+    if (allowDecimal) {
+      // allow "12", "12.", ".5", "12.34"
+      if (/^\d*\.?\d*$/.test(value)) return value;
+      return value.slice(0, -1);
+    }
+    return value.replace(/\D/g, "");
+  };
+  const eqId = (a, b) => String(a ?? "") === String(b ?? "");
+  const zeroToEmpty = (v) => (v === 0 || v === "0" ? "" : (v ?? ""));
+
   // ===== data =====
   const fetchCustomers = async () => {
     try {
@@ -96,11 +125,11 @@ useEffect(() => { setMarginPct(""); }, [saleId]);
   };
 
   const fetchProducts = async (q = "") => {
-  try {
-    const { data } = await axios.get("/api/products/search", { params: { q, limit: 30 } });
-    setProducts(Array.isArray(data?.data) ? data.data : Array.isArray(data) ? data : []);
-  } catch {}
-};
+    try {
+      const { data } = await axios.get("/api/products/search", { params: { q, limit: 30 } });
+      setProducts(Array.isArray(data?.data) ? data.data : Array.isArray(data) ? data : []);
+    } catch {}
+  };
 
   const fetchBatches = async (productId) => {
     if (!productId) return [];
@@ -127,33 +156,15 @@ useEffect(() => { setMarginPct(""); }, [saleId]);
   const fetchSale = async () => {
     const res = await axios.get(`/api/sale-invoices/${saleId}`);
     setForm(res.data);
+    setReceiveTouched(true); // prevent auto-sync overwrite on edit
     await ensureProductsForItems(res.data?.items || []);
-    await ensureBatchesForItems(res.data?.items || []); // optional
+    await ensureBatchesForItems(res.data?.items || []);
   };
 
   const fetchNewCode = async () => {
     const res = await axios.get("/api/sale-invoices/new-code");
     setForm((prev) => ({ ...prev, posted_number: res.data.posted_number }));
   };
-
-  // ===== utils =====
-  const asISODate = (s) => {
-    if (!s) return "";
-    const d = new Date(s);
-    if (!isNaN(d.getTime())) return d.toISOString().slice(0, 10);
-    const m = /^(\d{2})[\/-](\d{2})[\/-](\d{4})$/.exec(String(s));
-    if (m) return `${m[3]}-${m[2]}-${m[1]}`;
-    return String(s);
-  };
-  const sanitizeNumberInput = (value, allowDecimal = false) => {
-    if (value === "") return "";
-    if (allowDecimal) {
-      if (/^\d*\.?\d*$/.test(value)) return value;
-      return value.slice(0, -1);
-    }
-    return value.replace(/\D/g, "");
-  };
-  const eqId = (a, b) => String(a ?? "") === String(b ?? "");
 
   // ===== handlers =====
   const handleHeaderChange = (e) => {
@@ -169,6 +180,7 @@ useEffect(() => { setMarginPct(""); }, [saleId]);
     const tmp = { ...form, [name]: v };
     let next = recalcFooter(tmp, name);
     next[name] = v;
+    if (!receiveTouched) next.total_recieve = next.total ?? "";
     setForm(next);
   };
 
@@ -178,6 +190,7 @@ useEffect(() => { setMarginPct(""); }, [saleId]);
     const integerFields = ["quantity", "pack_size"];
 
     if (allowDecimal.includes(field)) {
+      // allow 12, 12., .5, 12.34
       if (!/^\d*\.?\d*$/.test(value)) return;
     } else if (integerFields.includes(field)) {
       value = value.replace(/\D/g, "");
@@ -185,17 +198,30 @@ useEffect(() => { setMarginPct(""); }, [saleId]);
 
     setForm((prev) => {
       const items = [...prev.items];
-      // >>> NEW: toast when quantity exceeds available (without spamming)
-    if (field === "quantity") {
-      const available = Number(items[index].current_quantity || 0);
-      const prevQtyNum = Number(items[index].quantity || 0);
-      const nextQtyNum = Number(value || 0);
-      if (nextQtyNum > available && prevQtyNum <= available) {
-        toast.error(`Row ${index + 1}: quantity exceeds available (${available})`);
+
+      // toast when quantity crosses available
+      if (field === "quantity") {
+        const available = Number(items[index].current_quantity || 0);
+        const prevQtyNum = Number(items[index].quantity || 0);
+        const nextQtyNum = Number(value || 0);
+        if (nextQtyNum > available && prevQtyNum <= available) {
+          toast.error(`Row ${index + 1}: quantity exceeds available (${available})`);
+        }
       }
-    }
-      items[index] = recalcItem({ ...items[index], [field]: value }, field);
-      return recalcFooter({ ...prev, items }, "items");
+
+      // run formula
+      let row = recalcItem({ ...items[index], [field]: value }, field);
+
+      // Force-keep user's decimal text for item_discount_percentage
+      if (field === "item_discount_percentage") {
+        row.item_discount_percentage = value;
+      }
+
+      items[index] = row;
+
+      let updated = recalcFooter({ ...prev, items }, "items");
+      if (!receiveTouched) updated.total_recieve = updated.total ?? "";
+      return updated;
     });
   }
 
@@ -222,7 +248,9 @@ useEffect(() => { setMarginPct(""); }, [saleId]);
   const removeRow = (i) => {
     if (form.items.length <= 1) return;
     const items = form.items.filter((_, idx) => idx !== i);
-    setForm((prev) => recalcFooter({ ...prev, items }, "items"));
+    let next = recalcFooter({ ...form, items }, "items");
+    if (!receiveTouched) next.total_recieve = next.total ?? "";
+    setForm(next);
   };
 
   const resolveId = (val) =>
@@ -245,16 +273,18 @@ useEffect(() => { setMarginPct(""); }, [saleId]);
         },
         "revert_duplicate_product"
       );
-      return recalcFooter({ ...prev, items: items2 }, "items");
+      let next = recalcFooter({ ...prev, items: items2 }, "items");
+      if (!receiveTouched) next.total_recieve = next.total ?? "";
+      return next;
     });
   };
 
-  // === CHANGED: fill Available from product.quantity immediately + strict unique product ===
+  // Product select: set qty & discount empty; unique product constraint; preload batches
   const handleProductSelect = async (rowIndex, productIdOrObj) => {
     const productId = resolveId(productIdOrObj);
     if (!productId && productId !== 0) return;
 
-    // Strict uniqueness: product can appear only once
+    // Strict uniqueness
     const dupIndex = form.items.findIndex(
       (row, idx) => idx !== rowIndex && eqId(row.product_id, productId)
     );
@@ -272,14 +302,13 @@ useEffect(() => { setMarginPct(""); }, [saleId]);
       (typeof productIdOrObj === "object" ? productIdOrObj : {}) ||
       {};
 
-
     const rawMargin = selected?.margin ?? selected?.margin_percentage ?? selected?.default_margin ?? "";
     setMarginPct(sanitizeNumberInput(String(rawMargin), true));
     const packSize = selected?.pack_size ?? "";
-    const available = selected?.quantity ?? selected?.available_units ?? 0; // <-- use product.quantity
+    const available = selected?.quantity ?? selected?.available_units ?? 0;
     const price = selected?.unit_sale_price ?? selected?.unit_purchase_price ?? "";
 
-    // Preload batches (to decide focus next)
+    // Preload batches
     const batchList = await fetchBatches(productId);
     const hasBatches = Array.isArray(batchList) && batchList.length > 0;
 
@@ -293,13 +322,16 @@ useEffect(() => { setMarginPct(""); }, [saleId]);
           price,
           batch_number: "",
           expiry: "",
-          current_quantity: available.toString(), // <-- show immediately
-          quantity: "",
+          current_quantity: available.toString(),
+          quantity: "",                    // empty (not 0)
+          item_discount_percentage: "",    // empty (not 0)
           sub_total: "",
         },
         "product_select"
       );
-      return recalcFooter({ ...prev, items }, "items");
+      let next = recalcFooter({ ...prev, items }, "items");
+      if (!receiveTouched) next.total_recieve = next.total ?? "";
+      return next;
     });
 
     setTimeout(() => {
@@ -311,7 +343,7 @@ useEffect(() => { setMarginPct(""); }, [saleId]);
     }, 60);
   };
 
-  // === CHANGED: keep expiry + overwrite Available with batch specific when batch selected ===
+  // Batch select: update expiry & available
   const handleBatchSelect = async (rowIndex, batchNum) => {
     const row0 = form.items[rowIndex];
 
@@ -319,7 +351,7 @@ useEffect(() => { setMarginPct(""); }, [saleId]);
       const batches = await fetchBatches(row0.product_id);
       const b = (batches || []).find((x) => String(x.batch_number) === String(batchNum));
 
-      // Prefer API; fall back to batch value
+      // Prefer API; fall back to batch
       const params = new URLSearchParams({
         product_id: row0.product_id || "",
         batch: batchNum || "",
@@ -340,11 +372,13 @@ useEffect(() => { setMarginPct(""); }, [saleId]);
         const updated = {
           ...items[rowIndex],
           batch_number: batchNum,
-          current_quantity: String(available), // overwrite with batch available
+          current_quantity: String(available),
         };
         if (exp) updated.expiry = exp;
         items[rowIndex] = recalcItem(updated, "batch_select");
-        return recalcFooter({ ...prev, items }, "items");
+        let next = recalcFooter({ ...prev, items }, "items");
+        if (!receiveTouched) next.total_recieve = next.total ?? "";
+        return next;
       });
 
       setTimeout(() => {
@@ -353,80 +387,77 @@ useEffect(() => { setMarginPct(""); }, [saleId]);
     } catch {}
   };
 
-
   // Merge new products into state (by id, dedup)
-const upsertProducts = (list) => {
-  if (!Array.isArray(list)) return;
-  setProducts((prev) => {
-    const map = new Map((prev || []).map((p) => [String(p.id), p]));
-    list.forEach((p) => p?.id != null && map.set(String(p.id), p));
-    return Array.from(map.values());
-  });
-};
-
-// Ensure all product_ids in form.items exist in products[]
-const ensureProductsForItems = async (items = []) => {
-  const ids = Array.from(new Set(items.map(it => it.product_id).filter(Boolean))).map(String);
-  if (!ids.length) return;
-
-  const have = new Set((products || []).map(p => String(p.id)));
-  const missing = ids.filter(id => !have.has(id));
-  if (!missing.length) return;
-
-  try {
-    // Prefer a batch endpoint if available
-    const { data } = await axios.get("/api/products/by-ids", {
-      params: { ids: missing.join(",") },
+  const upsertProducts = (list) => {
+    if (!Array.isArray(list)) return;
+    setProducts((prev) => {
+      const map = new Map((prev || []).map((p) => [String(p.id), p]));
+      list.forEach((p) => p?.id != null && map.set(String(p.id), p));
+      return Array.from(map.values());
     });
-    const list = Array.isArray(data?.data) ? data.data : Array.isArray(data) ? data : [];
-    upsertProducts(list);
-    return;
-  } catch (_) {
-    // Fallback: fetch one-by-one
-  }
+  };
 
-  const fetched = await Promise.all(
-    missing.map(async (id) => {
-      try {
-        const { data } = await axios.get(`/api/products/${id}`);
-        return data;
-      } catch {
+  // Ensure all product_ids in form.items exist in products[]
+  const ensureProductsForItems = async (items = []) => {
+    const ids = Array.from(new Set(items.map((it) => it.product_id).filter(Boolean))).map(String);
+    if (!ids.length) return;
+
+    const have = new Set((products || []).map((p) => String(p.id)));
+    const missing = ids.filter((id) => !have.has(id));
+    if (!missing.length) return;
+
+    try {
+      const { data } = await axios.get("/api/products/by-ids", {
+        params: { ids: missing.join(",") },
+      });
+      const list = Array.isArray(data?.data) ? data.data : Array.isArray(data) ? data : [];
+      upsertProducts(list);
+      return;
+    } catch (_) {}
+
+    const fetched = await Promise.all(
+      missing.map(async (id) => {
         try {
-          const { data } = await axios.get("/api/products/search", { params: { q: id, limit: 1 } });
-          return Array.isArray(data?.data) ? data.data[0] : (Array.isArray(data) ? data[0] : null);
+          const { data } = await axios.get(`/api/products/${id}`);
+          return data;
         } catch {
-          return null;
+          try {
+            const { data } = await axios.get("/api/products/search", { params: { q: id, limit: 1 } });
+            return Array.isArray(data?.data) ? data.data[0] : Array.isArray(data) ? data[0] : null;
+          } catch {
+            return null;
+          }
         }
-      }
-    })
-  );
-  upsertProducts(fetched.filter(Boolean));
-};
-const ensureBatchesForItems = async (items = []) => {
-  const productIds = Array.from(new Set(items.map(it => it.product_id).filter(Boolean)));
-  for (const pid of productIds) {
-    try { await fetchBatches(pid); } catch {}
-  }
-};
+      })
+    );
+    upsertProducts(fetched.filter(Boolean));
+  };
 
-
+  const ensureBatchesForItems = async (items = []) => {
+    const productIds = Array.from(new Set(items.map((it) => it.product_id).filter(Boolean)));
+    for (const pid of productIds) {
+      try {
+        await fetchBatches(pid);
+      } catch {}
+    }
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
 
-    // Validations
+    // Row validations
     for (let i = 0; i < form.items.length; i++) {
       const it = form.items[i];
       if (!it.product_id) return toast.error(`Row ${i + 1}: select a product`);
 
-      // Only require batch if this product actually has batches
       const list = batchesByProduct[String(it.product_id)];
       const hasBatches = Array.isArray(list) && list.length > 0;
       if (hasBatches && !it.batch_number) return toast.error(`Row ${i + 1}: select a batch`);
 
-      if (!it.quantity) return toast.error(`Row ${i + 1}: enter quantity`);
+      if (it.quantity === "" || it.quantity == null)
+        return toast.error(`Row ${i + 1}: enter quantity`);
       const available = Number(it.current_quantity || 0);
-      if (Number(it.quantity) > available) {
+      if (Number(it.quantity || 0) > available) {
         return toast.error(`Row ${i + 1}: quantity exceeds available (${available})`);
       }
     }
@@ -445,6 +476,20 @@ const ensureBatchesForItems = async (items = []) => {
       }
     }
 
+    // total_recieve validation against total
+    {
+      const totalNum = Number(form.total || 0);
+      const recvNum = Number(form.total_recieve || 0);
+      if (recvNum < 0) {
+        toast.error("Total Receive cannot be negative");
+        return;
+      }
+      if (recvNum > totalNum) {
+        toast.error("Total Receive cannot exceed Total");
+        return;
+      }
+    }
+
     try {
       if (saleId) {
         const res = await axios.put(`/api/sale-invoices/${saleId}`, form);
@@ -452,14 +497,14 @@ const ensureBatchesForItems = async (items = []) => {
         toast.success("Sale invoice updated");
         navigate(`/sale-invoices/${id}`);
       } else {
-        const res = await axios.post("/api/sale-invoices", form);
-        const id = res?.data?.id; // expect backend to return the new ID
+        const res = await axios.post(`/api/sale-invoices`, form);
+        const id = res?.data?.id;
         toast.success("Sale invoice created");
         if (id) {
           navigate(`/sale-invoices/${id}`);
-          } else {
-            toast.error("Missing invoice ID from server response.");
-          }
+        } else {
+          toast.error("Missing invoice ID from server response.");
+        }
       }
     } catch {
       toast.error("Failed to save sale invoice");
@@ -482,7 +527,7 @@ const ensureBatchesForItems = async (items = []) => {
     const input = ref.querySelector?.("input");
     if (input) {
       input.focus();
-      input.select?.();
+      input.select?.(); // select on focus
     } else if (ref.focus) {
       ref.focus();
     }
@@ -523,7 +568,7 @@ const ensureBatchesForItems = async (items = []) => {
 
   const onKeyNav = (e, row, col) => {
     if (col === "batch" && (e.key === "ArrowDown" || e.key === "ArrowUp")) {
-      return;
+      return; // BatchSearchInput likely manages its own list navigation
     }
     switch (e.key) {
       case "ArrowDown":
@@ -551,109 +596,105 @@ const ensureBatchesForItems = async (items = []) => {
   return (
     <form className="flex flex-col" style={{ minHeight: "74vh", maxHeight: "80vh" }}>
       {/* Header */}
-      {/* Header */}
-<div className="sticky top-0 bg-white shadow p-2 z-10">
-  <h2 className="text-sm font-bold mb-2">
-    Sale Invoice (Enter → next field, Arrow ↑/↓ to move rows, Alt+S to save)
-  </h2>
+      <div className="sticky top-0 bg-white shadow p-2 z-10">
+        <h2 className="text-sm font-bold mb-2">
+          Sale Invoice (Enter → next field, Arrow ↑/↓ to move rows, Alt+S to save)
+        </h2>
 
-  <table className="w-full border-collapse text-xs">
-    <tbody>
-      {/* Row 1: Posted #, Date, Customer, Doctor, Patient */}
-      <tr>
-        <td className="border p-1 w-24">
-          <label className="block text-[10px]">Posted Number</label>
-          <input
-            type="text"
-            name="posted_number"
-            readOnly
-            value={form.posted_number || ""}
-            className="bg-gray-100 border rounded w-full p-1 h-7 text-xs"
-          />
-        </td>
+        <table className="w-full border-collapse text-xs">
+          <tbody>
+            <tr>
+              <td className="border p-1 w-24">
+                <label className="block text-[10px]">Posted Number</label>
+                <input
+                  type="text"
+                  name="posted_number"
+                  readOnly
+                  value={form.posted_number || ""}
+                  className="bg-gray-100 border rounded w-full p-1 h-7 text-xs"
+                />
+              </td>
 
-        <td className="border p-1 w-40">
-          <label className="block text-[10px]">Date</label>
-          <input
-            type="date"
-            name="date"
-            value={form.date}
-            onChange={handleHeaderChange}
-            className="border rounded w-full p-1 h-7 text-xs"
-          />
-        </td>
+              <td className="border p-1 w-40">
+                <label className="block text-[10px]">Date</label>
+                <input
+                  type="date"
+                  name="date"
+                  value={form.date}
+                  onChange={handleHeaderChange}
+                  className="border rounded w-full p-1 h-7 text-xs"
+                />
+              </td>
 
-        <td className="border p-1 w-[28%]">
-          <label className="block text-[10px]">Customer *</label>
-          <Select
-            options={customers.map((c) => ({ value: c.id, label: c.name }))}
-            value={
-              customers
-                .map((c) => ({ value: c.id, label: c.name }))
-                .find((s) => s.value === form.customer_id) || null
-            }
-            onChange={(val) =>
-              setForm((prev) => ({ ...prev, customer_id: val?.value || "" }))
-            }
-            isSearchable
-            className="text-xs"
-            styles={{
-              control: (base) => ({
-                ...base,
-                minHeight: "28px",
-                height: "28px",
-                fontSize: "12px",
-              }),
-              valueContainer: (base) => ({
-                ...base,
-                height: "28px",
-                padding: "0 4px",
-              }),
-              input: (base) => ({ ...base, margin: 0, padding: 0 }),
-            }}
-          />
-        </td>
+              <td className="border p-1 w-[28%]">
+                <label className="block text-[10px]">Customer *</label>
+                <Select
+                  options={customers.map((c) => ({ value: c.id, label: c.name }))}
+                  value={
+                    customers
+                      .map((c) => ({ value: c.id, label: c.name }))
+                      .find((s) => s.value === form.customer_id) || null
+                  }
+                  onChange={(val) =>
+                    setForm((prev) => ({ ...prev, customer_id: val?.value || "" }))
+                  }
+                  isSearchable
+                  className="text-xs"
+                  styles={{
+                    control: (base) => ({
+                      ...base,
+                      minHeight: "28px",
+                      height: "28px",
+                      fontSize: "12px",
+                    }),
+                    valueContainer: (base) => ({
+                      ...base,
+                      height: "28px",
+                      padding: "0 4px",
+                    }),
+                    input: (base) => ({ ...base, margin: 0, padding: 0 }),
+                  }}
+                />
+              </td>
 
-        <td className="border p-1 w-[22%]">
-          <label className="block text-[10px]">Doctor Name</label>
-          <input
-            type="text"
-            name="doctor_name"
-            value={form.doctor_name}
-            onChange={handleHeaderChange}
-            className="border rounded w-full p-1 h-7 text-xs"
-          />
-        </td>
+              <td className="border p-1 w-[22%]">
+                <label className="block text-[10px]">Doctor Name</label>
+                <input
+                  type="text"
+                  name="doctor_name"
+                  value={form.doctor_name}
+                  onChange={handleHeaderChange}
+                  className="border rounded w-full p-1 h-7 text-xs"
+                />
+              </td>
 
-        <td className="border p-1 w-[22%]">
-          <label className="block text-[10px]">Patient Name</label>
-          <input
-            type="text"
-            name="patient_name"
-            value={form.patient_name}
-            onChange={handleHeaderChange}
-            className="border rounded w-full p-1 h-7 text-xs"
-          />
-        </td>
-      </tr>
+              <td className="border p-1 w-[22%]">
+                <label className="block text-[10px]">Patient Name</label>
+                <input
+                  type="text"
+                  name="patient_name"
+                  value={form.patient_name}
+                  onChange={handleHeaderChange}
+                  className="border rounded w-full p-1 h-7 text-xs"
+                />
+              </td>
+            </tr>
 
-      {/* Row 2: Remarks only (full width) */}
-      <tr>
-        <td className="border p-1" colSpan={5}>
-          <label className="block text-[10px]">Remarks</label>
-          <input
-            type="text"
-            name="remarks"
-            value={form.remarks}
-            onChange={handleHeaderChange}
-            className="border rounded w-full p-1 h-7 text-xs"
-          />
-        </td>
-      </tr>
-    </tbody>
-  </table>
-</div>
-
+            <tr>
+              <td className="border p-1" colSpan={5}>
+                <label className="block text-[10px]">Remarks</label>
+                <input
+                  type="text"
+                  name="remarks"
+                  value={form.remarks}
+                  onChange={handleHeaderChange}
+                  className="border rounded w-full p-1 h-7 text-xs"
+                />
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
 
       {/* Items */}
       <div className="flex-1 overflow-auto p-1">
@@ -678,12 +719,19 @@ const ensureBatchesForItems = async (items = []) => {
             {form.items.map((it, i) => (
               <tr key={i} className="text-center">
                 <td className="border">
-                  <button type="button" onClick={() => removeRow(i)} className="bg-red-500 text-white px-1 rounded text-[10px]">X</button>
+                  <button
+                    type="button"
+                    onClick={() => removeRow(i)}
+                    className="bg-red-500 text-white px-1 rounded text-[10px]"
+                  >
+                    X
+                  </button>
                 </td>
+
                 <td className="border text-left">
                   <div ref={(el) => (productRefs.current[i] = el)}>
                     <ProductSearchInput
-                      value={products.find(p => eqId(p.id, it.product_id)) || it.product_id}
+                      value={products.find((p) => eqId(p.id, it.product_id)) || it.product_id}
                       onChange={(val) => handleProductSelect(i, val)}
                       onKeyDown={(e) => onKeyNav(e, i, "product")}
                       products={products}
@@ -691,10 +739,16 @@ const ensureBatchesForItems = async (items = []) => {
                     />
                   </div>
                 </td>
+
                 <td className="border">
-                  <input type="text" readOnly value={it.pack_size ?? ""}
-                    className="border bg-gray-100 w-full h-6 text-[11px] px-1" />
+                  <input
+                    type="text"
+                    readOnly
+                    value={it.pack_size ?? ""}
+                    className="border bg-gray-100 w-full h-6 text-[11px] px-1"
+                  />
                 </td>
+
                 <td className="border">
                   <div ref={(el) => (batchRefs.current[i] = el)}>
                     <BatchSearchInput
@@ -712,19 +766,31 @@ const ensureBatchesForItems = async (items = []) => {
                     />
                   </div>
                 </td>
+
                 <td className="border">
-                  <input type="date" value={it.expiry ?? ""} readOnly
-                    className="border bg-gray-100 w-full h-6 text-[11px] px-1" />
+                  <input
+                    type="date"
+                    value={it.expiry ?? ""}
+                    readOnly
+                    className="border bg-gray-100 w-full h-6 text-[11px] px-1"
+                  />
                 </td>
+
                 <td className="border">
-                  <input type="text" readOnly value={it.current_quantity ?? ""}
-                    className="border bg-gray-100 w-full h-6 text-[11px] px-1" />
+                  <input
+                    type="text"
+                    readOnly
+                    value={it.current_quantity ?? ""}
+                    className="border bg-gray-100 w-full h-6 text-[11px] px-1"
+                  />
                 </td>
+
                 <td className="border">
                   <input
                     ref={(el) => (qtyRefs.current[i] = el)}
                     type="text"
-                    value={it.quantity ?? ""}
+                    inputMode="numeric"
+                    value={zeroToEmpty(it.quantity)} // show "" instead of 0
                     onChange={(e) => handleItemChange(i, "quantity", e.target.value)}
                     className={
                       "border w-full h-6 text-[11px] px-1 " +
@@ -733,34 +799,63 @@ const ensureBatchesForItems = async (items = []) => {
                         : "")
                     }
                     onKeyDown={(e) => onKeyNav(e, i, "quantity")}
+                    onFocus={(e) => e.target.select()} // select on focus
                   />
                 </td>
+
                 <td className="border">
                   <input
                     ref={(el) => (priceRefs.current[i] = el)}
                     type="text"
-                    value={it.price ?? ""}
+                    value={to2(it.price ?? "")}
                     readOnly
                     className="border bg-gray-100 w-full h-6 text-[11px] px-1"
                     onKeyDown={(e) => onKeyNav(e, i, "price")}
                   />
                 </td>
+
                 <td className="border">
                   <input
                     ref={(el) => (discRefs.current[i] = el)}
                     type="text"
-                    value={it.item_discount_percentage ?? ""}
-                    onChange={(e) => handleItemChange(i, "item_discount_percentage", e.target.value)}
+                    inputMode="decimal"
+                    value={zeroToEmpty(it.item_discount_percentage)} // show "" instead of 0
+                    onChange={(e) =>
+                      handleItemChange(i, "item_discount_percentage", e.target.value)
+                    }
+                    onBlur={(e) => {
+                      const v = e.target.value;
+                      if (v !== "") {
+                        const num = Number(v);
+                        if (Number.isFinite(num)) {
+                          // normalize to 2dp but keep via handleItemChange which preserves decimals
+                          handleItemChange(i, "item_discount_percentage", num.toFixed(2));
+                        }
+                      }
+                    }}
                     className="border w-full h-6 text-[11px] px-1"
                     onKeyDown={(e) => onKeyNav(e, i, "disc")}
+                    onFocus={(e) => e.target.select()} // select on focus
                   />
                 </td>
+
                 <td className="border">
-                  <input type="text" readOnly value={it.sub_total ?? ""}
-                    className="border bg-gray-100 w-full h-6 text-[11px] px-1" />
+                  <input
+                    type="text"
+                    readOnly
+                    value={it.sub_total ?? ""}
+                    className="border bg-gray-100 w-full h-6 text-[11px] px-1"
+                  />
                 </td>
+
                 <td className="border">
-                  <button type="button" onClick={addRow} className="bg-blue-500 text-white px-1 rounded text-[10px]">+</button>
+                  <button
+                    type="button"
+                    onClick={addRow}
+                    className="bg-blue-500 text-white px-1 rounded text-[10px]"
+                  >
+                    +
+                  </button>
                 </td>
               </tr>
             ))}
@@ -774,49 +869,125 @@ const ensureBatchesForItems = async (items = []) => {
           <tbody>
             <tr>
               <td className="border p-1">
-              <label className="block text-[10px]">Margin %</label>
-              <input
-                type="text"
-                name="margin_percentage"
-                readOnly
-                value={marginPct}
-                onChange={(e) => setMarginPct(sanitizeNumberInput(e.target.value, true))}
-                className="border rounded w-full p-1 h-7 text-xs bg-gray-100"
-              />
-            </td>
+                <label className="block text-[10px]">Margin %</label>
+                <input
+                  type="text"
+                  name="margin_percentage"
+                  readOnly
+                  value={marginPct}
+                  onChange={(e) =>
+                    setMarginPct(sanitizeNumberInput(e.target.value, true))
+                  }
+                  className="border rounded w-full p-1 h-7 text-xs bg-gray-100"
+                />
+              </td>
+
               <td className="border p-1 w-1/8">
                 <label className="block text-[10px]">Tax %</label>
-                <input type="text" name="tax_percentage" value={form.tax_percentage ?? ""}
-                  onChange={handleHeaderChange} className="border rounded w-full p-1 h-7 text-xs" />
+                <input
+                  type="text"
+                  name="tax_percentage"
+                  value={form.tax_percentage ?? ""}
+                  onChange={handleHeaderChange}
+                  className="border rounded w-full p-1 h-7 text-xs"
+                />
               </td>
+
               <td className="border p-1 w-1/8">
                 <label className="block text-[10px]">Tax Amount</label>
-                <input type="text" name="tax_amount" value={form.tax_amount ?? ""}
-                  onChange={handleHeaderChange} className="border rounded w-full p-1 h-7 text-xs" />
+                <input
+                  type="text"
+                  name="tax_amount"
+                  value={form.tax_amount ?? ""}
+                  onChange={handleHeaderChange}
+                  className="border rounded w-full p-1 h-7 text-xs"
+                />
               </td>
+
               <td className="border p-1 w-1/8">
                 <label className="block text-[10px]">Discount %</label>
-                <input type="text" name="discount_percentage" value={form.discount_percentage ?? ""}
-                  onChange={handleHeaderChange} className="border rounded w-full p-1 h-7 text-xs" />
+                <input
+                  type="text"
+                  name="discount_percentage"
+                  value={form.discount_percentage ?? ""}
+                  onChange={handleHeaderChange}
+                  className="border rounded w-full p-1 h-7 text-xs"
+                />
               </td>
+
               <td className="border p-1 w-1/8">
                 <label className="block text-[10px]">Discount Amount</label>
-                <input type="text" name="discount_amount" value={form.discount_amount ?? ""}
-                  onChange={handleHeaderChange} className="border rounded w-full p-1 h-7 text-xs" />
+                <input
+                  type="text"
+                  name="discount_amount"
+                  value={form.discount_amount ?? ""}
+                  onChange={handleHeaderChange}
+                  className="border rounded w-full p-1 h-7 text-xs"
+                />
               </td>
+
               <td className="border p-1 w-1/8">
                 <label className="block text-[10px]">Gross Amount</label>
-                <input type="text" readOnly value={form.gross_amount ?? ""}
-                  className="border rounded w-full p-1 h-7 text-xs bg-gray-100" />
+                <input
+                  type="text"
+                  readOnly
+                  value={form.gross_amount ?? ""}
+                  className="border rounded w-full p-1 h-7 text-xs bg-gray-100"
+                />
               </td>
+
               <td className="border p-1 w-1/8">
                 <label className="block text-[10px]">Total</label>
-                <input type="text" readOnly value={form.total ?? ""}
-                  className="border rounded w-full p-1 h-7 text-xs bg-gray-100" />
+                <input
+                  type="text"
+                  readOnly
+                  value={form.total ?? ""}
+                  className="border rounded w-full p-1 h-7 text-xs bg-gray-100"
+                />
               </td>
+
+              {/* Total Receive */}
+              <td className="border p-1 w-1/8">
+                <label className="block text-[10px]">Total Receive</label>
+                <input
+                  type="text"
+                  name="total_recieve"
+                  inputMode="decimal"
+                  value={form.total_recieve ?? ""}
+                  onChange={(e) => {
+                    const v = sanitizeNumberInput(e.target.value, true);
+                    setReceiveTouched(true);
+                    setForm((prev) => ({ ...prev, total_recieve: v }));
+                  }}
+                  onBlur={() => {
+                    setForm((prev) => ({
+                      ...prev,
+                      total_recieve: to2(prev.total_recieve).toFixed(2),
+                    }));
+                  }}
+                  className="border rounded w-full p-1 h-7 text-xs"
+                />
+              </td>
+
+              {/* Remaining */}
+              <td className="border p-1 w-1/8">
+                <label className="block text-[10px]">Remaining</label>
+                <input
+                  type="text"
+                  readOnly
+                  value={to2(
+                    (Number(form.total) || 0) - (Number(form.total_recieve) || 0)
+                  ).toFixed(2)}
+                  className="border rounded w-full p-1 h-7 text-xs bg-gray-100"
+                />
+              </td>
+
               <td className="border p-1 w-1/6 text-center align-middle">
-                <button type="button" onClick={handleSubmit}
-                  className="bg-green-600 text-white px-8 py-3 rounded text-sm hover:bg-green-700 transition duration-200">
+                <button
+                  type="button"
+                  onClick={handleSubmit}
+                  className="bg-green-600 text-white px-8 py-3 rounded text-sm hover:bg-green-700 transition duration-200"
+                >
                   {saleId ? "Update Sale" : "Create Sale"}
                 </button>
               </td>

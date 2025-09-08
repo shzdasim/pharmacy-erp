@@ -21,6 +21,7 @@ class SaleInvoice extends Model
         'item_discount',
         'gross_amount',
         'total',
+        'total_paid',
     ];
 
     public function customer()
