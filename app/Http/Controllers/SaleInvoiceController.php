@@ -6,6 +6,7 @@ use App\Models\Batch;
 use App\Models\Product;
 use App\Models\SaleInvoice;
 use App\Models\SaleInvoiceItem;
+use App\Models\Setting;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
@@ -290,10 +291,10 @@ public function index(Request $request)
         });
     }
 
-    public function print(Request $request, \App\Models\SaleInvoice $invoice)
+    public function print(Request $request, SaleInvoice $invoice)
 {
     $invoice->load(['items.product', 'customer', 'user']);
-    $setting = \App\Models\Setting::first();
+    $setting = Setting::first();
 
     // Choose printer type: query param overrides Setting
     $type = strtolower($request->query('type', $setting->printer_type ?? 'a4'));
