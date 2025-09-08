@@ -321,6 +321,28 @@ export default function SupplierLedgerPage() {
 
   const newCount = rows.filter(r => !r.id).length;
   const updCount = rows.filter(r => r.id).length;
+// inside component
+const handlePrint = (type /* optional: 'a4'|'thermal' */) => {
+  if (!supplierId) return toast.error("Select a supplier first");
+  const qs = new URLSearchParams();
+  qs.set("supplier_id", supplierId);
+  if (from) qs.set("from", from);
+  if (to) qs.set("to", to);
+  if (type) qs.set("type", type); // if omitted, backend uses Setting->printer_type
+  window.open(`/supplier-ledger/print?${qs.toString()}`, "_blank", "noopener");
+};
+
+// Alt+P hotkey
+useEffect(() => {
+  const onKey = (e) => {
+    if (e.altKey && (e.key || "").toLowerCase() === "p") {
+      e.preventDefault();
+      handlePrint(); // use default from Setting
+    }
+  };
+  window.addEventListener("keydown", onKey);
+  return () => window.removeEventListener("keydown", onKey);
+}, [supplierId, from, to]);
 
   // ---------- UI ----------
   return (
@@ -353,6 +375,11 @@ export default function SupplierLedgerPage() {
         <button className="border rounded px-2 py-1 text-xs" onClick={openAddManual} disabled={!supplierId}>+ Manual</button>
         <button className="border rounded px-2 py-1 text-xs" onClick={rebuild} disabled={!supplierId}>Rebuild</button>
         <button className="bg-green-600 text-white rounded px-3 py-1 text-xs" onClick={openSaveModal} title="Alt+S" disabled={!supplierId}>Save (Alt+S)</button>
+        <button
+    className="border bg-orange-400 text-white rounded px-2 py-1 text-xs" onClick={() => handlePrint()} disabled={!supplierId} title="Print (Alt+P)">
+    Print
+    <span className="ml-1 text-[10px] opacity-70">(Alt+P)</span>
+  </button>
       </div>
 
       {supplierId && (

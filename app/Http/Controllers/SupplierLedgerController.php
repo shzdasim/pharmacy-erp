@@ -4,6 +4,8 @@ namespace App\Http\Controllers;
 
 use App\Models\SupplierLedger;
 use App\Models\PurchaseInvoice;
+use App\Models\Setting;
+use App\Models\Supplier;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
@@ -183,5 +185,73 @@ class SupplierLedgerController extends Controller
         });
 
         return response()->json(['status' => 'ok', 'count' => $invoices->count()]);
+    }
+    public function print(Request $request)
+    {
+        $supplierId = (int) $request->query('supplier_id');
+        abort_if(!$supplierId, 404, 'Supplier is required');
+
+        $supplier = Supplier::findOrFail($supplierId);
+        $setting  = Setting::first();
+
+        $type = strtolower($request->query('type', $setting->printer_type ?? 'a4'));
+        if (!in_array($type, ['a4', 'thermal'])) {
+            $type = 'a4';
+        }
+
+        $from = $request->query('from');
+        $to   = $request->query('to');
+
+        // Fetch ledger rows for this supplier and range
+        $rows = SupplierLedger::query()
+            ->where('supplier_id', $supplier->id)
+            ->when($from, fn($q) => $q->whereDate('entry_date', '>=', $from))
+            ->when($to,   fn($q) => $q->whereDate('entry_date', '<=', $to))
+            ->orderBy('entry_date')
+            ->orderBy('id')
+            ->get();
+
+        // Calculate running balance & per-row credit_remaining
+        $balance = 0;
+        $mapped = $rows->map(function ($r) use (&$balance) {
+            $invoiceTotal = (float) ($r->invoice_total ?? 0);
+            $paidOnInv    = (float) ($r->total_paid ?? 0);
+            $payment      = (float) ($r->debited_amount ?? 0);
+            $type         = $r->entry_type;
+
+            $creditRemaining = 0.0;
+            if (in_array($type, ['invoice', 'manual'])) {
+                $creditRemaining = max(0, round($invoiceTotal - $paidOnInv, 2));
+                $balance += ($invoiceTotal - $paidOnInv);
+            }
+            if ($type === 'payment') {
+                $balance -= $payment;
+            }
+
+            // expose computed fields to blade
+            $r->credit_remaining_calc = $creditRemaining;
+            $r->running_balance = round($balance, 2);
+
+            return $r;
+        });
+
+        $summary = [
+            'total_invoiced'    => (float) $mapped->sum('invoice_total'),
+            'paid_on_invoice'   => (float) $mapped->sum('total_paid'),
+            'payments_debited'  => (float) $mapped->sum('debited_amount'),
+            'net_balance'       => round(
+                ($mapped->sum('invoice_total') - $mapped->sum('total_paid')) - $mapped->sum('debited_amount'),
+                2
+            ),
+        ];
+
+        return view("printer.supplier_ledger_{$type}", [
+            'supplier' => $supplier,
+            'setting'  => $setting,
+            'rows'     => $mapped,
+            'summary'  => $summary,
+            'from'     => $from,
+            'to'       => $to,
+        ]);
     }
 }
