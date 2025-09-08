@@ -34,6 +34,7 @@ import Setting from "../pages/Setting.jsx";
 import StockAdjustmentsIndex from "../pages/stock-adjustments/index.jsx";
 import CreateStockAdjustment from "../pages/stock-adjustments/Create.jsx";
 import EditStockAdjustment from "../pages/stock-adjustments/Edit.jsx";
+import SupplierLedgerPage from "../pages/Ledger/SupplierLedgerPage.jsx";
 
 export default function AppRoutes() {
   return (
@@ -352,6 +353,17 @@ export default function AppRoutes() {
         <ProtectedRoute>
           <DashboardLayout>
             <EditStockAdjustment />
+          </DashboardLayout>
+        </ProtectedRoute>
+      }
+      />
+      {/* Supplier Ledger */}
+      <Route
+      path="/supplier-ledger"
+      element= {
+        <ProtectedRoute>
+          <DashboardLayout>
+            <SupplierLedgerPage />
           </DashboardLayout>
         </ProtectedRoute>
       }

@@ -18,6 +18,7 @@ class PurchaseInvoice extends Model
         'discount_percentage',
         'discount_amount',
         'total_amount',
+        'total_paid',
     ];
     public function supplier()
     {

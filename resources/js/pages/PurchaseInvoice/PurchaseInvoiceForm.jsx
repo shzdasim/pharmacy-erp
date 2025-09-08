@@ -18,6 +18,7 @@ export default function PurchaseInvoiceForm({ invoiceId, onSuccess }) {
     discount_percentage: "",
     discount_amount: "",
     total_amount: "",
+    total_paid: "",
     items: [
       {
         product_id: "",
@@ -57,11 +58,13 @@ export default function PurchaseInvoiceForm({ invoiceId, onSuccess }) {
     // integer-only fields
     return value.replace(/\D/g, "");
   };
+  const to2 = (n) => Number(parseFloat(n || 0).toFixed(2));
 
   const [suppliers, setSuppliers] = useState([]);
   const [products, setProducts] = useState([]);
   const [currentField, setCurrentField] = useState("supplier");
   const [currentRowIndex, setCurrentRowIndex] = useState(0);
+  const [paidTouched, setPaidTouched] = useState(false);
 
   // Refs for navigation
   const supplierRef = useRef(null);
@@ -124,6 +127,7 @@ export default function PurchaseInvoiceForm({ invoiceId, onSuccess }) {
     const res = await axios.get(`/api/purchase-invoices/${invoiceId}`);
     setForm(res.data);
     await ensureProductsForItems(res.data?.items || []);
+    setPaidTouched(true); // prevent auto-syncing to total_amount on edit
   };
 
   const fetchNewCode = async () => {
@@ -157,6 +161,10 @@ export default function PurchaseInvoiceForm({ invoiceId, onSuccess }) {
     // Recalculate totals, but DO NOT overwrite the field the user is typing
     let nextForm = recalcFooter(tempForm, name);
     nextForm[name] = newValue;
+    // If user hasn't touched total_paid, keep it equal to total_amount
+     if (!paidTouched) {
+      nextForm.total_paid = nextForm.total_amount ?? "";
+    }
 
     setForm(nextForm);
   };
@@ -202,6 +210,9 @@ export default function PurchaseInvoiceForm({ invoiceId, onSuccess }) {
     // recalc totals
     let newForm = { ...form, items: newItems };
     newForm = recalcFooter(newForm, "items");
+    if (!paidTouched) {
+      newForm.total_paid = newForm.total_amount ?? "";
+    }
 
     setForm(newForm);
   }
@@ -538,6 +549,15 @@ const focusAndSelect = (el) => {
     // 2) (kept) Validate invoice vs total
     const invoiceAmount = Number(form.invoice_amount || 0);
     const totalAmount = Number(form.total_amount || 0);
+    const totalPaid = Number(form.total_paid || 0);
+    if (totalPaid < 0) {
+      toast.error("Total Paid cannot be negative");
+      return;
+    }
+    if (totalPaid > totalAmount) {
+      toast.error("Total Paid cannot exceed Total Amount");
+      return;
+    }
     if (Math.abs(invoiceAmount - totalAmount) > 5) {
       toast.error(
         `Invoice amount (${invoiceAmount}) must be equal to total amount (${totalAmount}), difference > 5`
@@ -1113,6 +1133,34 @@ const focusAndSelect = (el) => {
                   value={form.total_amount}
                   className="border rounded w-full p-1 h-7 text-xs bg-gray-100"
                 />
+              </td>
+              <td className="border p-1 w-1/6">
+              <label className="block text-[10px]">Total Paid</label>
+              <input
+                type="text"
+                name="total_paid"
+                value={form.total_paid ?? ""}
+                onChange={(e) => {
+                  const v = sanitizeNumberInput(e.target.value, true);
+                  setPaidTouched(true);
+                  setForm((prev) => ({ ...prev, total_paid: v }));
+                  }}
+                  onBlur={() => {
+                    // normalize to 2 decimals on blur
+                    setForm((prev) => ({ ...prev, total_paid: to2(prev.total_paid).toFixed(2) }));
+                  }}
+                  className="border rounded w-full p-1 h-7 text-xs"
+                />
+                <td className="border p-1 w-1/6">
+                <label className="block text-[10px]">Remaining</label>
+                <input
+                  type="number"
+                  name="remaining_amount"
+                  readOnly
+                  value={to2((form.total_amount || 0) - (form.total_paid || 0)).toFixed(2)}
+                  className="border rounded w-full p-1 h-7 text-xs bg-gray-100"
+                />
+                </td>
               </td>
               <td className="border p-1 text-center align-middle">
                 <button

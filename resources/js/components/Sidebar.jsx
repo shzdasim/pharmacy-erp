@@ -43,6 +43,9 @@ export default function Sidebar({ appName = "ERP", logoUrl = null }) {
     { name: "Purchase Orders", path: "/purchase-orders", icon: <TruckIcon className="w-6 h-6" /> },
     { name: "Stock Adjustments", path: "/stock-adjustments", icon: <TagIcon className="w-6 h-6" /> },
 
+    { type: "section", name: "Ledger" },
+    { name: "Supplier Ledger", path: "/supplier-ledger", icon: <DocumentTextIcon className="w-6 h-6" /> },
+
     { type: "section", name: "Reports" },
     { name: "Cost of Sale Report", path: "/reports/cost-of-sale", icon: <ChartBarIcon className="w-6 h-6" /> },
     { name: "Purchase Detail Report", path: "/reports/purchase-detail", icon: <ChartBarIcon className="w-6 h-6" /> },

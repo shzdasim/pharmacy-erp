@@ -23,6 +23,7 @@ use App\Http\Controllers\SettingController;
 use App\Http\Controllers\StockAdjustmentController;
 use App\Http\Controllers\SupplierController;
 use App\Http\Controllers\SupplierImportController;
+use App\Http\Controllers\SupplierLedgerController;
 
 Route::post('/login', [AuthController::class, 'login']);
 Route::middleware(['auth:sanctum'])->get('/user', [AuthController::class, 'user']);
@@ -121,6 +122,13 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/stock-adjustments/{id}', [StockAdjustmentController::class, 'show']);
     Route::put('/stock-adjustments/{id}', [StockAdjustmentController::class, 'update']);
     Route::delete('/stock-adjustments/{id}', [StockAdjustmentController::class, 'destroy']);
+
+    // Supplier Ledger
+    Route::get('/supplier-ledger', [SupplierLedgerController::class, 'index']);
+    Route::post('/supplier-ledger', [SupplierLedgerController::class, 'store']);
+    Route::put('/supplier-ledger/bulk', [SupplierLedgerController::class, 'bulkUpdate']);
+    Route::delete('/supplier-ledger/{id}', [SupplierLedgerController::class, 'destroy']);
+    Route::post('/supplier-ledger/rebuild', [SupplierLedgerController::class, 'rebuild']);
 });
 
 

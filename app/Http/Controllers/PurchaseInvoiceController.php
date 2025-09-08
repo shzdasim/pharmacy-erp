@@ -23,30 +23,29 @@ class PurchaseInvoiceController extends Controller
         }
 
         $formattedCode = 'PRINV-' . str_pad($newCodeNum, 4, '0', STR_PAD_LEFT);
-
         return response()->json(['posted_number' => $formattedCode]);
     }
 
     // List all invoices
     public function index(Request $request)
-{
-    $qPosted   = trim((string) $request->query('posted'));
-    $qSupplier = trim((string) $request->query('supplier'));
+    {
+        $qPosted   = trim((string) $request->query('posted'));
+        $qSupplier = trim((string) $request->query('supplier'));
 
-    $query = PurchaseInvoice::with(['supplier']);
+        $query = PurchaseInvoice::with(['supplier']);
 
-    if ($qPosted !== '') {
-        $query->where('posted_number', 'like', '%' . $qPosted . '%');
+        if ($qPosted !== '') {
+            $query->where('posted_number', 'like', '%' . $qPosted . '%');
+        }
+
+        if ($qSupplier !== '') {
+            $query->whereHas('supplier', function ($q) use ($qSupplier) {
+                $q->where('name', 'like', '%' . $qSupplier . '%');
+            });
+        }
+
+        return $query->orderByDesc('id')->get();
     }
-
-    if ($qSupplier !== '') {
-        $query->whereHas('supplier', function ($q) use ($qSupplier) {
-            $q->where('name', 'like', '%' . $qSupplier . '%');
-        });
-    }
-
-    return $query->orderByDesc('id')->get();
-}
 
     // Show single invoice
     public function show(PurchaseInvoice $purchaseInvoice)
@@ -68,7 +67,8 @@ class PurchaseInvoiceController extends Controller
             'tax_amount'           => 'nullable|numeric',
             'discount_percentage'  => 'nullable|numeric',
             'discount_amount'      => 'nullable|numeric',
-            'total_amount'         => 'required|numeric',
+            'total_amount'         => 'required|numeric|min:0',
+            'total_paid'           => 'nullable|numeric|min:0', // NEW
 
             'items'                                => 'required|array',
             'items.*.product_id'                   => 'required|exists:products,id',
@@ -89,6 +89,11 @@ class PurchaseInvoiceController extends Controller
             'items.*.avg_price'                    => 'required|numeric', // effective cost
             'items.*.quantity'                     => 'required|integer',
         ]);
+
+        // Default "paid equals total" unless user provided a value.
+        if (!array_key_exists('total_paid', $data) || $data['total_paid'] === null || $data['total_paid'] === '') {
+            $data['total_paid'] = $data['total_amount'] ?? 0;
+        }
 
         DB::beginTransaction();
 
@@ -128,7 +133,8 @@ class PurchaseInvoiceController extends Controller
             'tax_amount'           => 'nullable|numeric',
             'discount_percentage'  => 'nullable|numeric',
             'discount_amount'      => 'nullable|numeric',
-            'total_amount'         => 'required|numeric',
+            'total_amount'         => 'required|numeric|min:0',
+            'total_paid'           => 'nullable|numeric|min:0', // NEW (optional on update)
 
             'items'                                => 'required|array',
             'items.*.product_id'                   => 'required|exists:products,id',
@@ -149,6 +155,9 @@ class PurchaseInvoiceController extends Controller
             'items.*.avg_price'                    => 'required|numeric', // effective cost
             'items.*.quantity'                     => 'required|integer',
         ]);
+
+        // On update: DO NOT auto-force total_paid; honor what the user sends.
+        // If 'total_paid' is not present, we simply won't touch it (fill ignores absent keys).
 
         DB::beginTransaction();
 
@@ -261,44 +270,39 @@ class PurchaseInvoiceController extends Controller
     }
 
     /**
-     * Recalculate avg_price & margin from purchase history WITHOUT touching quantity.
-     * Uses line-level avg_price so bonuses/discounts are included.
+     * Recalculate avg_price & margin from purchase history WITHOUT touching quantity
+     * or any sale/purchase price fields. Uses line-level avg_price (effective cost)
+     * so bonuses/discounts are included.
      */
-    /**
- * Recalculate avg_price & margin from purchase history WITHOUT touching quantity
- * or any sale/purchase price fields. Uses line-level avg_price (effective cost)
- * so bonuses/discounts are included.
- */
-private function recalcProductAverages(Product $product): void
-{
-    $items = DB::table('purchase_invoice_items')
-        ->where('product_id', $product->id)
-        ->select('quantity', 'avg_price', 'id')
-        ->orderBy('id')
-        ->get();
+    private function recalcProductAverages(Product $product): void
+    {
+        $items = DB::table('purchase_invoice_items')
+            ->where('product_id', $product->id)
+            ->select('quantity', 'avg_price', 'id')
+            ->orderBy('id')
+            ->get();
 
-    $totalQty  = 0;
-    $totalCost = 0.0;
+        $totalQty  = 0;
+        $totalCost = 0.0;
 
-    foreach ($items as $item) {
-        $q = (int) $item->quantity;
-        $totalQty  += $q;
-        $totalCost += $q * (float) $item->avg_price; // effective cost captured per line
+        foreach ($items as $item) {
+            $q = (int) $item->quantity;
+            $totalQty  += $q;
+            $totalCost += $q * (float) $item->avg_price; // effective cost captured per line
+        }
+
+        $avgPrice = $totalQty > 0 ? ($totalCost / $totalQty) : 0.0;
+
+        // ✅ Only costing fields — DO NOT touch quantity or sale/purchase prices
+        $product->avg_price = round($avgPrice, 2);
+
+        // Recompute margin using whatever unit_sale_price the product already has
+        $product->margin = ($product->unit_sale_price > 0 && $avgPrice > 0)
+            ? round((($product->unit_sale_price - $avgPrice) / $product->unit_sale_price) * 100, 2)
+            : 0.0;
+
+        $product->save();
     }
-
-    $avgPrice = $totalQty > 0 ? ($totalCost / $totalQty) : 0.0;
-
-    // ✅ Only costing fields — DO NOT touch quantity or any sale/purchase price fields
-    $product->avg_price = round($avgPrice, 2);
-
-    // Recompute margin using whatever unit_sale_price the product already has
-    $product->margin = ($product->unit_sale_price > 0 && $avgPrice > 0)
-        ? round((($product->unit_sale_price - $avgPrice) / $product->unit_sale_price) * 100, 2)
-        : 0.0;
-
-    $product->save();
-}
-
 
     private function recalcProductsByIds(array $productIds): void
     {
@@ -310,6 +314,7 @@ private function recalcProductAverages(Product $product): void
         }
     }
 
+    // AJAX: unique check per supplier
     public function checkUnique(Request $request)
     {
         $request->validate([
