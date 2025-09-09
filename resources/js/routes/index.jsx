@@ -35,6 +35,7 @@ import StockAdjustmentsIndex from "../pages/stock-adjustments/index.jsx";
 import CreateStockAdjustment from "../pages/stock-adjustments/Create.jsx";
 import EditStockAdjustment from "../pages/stock-adjustments/Edit.jsx";
 import SupplierLedgerPage from "../pages/Ledger/SupplierLedgerPage.jsx";
+import CustomerLedgerPage from "../pages/Ledger/CustomerLedgerPage.jsx";
 
 export default function AppRoutes() {
   return (
@@ -364,6 +365,17 @@ export default function AppRoutes() {
         <ProtectedRoute>
           <DashboardLayout>
             <SupplierLedgerPage />
+          </DashboardLayout>
+        </ProtectedRoute>
+      }
+      />
+      {/* Customer Ledger */}
+      <Route
+      path="/customer-ledger"
+      element= {
+        <ProtectedRoute>
+          <DashboardLayout>
+            <CustomerLedgerPage />
           </DashboardLayout>
         </ProtectedRoute>
       }

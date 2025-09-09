@@ -9,6 +9,33 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class CustomerController extends Controller
 {
+    public function search(Request $request)
+{
+    $q     = trim((string) $request->query('q', ''));
+    $page  = max(1, (int) $request->query('page', 1));
+    $limit = min(50, max(5, (int) $request->query('limit', 20)));
+
+    $builder = \App\Models\Customer::query();
+
+    if ($q !== '') {
+        $builder->where(function($w) use ($q) {
+            $w->where('name', 'like', "%{$q}%")
+              ->orWhere('phone', 'like', "%{$q}%")
+              ->orWhere('email', 'like', "%{$q}%");
+        });
+    }
+
+    $builder->orderBy('name');
+
+    $paginator = $builder->paginate($limit, ['*'], 'page', $page);
+
+    // Shape: { data: [{id,name,phone,email}], next_page: <int|null> }
+    return response()->json([
+        'data' => $paginator->items(),
+        'next_page' => $paginator->hasMorePages() ? ($paginator->currentPage() + 1) : null,
+    ]);
+}
+
     public function index()
     {
         // Count via subqueries (no dependency on relation names)

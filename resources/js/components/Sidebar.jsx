@@ -45,6 +45,7 @@ export default function Sidebar({ appName = "ERP", logoUrl = null }) {
 
     { type: "section", name: "Ledger" },
     { name: "Supplier Ledger", path: "/supplier-ledger", icon: <DocumentTextIcon className="w-6 h-6" /> },
+    { name: "Customer Ledger", path: "/customer-ledger", icon: <DocumentTextIcon className="w-6 h-6" /> },
 
     { type: "section", name: "Reports" },
     { name: "Cost of Sale Report", path: "/reports/cost-of-sale", icon: <ChartBarIcon className="w-6 h-6" /> },

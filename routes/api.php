@@ -10,6 +10,7 @@ use App\Http\Controllers\CategoryController;
 use App\Http\Controllers\CategoryImportController;
 use App\Http\Controllers\CustomerController;
 use App\Http\Controllers\CustomerImportController;
+use App\Http\Controllers\CustomerLedgerController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\ProductController;
 use App\Http\Controllers\ProductImportController;
@@ -36,6 +37,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/brands/search',    [BrandController::class, 'search']);
     Route::get('/categories/search',[CategoryController::class, 'search']);
     Route::get('/suppliers/search', [SupplierController::class, 'search']);
+    Route::get('/customers/search', [CustomerController::class, 'search']);
     // Master data
     Route::get('/categories/export', [CategoryController::class, 'export'])->name('categories.export');
     Route::apiResource('categories', CategoryController::class);
@@ -129,6 +131,14 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::put('/supplier-ledger/bulk', [SupplierLedgerController::class, 'bulkUpdate']);
     Route::delete('/supplier-ledger/{id}', [SupplierLedgerController::class, 'destroy']);
     Route::post('/supplier-ledger/rebuild', [SupplierLedgerController::class, 'rebuild']);
+
+   // Customer Ledger (mirror of supplier-ledger)
+    Route::get ('/customer-ledger',            [CustomerLedgerController::class, 'index']);
+    Route::post('/customer-ledger',            [CustomerLedgerController::class, 'store']);
+    Route::put ('/customer-ledger/bulk',       [CustomerLedgerController::class, 'bulkUpdate']);
+    Route::delete('/customer-ledger/{customerLedger}', [CustomerLedgerController::class, 'destroy']);
+    Route::post('/customer-ledger/rebuild',    [CustomerLedgerController::class, 'rebuild']);
+
 });
 
 

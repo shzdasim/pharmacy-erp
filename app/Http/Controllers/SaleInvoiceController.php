@@ -172,7 +172,7 @@ public function index(Request $request)
             'item_discount'       => 'nullable|numeric',
             'gross_amount'        => 'required|numeric',
             'total'               => 'required|numeric',
-            'total_recieve'          => 'nullable|numeric',
+            'total_receive'          => 'nullable|numeric',
 
             'items'                            => 'required|array|min:1',
             'items.*.product_id'               => 'required|exists:products,id',
@@ -204,7 +204,7 @@ public function index(Request $request)
                 'item_discount'      => $data['item_discount'] ?? 0,
                 'gross_amount'       => $data['gross_amount'],
                 'total'              => $data['total'],
-                'total_recieve'         => $data['total_recieve'] ?? 0,
+                'total_receive'         => $data['total_receive'] ?? 0,
             ]);
 
             $this->createItemsAndReduce($invoice, $data['items']);
@@ -231,7 +231,7 @@ public function index(Request $request)
             'item_discount'       => 'nullable|numeric',
             'gross_amount'        => 'required|numeric',
             'total'               => 'required|numeric',
-            'total_recieve'          => 'nullable|numeric',
+            'total_receive'          => 'nullable|numeric',
 
             'items'                            => 'required|array|min:1',
             'items.*.id'                       => 'nullable|integer',
@@ -270,7 +270,7 @@ public function index(Request $request)
                 'item_discount'      => $data['item_discount'] ?? 0,
                 'gross_amount'       => $data['gross_amount'],
                 'total'              => $data['total'],
-                'total_recieve'         => $data['total_recieve'] ?? 0,
+                'total_receive'         => $data['total_receive'] ?? 0,
             ]);
 
             // Apply new items and reduce stock

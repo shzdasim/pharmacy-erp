@@ -23,7 +23,7 @@ export default function SaleInvoiceForm({ saleId, onSuccess }) {
     item_discount: "",
     gross_amount: "",
     total: "",
-    total_recieve: "", // mirror of purchase total_paid
+    total_receive: "", // mirror of purchase total_paid
     items: [
       {
         product_id: "",
@@ -39,7 +39,7 @@ export default function SaleInvoiceForm({ saleId, onSuccess }) {
     ],
   });
 
-  // Auto-sync total_recieve with total until user edits
+  // Auto-sync total_receive with total until user edits
   const [receiveTouched, setReceiveTouched] = useState(false);
 
   // Misc state
@@ -180,7 +180,7 @@ export default function SaleInvoiceForm({ saleId, onSuccess }) {
     const tmp = { ...form, [name]: v };
     let next = recalcFooter(tmp, name);
     next[name] = v;
-    if (!receiveTouched) next.total_recieve = next.total ?? "";
+    if (!receiveTouched) next.total_receive = next.total ?? "";
     setForm(next);
   };
 
@@ -220,7 +220,7 @@ export default function SaleInvoiceForm({ saleId, onSuccess }) {
       items[index] = row;
 
       let updated = recalcFooter({ ...prev, items }, "items");
-      if (!receiveTouched) updated.total_recieve = updated.total ?? "";
+      if (!receiveTouched) updated.total_receive = updated.total ?? "";
       return updated;
     });
   }
@@ -249,7 +249,7 @@ export default function SaleInvoiceForm({ saleId, onSuccess }) {
     if (form.items.length <= 1) return;
     const items = form.items.filter((_, idx) => idx !== i);
     let next = recalcFooter({ ...form, items }, "items");
-    if (!receiveTouched) next.total_recieve = next.total ?? "";
+    if (!receiveTouched) next.total_receive = next.total ?? "";
     setForm(next);
   };
 
@@ -274,7 +274,7 @@ export default function SaleInvoiceForm({ saleId, onSuccess }) {
         "revert_duplicate_product"
       );
       let next = recalcFooter({ ...prev, items: items2 }, "items");
-      if (!receiveTouched) next.total_recieve = next.total ?? "";
+      if (!receiveTouched) next.total_receive = next.total ?? "";
       return next;
     });
   };
@@ -330,7 +330,7 @@ export default function SaleInvoiceForm({ saleId, onSuccess }) {
         "product_select"
       );
       let next = recalcFooter({ ...prev, items }, "items");
-      if (!receiveTouched) next.total_recieve = next.total ?? "";
+      if (!receiveTouched) next.total_receive = next.total ?? "";
       return next;
     });
 
@@ -377,7 +377,7 @@ export default function SaleInvoiceForm({ saleId, onSuccess }) {
         if (exp) updated.expiry = exp;
         items[rowIndex] = recalcItem(updated, "batch_select");
         let next = recalcFooter({ ...prev, items }, "items");
-        if (!receiveTouched) next.total_recieve = next.total ?? "";
+        if (!receiveTouched) next.total_receive = next.total ?? "";
         return next;
       });
 
@@ -476,10 +476,10 @@ export default function SaleInvoiceForm({ saleId, onSuccess }) {
       }
     }
 
-    // total_recieve validation against total
+    // total_receive validation against total
     {
       const totalNum = Number(form.total || 0);
-      const recvNum = Number(form.total_recieve || 0);
+      const recvNum = Number(form.total_receive || 0);
       if (recvNum < 0) {
         toast.error("Total Receive cannot be negative");
         return;
@@ -951,18 +951,18 @@ export default function SaleInvoiceForm({ saleId, onSuccess }) {
                 <label className="block text-[10px]">Total Receive</label>
                 <input
                   type="text"
-                  name="total_recieve"
+                  name="total_receive"
                   inputMode="decimal"
-                  value={form.total_recieve ?? ""}
+                  value={form.total_receive ?? ""}
                   onChange={(e) => {
                     const v = sanitizeNumberInput(e.target.value, true);
                     setReceiveTouched(true);
-                    setForm((prev) => ({ ...prev, total_recieve: v }));
+                    setForm((prev) => ({ ...prev, total_receive: v }));
                   }}
                   onBlur={() => {
                     setForm((prev) => ({
                       ...prev,
-                      total_recieve: to2(prev.total_recieve).toFixed(2),
+                      total_receive: to2(prev.total_receive).toFixed(2),
                     }));
                   }}
                   className="border rounded w-full p-1 h-7 text-xs"
@@ -976,7 +976,7 @@ export default function SaleInvoiceForm({ saleId, onSuccess }) {
                   type="text"
                   readOnly
                   value={to2(
-                    (Number(form.total) || 0) - (Number(form.total_recieve) || 0)
+                    (Number(form.total) || 0) - (Number(form.total_receive) || 0)
                   ).toFixed(2)}
                   className="border rounded w-full p-1 h-7 text-xs bg-gray-100"
                 />
