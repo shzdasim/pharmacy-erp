@@ -25,7 +25,7 @@ export default function SaleInvoicesIndex() {
   useEffect(() => {
     (async () => {
       try {
-        const res = await axios.get("/api/sale-invoices"); // returns customer relation
+        const res = await axios.get("/api/sale-invoices"); // returns customer relation + totals
         setInvoices(res.data || []);
       } catch {
         toast.error("Failed to fetch sale invoices");
@@ -50,16 +50,36 @@ export default function SaleInvoicesIndex() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [navigate]);
 
-  // ===== NEW: secure delete modal state & handlers =====
+  // ===== secure delete modal state & handlers =====
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
-  const [deleteStep, setDeleteStep] = useState(1); // 1 = confirm, 2 = password
+  const [deleteStep, setDeleteStep] = useState(1); // 1 confirm -> 2 choose action (if needed) -> 3 password
   const [deletingId, setDeletingId] = useState(null);
   const [password, setPassword] = useState("");
   const [deleting, setDeleting] = useState(false);
 
+  // computed info for the selected invoice
+  const selectedInvoice = useMemo(
+    () => invoices.find((i) => i.id === deletingId) || null,
+    [invoices, deletingId]
+  );
+  const invTotal = Number(selectedInvoice?.total ?? 0);
+  const invReceived = Number(
+    selectedInvoice?.total_receive ??
+      selectedInvoice?.total_recieve ?? // tolerate alternative column if present
+      0
+  );
+  const invRemaining = Math.max(invTotal - invReceived, 0);
+
+  // user decision
+  const [deleteMode, setDeleteMode] = useState("none"); // 'credit' | 'refund' | 'none'
+
+  const needsChoice = !!selectedInvoice && (invReceived > 0 || Math.abs(invRemaining) > 0.0001);
+
   const openDeleteModal = (id) => {
     setDeletingId(id);
     setPassword("");
+    setDeleteMode("none");
+    // if there is financial impact, we’ll show step 2 after confirm
     setDeleteStep(1);
     setDeleteModalOpen(true);
   };
@@ -70,18 +90,31 @@ export default function SaleInvoicesIndex() {
     setDeleteStep(1);
     setDeletingId(null);
     setPassword("");
+    setDeleteMode("none");
   };
 
-  const proceedToPassword = () => setDeleteStep(2);
+  const proceedAfterConfirm = () => {
+    if (needsChoice) {
+      // default to "credit" as the safer option
+      setDeleteMode("credit");
+      setDeleteStep(2);
+    } else {
+      setDeleteStep(3);
+    }
+  };
+
+  const proceedToPassword = () => setDeleteStep(3);
 
   const confirmAndDelete = async () => {
     if (!deletingId) return;
     try {
       setDeleting(true);
-      // 1) confirm password (Sanctum-protected)
+      // 1) confirm password
       await axios.post("/api/auth/confirm-password", { password });
-      // 2) delete invoice
-      await axios.delete(`/api/sale-invoices/${deletingId}`);
+      // 2) delete invoice; pass chosen mode as query param
+      await axios.delete(`/api/sale-invoices/${deletingId}`, {
+        params: { mode: deleteMode }, // 'credit' | 'refund' | 'none'
+      });
       toast.success("Sale invoice deleted");
       setInvoices((prev) => prev.filter((i) => i.id !== deletingId));
       closeDeleteModal();
@@ -206,7 +239,9 @@ export default function SaleInvoicesIndex() {
                   <td className="p-2 border">{invoice.posted_number || "-"}</td>
                   <td className="p-2 border">{invoice.customer?.name ?? "N/A"}</td>
                   <td className="p-2 border">{invoice.date}</td>
-                  <td className="p-2 border text-right">{Number(invoice.total ?? 0).toLocaleString()}</td>
+                  <td className="p-2 border text-right">
+                    {Number(invoice.total ?? 0).toLocaleString()}
+                  </td>
                   <td className="p-2 border">
                     <div className="flex justify-center gap-2">
                       <Link
@@ -253,7 +288,7 @@ export default function SaleInvoicesIndex() {
         </div>
       </div>
 
-      {/* ===== NEW: Delete confirmation modal ===== */}
+      {/* ===== Delete confirmation / choice / password modal ===== */}
       {deleteModalOpen && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
@@ -262,11 +297,20 @@ export default function SaleInvoicesIndex() {
           }}
         >
           <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-5">
+            {/* Step 1: Confirm delete */}
             {deleteStep === 1 && (
               <div>
                 <h2 className="text-lg font-semibold mb-2">Delete sale invoice?</h2>
+                {selectedInvoice && (
+                  <div className="text-xs text-gray-600 mb-2">
+                    <div><b>Posted #:</b> {selectedInvoice.posted_number}</div>
+                    <div><b>Total:</b> {invTotal.toLocaleString()}</div>
+                    <div><b>Received:</b> {invReceived.toLocaleString()}</div>
+                    <div><b>Remaining:</b> {invRemaining.toLocaleString()}</div>
+                  </div>
+                )}
                 <p className="text-sm text-gray-600">
-                  Are you sure you want to delete this sale invoice? This action cannot be undone.
+                  This action cannot be undone.
                 </p>
                 <div className="mt-4 flex justify-end gap-2">
                   <button className="px-3 py-1 rounded border" onClick={closeDeleteModal}>
@@ -274,7 +318,7 @@ export default function SaleInvoicesIndex() {
                   </button>
                   <button
                     className="px-3 py-1 rounded bg-red-600 text-white hover:bg-red-700"
-                    onClick={proceedToPassword}
+                    onClick={proceedAfterConfirm}
                   >
                     Yes, continue
                   </button>
@@ -282,7 +326,58 @@ export default function SaleInvoicesIndex() {
               </div>
             )}
 
+            {/* Step 2: Choose Credit or Refund (only when needed) */}
             {deleteStep === 2 && (
+              <div>
+                <h2 className="text-lg font-semibold mb-2">Credit or Refund?</h2>
+                <p className="text-sm text-gray-600 mb-3">
+                  This invoice has <b>Received {invReceived.toLocaleString()}</b> and
+                  <b> Remaining {invRemaining.toLocaleString()}</b>. Choose how to handle the money:
+                </p>
+
+                <div className="space-y-2 text-sm">
+                  <label className="flex items-start gap-2">
+                    <input
+                      type="radio"
+                      className="mt-1"
+                      checked={deleteMode === "credit"}
+                      onChange={() => setDeleteMode("credit")}
+                    />
+                    <span>
+                      <b>Credit the customer (recommended)</b><br />
+                      Keep the received amount as an unapplied credit in the ledger.
+                    </span>
+                  </label>
+                  <label className="flex items-start gap-2">
+                    <input
+                      type="radio"
+                      className="mt-1"
+                      checked={deleteMode === "refund"}
+                      onChange={() => setDeleteMode("refund")}
+                    />
+                    <span>
+                      <b>Refund the customer</b><br />
+                      Record a refund payment for the received amount.
+                    </span>
+                  </label>
+                </div>
+
+                <div className="mt-4 flex justify-between">
+                  <button className="px-3 py-1 rounded border" onClick={() => setDeleteStep(1)}>
+                    ← Back
+                  </button>
+                  <button
+                    className="px-3 py-1 rounded bg-blue-600 text-white hover:bg-blue-700"
+                    onClick={proceedToPassword}
+                  >
+                    Continue
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Step 3: Password confirm */}
+            {deleteStep === 3 && (
               <div>
                 <h2 className="text-lg font-semibold mb-2">Confirm with password</h2>
                 <p className="text-sm text-gray-600">
@@ -303,7 +398,7 @@ export default function SaleInvoicesIndex() {
                 <div className="mt-4 flex justify-between">
                   <button
                     className="px-3 py-1 rounded border"
-                    onClick={() => setDeleteStep(1)}
+                    onClick={() => setDeleteStep(needsChoice ? 2 : 1)}
                     disabled={deleting}
                   >
                     ← Back

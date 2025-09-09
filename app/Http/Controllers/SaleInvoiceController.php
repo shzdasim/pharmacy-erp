@@ -3,11 +3,13 @@
 namespace App\Http\Controllers;
 
 use App\Models\Batch;
+use App\Models\CustomerLedger;
 use App\Models\Product;
 use App\Models\SaleInvoice;
 use App\Models\SaleInvoiceItem;
 use App\Models\Setting;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 
 class SaleInvoiceController extends Controller
@@ -280,20 +282,102 @@ public function index(Request $request)
         });
     }
 
-    public function destroy($id)
-    {
-        $invoice = SaleInvoice::with('items')->findOrFail($id);
+    public function destroy(Request $request, $id)
+{
+    $invoice = SaleInvoice::with(['items', 'customer'])->findOrFail($id);
 
-        return DB::transaction(function () use ($invoice) {
-            // Revert stock before delete (exactly like PurchaseReturn)
-            $this->revertItems($invoice);
-
-            $invoice->items()->delete();
-            $invoice->delete();
-
-            return response()->json(['message' => 'Sale Invoice deleted']);
-        });
+    // read chosen mode from query/body; default to 'none'
+    $mode = strtolower(trim((string)($request->query('mode', $request->input('mode', 'none')))));
+    if (!in_array($mode, ['none', 'credit', 'refund'], true)) {
+        $mode = 'none';
     }
+
+    // robust numbers (fallback-friendly)
+    $invTotal = (float)($invoice->total ?? $invoice->grand_total ?? $invoice->gross_amount ?? 0);
+    $received = (float)($invoice->total_receive ?? $invoice->total_recieve ?? $invoice->received ?? 0);
+    $remaining = max($invTotal - $received, 0);
+
+    return DB::transaction(function () use ($invoice, $mode, $invTotal, $received, $remaining) {
+        // 1) STOCK: revert stock before delete
+        $this->revertItems($invoice);
+
+        // 2) LEDGER: add rows according to the mode (only if there is financial impact)
+        $hasImpact = ($received > 0) || ($remaining > 0);
+
+        if ($hasImpact) {
+            // Common parts for ledger rows
+            $customerId   = (int)$invoice->customer_id;
+            $postedNumber = $invoice->posted_number;
+            $entryDate    = $invoice->date ?? now()->toDateString();
+            $userId       = optional(Auth::user())->id;
+
+            // (A) Manual reversal row:
+            //     invoice_total = -invTotal, total_received = 0
+            //     This removes the A/R and leaves the received amount as credit (if any).
+            if ($mode === 'credit' || $mode === 'refund') {
+                $rev = new CustomerLedger();
+                $rev->customer_id       = $customerId;
+                $rev->entry_type        = 'manual';
+                $rev->is_manual         = true;
+                $rev->entry_date        = $entryDate;
+                $rev->posted_number     = $postedNumber;
+                $rev->invoice_total     = -$invTotal;
+                $rev->total_received    = 0;
+                $rev->balance_remaining = max($rev->invoice_total - $rev->total_received, 0); // usually 0 since negative
+                $rev->credited_amount   = 0;
+                $rev->payment_ref       = null;
+                $rev->sale_invoice_id   = null; // avoid FK pointing to deleted invoice
+                $rev->description       = 'Reversal of deleted invoice '.$postedNumber;
+                $rev->created_by        = $userId;
+                $rev->save();
+            }
+
+            // (B) Refund row as a NEGATIVE payment (if refund chosen)
+            if ($mode === 'refund' && $received > 0) {
+                $refund = new CustomerLedger();
+                $refund->customer_id       = $customerId;
+                $refund->entry_type        = 'payment';
+                $refund->is_manual         = true;
+                $refund->entry_date        = $entryDate;
+                $refund->posted_number     = $postedNumber;
+                $refund->invoice_total     = 0;
+                $refund->total_received    = 0;
+                $refund->balance_remaining = 0;
+                $refund->credited_amount   = -$received; // negative = refund out
+                $refund->payment_ref       = 'Refund for '.$postedNumber;
+                $refund->sale_invoice_id   = null;
+                $refund->description       = 'Refund for deleted invoice '.$postedNumber;
+                $refund->created_by        = $userId;
+                $refund->save();
+            }
+
+            // (C) If mode was 'none' but there is impact, for safety default to CREDIT
+            if ($mode === 'none') {
+                $rev = new CustomerLedger();
+                $rev->customer_id       = $customerId;
+                $rev->entry_type        = 'manual';
+                $rev->is_manual         = true;
+                $rev->entry_date        = $entryDate;
+                $rev->posted_number     = $postedNumber;
+                $rev->invoice_total     = -$invTotal;
+                $rev->total_received    = 0;
+                $rev->balance_remaining = 0;
+                $rev->credited_amount   = 0;
+                $rev->payment_ref       = null;
+                $rev->sale_invoice_id   = null;
+                $rev->description       = 'Reversal (default credit) of deleted invoice '.$postedNumber;
+                $rev->created_by        = optional(Auth::user())->id;
+                $rev->save();
+            }
+        }
+
+        // 3) DELETE: items then invoice
+        $invoice->items()->delete();
+        $invoice->delete();
+
+        return response()->json(['message' => 'Sale Invoice deleted']);
+    });
+}
 
     public function print(Request $request, SaleInvoice $invoice)
 {
