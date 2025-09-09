@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useMemo } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import axios from "axios";
 import toast from "react-hot-toast";
@@ -12,7 +12,13 @@ export default function SaleInvoiceShow() {
   const [printerType, setPrinterType] = useState("a4"); // from Settings
   const popupRef = useRef(null);
 
-  // Fetch invoice
+  // ===== Delete modal state (same flow as index) =====
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [deleteStep, setDeleteStep] = useState(1); // 1 confirm -> 2 choose -> 3 password
+  const [deleteMode, setDeleteMode] = useState("none"); // 'credit' | 'refund' | 'none'
+  const [password, setPassword] = useState("");
+
+  // Fetch invoice + settings
   useEffect(() => {
     (async () => {
       try {
@@ -24,13 +30,22 @@ export default function SaleInvoiceShow() {
         if (setRes?.data?.printer_type) {
           setPrinterType(String(setRes.data.printer_type).toLowerCase());
         }
-      } catch (e) {
+      } catch {
         toast.error("Failed to load invoice");
       } finally {
         setLoading(false);
       }
     })();
   }, [id]);
+
+  // Derived numbers for display + delete decision
+  const invTotal = useMemo(() => Number(inv?.total ?? inv?.grand_total ?? inv?.gross_amount ?? 0), [inv]);
+  const invReceived = useMemo(
+    () => Number(inv?.total_receive ?? inv?.total_recieve ?? inv?.received ?? 0),
+    [inv]
+  );
+  const invRemaining = useMemo(() => Math.max(invTotal - invReceived, 0), [invTotal, invReceived]);
+  const needsChoice = (invReceived > 0) || (Math.abs(invRemaining) > 0.0001);
 
   // After delete: go to previous invoice (by id), else index
   const goToPrevOrIndex = async (deletedId) => {
@@ -51,165 +66,142 @@ export default function SaleInvoiceShow() {
     }
   };
 
-  const handleDelete = async () => {
-    if (!inv) return;
+  // ===== Delete flow =====
+  const openDeleteModal = () => {
+    setDeleteMode("none");
+    setPassword("");
+    setDeleteStep(1);
+    setDeleteModalOpen(true);
+  };
+  const closeDeleteModal = () => {
+    if (deleting) return;
+    setDeleteModalOpen(false);
+    setDeleteStep(1);
+    setDeleteMode("none");
+    setPassword("");
+  };
+  const proceedAfterConfirm = () => {
+    if (needsChoice) {
+      setDeleteMode("credit"); // default
+      setDeleteStep(2);
+    } else {
+      setDeleteStep(3);
+    }
+  };
+  const proceedToPassword = () => setDeleteStep(3);
+
+  const confirmAndDelete = async () => {
+    if (!id) return;
     try {
       setDeleting(true);
-      await axios.delete(`/api/sale-invoices/${id}`);
+      // 1) password confirm
+      await axios.post("/api/auth/confirm-password", { password });
+      // 2) delete with mode
+      await axios.delete(`/api/sale-invoices/${id}`, { params: { mode: deleteMode } });
       toast.success("Sale invoice deleted");
       await goToPrevOrIndex(id);
+      closeDeleteModal();
     } catch (e) {
-      toast.error("Failed to delete invoice");
+      const msg =
+        e?.response?.data?.message ||
+        (e?.response?.status === 422 ? "Incorrect password" : "Failed to delete invoice");
+      toast.error(msg);
     } finally {
       setDeleting(false);
     }
   };
 
-  // Toast-based confirmation
-  const confirmDeleteToast = () => {
-    const label = inv?.posted_number ? ` ${inv.posted_number}` : "";
-    toast(
-      (t) => (
-        <div className="rounded border bg-white shadow p-3 text-sm max-w-[320px]">
-          <div className="font-semibold mb-1">
-            Delete this sale invoice{label}?
-          </div>
-          <div className="text-[12px] text-gray-600 mb-3">
-            This action cannot be undone.
-          </div>
-          <div className="flex gap-2 justify-end">
-            <button
-              className="px-3 py-1 rounded border text-gray-700"
-              onClick={() => toast.dismiss(t.id)}
-            >
-              Cancel
-            </button>
-            <button
-              className="px-3 py-1 rounded bg-red-600 text-white disabled:opacity-60"
-              disabled={deleting}
-              onClick={async () => {
-                toast.dismiss(t.id);
-                await handleDelete();
-              }}
-            >
-              Delete
-            </button>
-          </div>
-        </div>
-      ),
-      { duration: 10000, id: `confirm-del-${id}` }
+  // Print
+  const handlePrint = () => {
+    if (!id) return;
+
+    const WEB_BASE =
+      (import.meta.env.VITE_BACKEND_WEB_BASE || "").replace(/\/$/, "") ||
+      window.location.origin;
+
+    const url = `${WEB_BASE}/print/sale-invoices/${id}`;
+
+    const width = 900;
+    const height = 700;
+    const left = Math.max(
+      0,
+      (window.screenX || window.screenLeft || 0) + (window.outerWidth - width) / 2
     );
+    const top = Math.max(
+      0,
+      (window.screenY || window.screenTop || 0) + (window.outerHeight - height) / 2
+    );
+
+    const features = [
+      `width=${Math.round(width)}`,
+      `height=${Math.round(height)}`,
+      `left=${Math.round(left)}`,
+      `top=${Math.round(top)}`,
+      "menubar=no",
+      "toolbar=no",
+      "location=no",
+      "status=no",
+      "scrollbars=yes",
+      "resizable=yes",
+    ].join(",");
+
+    let w = popupRef.current;
+
+    if (!w || w.closed) {
+      w = window.open("about:blank", "salePrintWin", features);
+      if (!w) {
+        toast.error("Popup blocked. Please allow popups to print.");
+        return;
+      }
+      try { w.opener = null; } catch {}
+      popupRef.current = w;
+    } else {
+      try { w.focus(); } catch {}
+    }
+
+    try {
+      w.location.replace(url);
+    } catch {
+      const w2 = window.open(url, "salePrintWin", features);
+      if (!w2) {
+        toast.error("Popup blocked. Please allow popups to print.");
+        return;
+      }
+      try { w2.opener = null; } catch {}
+      popupRef.current = w2;
+      w = w2;
+    }
+
+    try {
+      w.onload = () => {
+        try { w.focus(); w.print(); } catch {}
+      };
+    } catch {}
+
+    const timer = setInterval(() => {
+      try {
+        if (w.document?.readyState === "complete") {
+          w.focus(); w.print(); clearInterval(timer);
+        }
+      } catch {}
+      if (w.closed) clearInterval(timer);
+    }, 400);
   };
 
-  // Open server-rendered print preview (backend chooses template by Settings)
-const handlePrint = () => {
-  if (!id) return;
-
-  const WEB_BASE =
-    (import.meta.env.VITE_BACKEND_WEB_BASE || "").replace(/\/$/, "") ||
-    window.location.origin;
-
-  const url = `${WEB_BASE}/print/sale-invoices/${id}`;
-
-  // Reusable, centered popup
-  const width = 900;
-  const height = 700;
-  const left = Math.max(0, (window.screenX || window.screenLeft || 0) + (window.outerWidth - width) / 2);
-  const top = Math.max(0, (window.screenY || window.screenTop || 0) + (window.outerHeight - height) / 2);
-
-  const features = [
-    `width=${Math.round(width)}`,
-    `height=${Math.round(height)}`,
-    `left=${Math.round(left)}`,
-    `top=${Math.round(top)}`,
-    "menubar=no",
-    "toolbar=no",
-    "location=no",
-    "status=no",
-    "scrollbars=yes",
-    "resizable=yes",
-  ].join(",");
-
-  let w = popupRef.current;
-
-  // Open or reuse the popup window
-  if (!w || w.closed) {
-    w = window.open("about:blank", "salePrintWin", features);
-    if (!w) {
-      toast.error("Popup blocked. Please allow popups to print.");
-      return;
-    }
-    try { w.opener = null; } catch {}
-    popupRef.current = w;
-  } else {
-    try { w.focus(); } catch {}
-  }
-
-  // Navigate popup to the print URL
-  try {
-    w.location.replace(url);
-  } catch {
-    // Cross-origin navigation could throw; open fresh
-    const w2 = window.open(url, "salePrintWin", features);
-    if (!w2) {
-      toast.error("Popup blocked. Please allow popups to print.");
-      return;
-    }
-    try { w2.opener = null; } catch {}
-    popupRef.current = w2;
-    w = w2;
-  }
-
-  // Auto-print when loaded (with a polling fallback)
-  try {
-    w.onload = () => {
-      try { w.focus(); w.print(); } catch {}
-    };
-  } catch {}
-
-  const timer = setInterval(() => {
-    try {
-      if (w.document?.readyState === "complete") {
-        w.focus(); w.print(); clearInterval(timer);
-      }
-    } catch {
-      // Ignore cross-origin access errors while it loads
-    }
-    if (w.closed) clearInterval(timer);
-  }, 400);
-};
-
-
-
-  // Keyboard shortcuts: Alt+N (new), Alt+B (back), Alt+P (print), Alt+D (delete confirm), Alt+E (edit)
+  // Keyboard shortcuts
   useEffect(() => {
     const onKey = (e) => {
       if (!e.altKey) return;
-      const k = e.key.toLowerCase();
-      if (k === "n") {
-        e.preventDefault();
-        navigate("/sale-invoices/create");
-      }
-      if (k === "b") {
-        e.preventDefault();
-        navigate(-1);
-      }
-      if (k === "p") {
-        e.preventDefault();
-        handlePrint();
-      }
-      if (k === "d") {
-        e.preventDefault();
-        confirmDeleteToast();
-      }
-      if (k === "e") {
-        e.preventDefault();
-        navigate(`/sale-invoices/${id}/edit`);
-      }
+      const k = (e.key || "").toLowerCase();
+      if (k === "n") { e.preventDefault(); navigate("/sale-invoices/create"); }
+      if (k === "b") { e.preventDefault(); navigate(-1); }
+      if (k === "p") { e.preventDefault(); handlePrint(); }
+      if (k === "d") { e.preventDefault(); openDeleteModal(); }
+      if (k === "e") { e.preventDefault(); navigate(`/sale-invoices/${id}/edit`); }
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [navigate, inv, deleting, id, printerType]);
+  }, [navigate, id]);
 
   if (loading) return <div className="p-4 text-sm">Loading…</div>;
   if (!inv) return <div className="p-4 text-sm">Invoice not found.</div>;
@@ -282,9 +274,7 @@ const handlePrint = () => {
             {(inv.items || []).map((it, i) => (
               <tr key={i} className="text-center">
                 <td className="border p-1">{i + 1}</td>
-                <td className="border p-1 text-left">
-                  {it.product?.name ?? it.product_id}
-                </td>
+                <td className="border p-1 text-left">{it.product?.name ?? it.product_id}</td>
                 <td className="border p-1">{fmt(it.pack_size)}</td>
                 <td className="border p-1">{fmt(it.batch_number)}</td>
                 <td className="border p-1">{fmt(it.expiry)}</td>
@@ -298,7 +288,7 @@ const handlePrint = () => {
         </table>
       </div>
 
-      {/* Footer totals */}
+      {/* Footer totals — now includes Total Receive & Remaining */}
       <table className="w-full border-collapse text-xs">
         <tbody>
           <tr>
@@ -326,6 +316,14 @@ const handlePrint = () => {
               <div className="text-[10px]">Total</div>
               <div className="font-semibold">{fmt(inv.total)}</div>
             </td>
+            <td className="border p-1 w-1/8">
+              <div className="text-[10px]">Total Receive</div>
+              <div className="font-semibold">{invReceived.toLocaleString()}</div>
+            </td>
+            <td className="border p-1 w-1/8">
+              <div className="text-[10px]">Remaining</div>
+              <div className="font-semibold">{invRemaining.toLocaleString()}</div>
+            </td>
           </tr>
         </tbody>
       </table>
@@ -334,7 +332,7 @@ const handlePrint = () => {
       <div className="no-print flex flex-wrap gap-2 justify-end pt-2">
         <button
           className="bg-red-600 text-white px-4 py-2 rounded text-sm disabled:opacity-60"
-          onClick={confirmDeleteToast}
+          onClick={openDeleteModal}
           disabled={deleting}
           title="Alt+D"
         >
@@ -370,10 +368,135 @@ const handlePrint = () => {
         </button>
       </div>
 
-      {/* Hidden info about which printer template will be used */}
       <div className="no-print text-[11px] text-gray-500">
         Using printer template: <b>{printerType?.toUpperCase?.() || "A4"}</b> (from Settings)
       </div>
+
+      {/* ===== Delete confirmation / choice / password modal ===== */}
+      {deleteModalOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
+          onClick={(e) => { if (e.target === e.currentTarget) closeDeleteModal(); }}
+        >
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-5">
+            {/* Step 1: Confirm delete */}
+            {deleteStep === 1 && (
+              <div>
+                <h2 className="text-lg font-semibold mb-2">Delete sale invoice?</h2>
+                <div className="text-xs text-gray-600 mb-2">
+                  <div><b>Posted #:</b> {inv?.posted_number}</div>
+                  <div><b>Total:</b> {invTotal.toLocaleString()}</div>
+                  <div><b>Received:</b> {invReceived.toLocaleString()}</div>
+                  <div><b>Remaining:</b> {invRemaining.toLocaleString()}</div>
+                </div>
+                <p className="text-sm text-gray-600">This action cannot be undone.</p>
+                <div className="mt-4 flex justify-end gap-2">
+                  <button className="px-3 py-1 rounded border" onClick={closeDeleteModal}>
+                    Cancel
+                  </button>
+                  <button
+                    className="px-3 py-1 rounded bg-red-600 text-white hover:bg-red-700"
+                    onClick={proceedAfterConfirm}
+                  >
+                    Yes, continue
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Step 2: Choose Credit or Refund (only when needed) */}
+            {deleteStep === 2 && (
+              <div>
+                <h2 className="text-lg font-semibold mb-2">Credit or Refund?</h2>
+                <p className="text-sm text-gray-600 mb-3">
+                  This invoice has <b>Received {invReceived.toLocaleString()}</b> and
+                  <b> Remaining {invRemaining.toLocaleString()}</b>. Choose how to handle the money:
+                </p>
+                <div className="space-y-2 text-sm">
+                  <label className="flex items-start gap-2">
+                    <input
+                      type="radio"
+                      className="mt-1"
+                      checked={deleteMode === "credit"}
+                      onChange={() => setDeleteMode("credit")}
+                    />
+                    <span>
+                      <b>Credit the customer (recommended)</b><br />
+                      Keep the received amount as an unapplied credit in the ledger.
+                    </span>
+                  </label>
+                  <label className="flex items-start gap-2">
+                    <input
+                      type="radio"
+                      className="mt-1"
+                      checked={deleteMode === "refund"}
+                      onChange={() => setDeleteMode("refund")}
+                    />
+                    <span>
+                      <b>Refund the customer</b><br />
+                      Record a refund payment for the received amount.
+                    </span>
+                  </label>
+                </div>
+                <div className="mt-4 flex justify-between">
+                  <button className="px-3 py-1 rounded border" onClick={() => setDeleteStep(1)}>
+                    ← Back
+                  </button>
+                  <button
+                    className="px-3 py-1 rounded bg-blue-600 text-white hover:bg-blue-700"
+                    onClick={proceedToPassword}
+                  >
+                    Continue
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Step 3: Password confirm */}
+            {deleteStep === 3 && (
+              <div>
+                <h2 className="text-lg font-semibold mb-2">Confirm with password</h2>
+                <p className="text-sm text-gray-600">
+                  For security, please re-enter your password to delete this sale invoice.
+                </p>
+                <input
+                  type="password"
+                  autoFocus
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="Your password"
+                  className="mt-3 w-full border rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") confirmAndDelete();
+                    if (e.key === "Escape") closeDeleteModal();
+                  }}
+                />
+                <div className="mt-4 flex justify-between">
+                  <button
+                    className="px-3 py-1 rounded border"
+                    onClick={() => setDeleteStep(needsChoice ? 2 : 1)}
+                    disabled={deleting}
+                  >
+                    ← Back
+                  </button>
+                  <div className="flex gap-2">
+                    <button className="px-3 py-1 rounded border" onClick={closeDeleteModal} disabled={deleting}>
+                      Cancel
+                    </button>
+                    <button
+                      className="px-3 py-1 rounded bg-red-600 text-white hover:bg-red-700 disabled:opacity-60"
+                      onClick={confirmAndDelete}
+                      disabled={deleting || password.trim() === ""}
+                    >
+                      {deleting ? "Deleting…" : "Confirm & Delete"}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -1,4 +1,6 @@
 @php
+    use Illuminate\Support\Facades\DB;
+
     $logo   = $setting->logo_url ?? null;
     $store  = $setting->store_name ?? 'Store Name';
     $phone  = $setting->phone_number ?? '';
@@ -9,9 +11,37 @@
     $cust   = optional($invoice->customer)->name ?? '';
 
     $gross  = $invoice->items->sum('sub_total');
-    $disc   = $invoice->discount_amount ?? 0;
-    $tax    = $invoice->tax_amount ?? 0;
-    $total  = $invoice->total ?? ($gross - $disc + $tax);
+    $disc   = (float)($invoice->discount_amount ?? 0);
+    $tax    = (float)($invoice->tax_amount ?? 0);
+    $total  = isset($printTotal)
+                ? (float)$printTotal
+                : (float)($invoice->total ?? ($gross - $disc + $tax));
+
+    // NEW: receive + remaining figures (controller can pass these; otherwise compute here safely)
+    $totalReceive   = isset($printReceive)    ? (float)$printReceive    : (float)($invoice->total_receive ?? 0);
+    $remainThis     = isset($printRemainThis) ? (float)$printRemainThis : max($total - $totalReceive, 0);
+
+    // Old remaining from *previous* invoices of this customer (sum of positive (total - total_receive))
+    if (isset($printOldRemain)) {
+        $oldRemaining = (float)$printOldRemain;
+    } else {
+        $oldRemaining = 0.0;
+        if ($invoice->customer_id) {
+            $oldRemaining = \App\Models\SaleInvoice::where('customer_id', $invoice->customer_id)
+                ->where('id', '<', $invoice->id) // strictly older by id; change to date if you prefer
+                ->sum(DB::raw("
+                    CASE
+                        WHEN COALESCE(total,0) - COALESCE(total_receive,0) > 0
+                        THEN COALESCE(total,0) - COALESCE(total_receive,0)
+                        ELSE 0
+                    END
+                "));
+        }
+    }
+
+    $grandRemaining = isset($printGrandRemain)
+        ? (float)$printGrandRemain
+        : ($remainThis + (float)$oldRemaining);
 
     // Footer note: prefer invoice.footer_note, else setting.note
     $footerNote = trim(($invoice->footer_note ?? '') !== '' ? $invoice->footer_note : ($setting->note ?? ''));
@@ -26,9 +56,9 @@
   @page { size: 78mm auto; margin: 0; }
   * { box-sizing: border-box; }
   html, body { margin:0; padding:0; color:#000; background:#fff; }
-  body { 
+  body {
     font-family: 'Courier New', monospace;
-    font-weight: 700;                /* bold for darker thermal output */
+    font-weight: 700;       /* bold for darker thermal output */
     font-size: 13px;
     line-height: 1.25;
     -webkit-print-color-adjust: exact;
@@ -49,38 +79,36 @@
   .pair { display:flex; justify-content:space-between; }
   .pair + .pair { margin-top:2px; }
 
-  /* --- Watermark layer (real <img>, not CSS background, so it prints) --- */
+  /* --- Watermark (real <img> so it prints) --- */
   .wm {
-  position: absolute;
-  top: 2mm;            /* push down from very top if needed */
-  left: 0;
-  right: 0;
-  z-index: 0;          /* behind all content */
-  text-align: center;  /* center horizontally */
-  pointer-events: none;
-  user-select: none;
-}
+    position: absolute;
+    top: 2mm;
+    left: 0; right: 0;
+    z-index: 0;              /* behind content */
+    text-align: center;
+    pointer-events: none;
+    user-select: none;
+  }
+  .wm img {
+    width: 58mm;             /* fits inside 78mm page */
+    max-width: 90%;
+    opacity: 0.08;           /* subtle for thermal */
+    filter: grayscale(100%) contrast(90%);
+    -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+  }
 
-.wm img {
-  width: 58mm;         /* fits inside 78mm page */
-  max-width: 90%;
-  opacity: 0.8;       /* 0.05–0.12 is ideal for thermal; 0.8 will be too dark */
-  filter: grayscale(100%) contrast(90%);
-  -webkit-print-color-adjust: exact;
-          print-color-adjust: exact;
-}
-
-
-  /* Keep actual content above the watermark */
+  /* Foreground content above watermark */
   .content { position:relative; z-index:1; }
 
-  /* --- Table (your current borders) --- */
+  /* --- Table --- */
   table { width:100%; border-collapse:collapse; }
   thead th { text-align:left; padding:2px 2px; border:2px solid #000; }
   tbody td { padding:0px 0; border-bottom:1px solid #000; vertical-align:top; }
   th.right, td.right { text-align:right; white-space:nowrap; }
   td.center { text-align:center; }
-  /* Fit columns within 100% total on 78mm */
+
+  /* Column widths to fit 78mm */
   th.col-name     { width:45%; }
   th.col-qty      { width:13%; }
   th.col-price    { width:15%; }
@@ -93,9 +121,6 @@
   /* --- Footer --- */
   .note { margin-top:6px; white-space:pre-wrap; }
   .foot { margin-top:6px; text-align:center; }
-
-  /* Cut right after Thank you! */
-  .receipt, .foot { padding-bottom:0; margin-bottom:0; }
 </style>
 </head>
 <body>
@@ -106,9 +131,9 @@
 <div class="receipt">
   {{-- Watermark behind everything --}}
   @if($logo)
-  <div class="wm">
-    <img src="{{ $logo }}" alt="Watermark">
-  </div>
+    <div class="wm">
+      <img src="{{ $logo }}" alt="Watermark">
+    </div>
   @endif
 
   {{-- Foreground content --}}
@@ -154,6 +179,15 @@
       <div class="pair"><div>Discount</div><div>{{ number_format((float)$disc, 2) }}</div></div>
       <div class="pair"><div>Tax</div><div>{{ number_format((float)$tax, 2) }}</div></div>
       <div class="pair total"><div>Total</div><div>{{ number_format((float)$total, 2) }}</div></div>
+
+      {{-- NEW: payment & remaining summary (as requested) --}}
+      <div class="hr" style="margin:6px 0;"></div>
+      <div class="pair"><div>Total Receive</div><div>{{ number_format($totalReceive, 2) }}</div></div>
+      <div class="pair"><div>Remaining (This)</div><div>{{ number_format($remainThis, 2) }}</div></div>
+      @if($oldRemaining > 0)
+        <div class="pair"><div>Old Remaining</div><div>{{ number_format($oldRemaining, 2) }}</div></div>
+      @endif
+      <div class="pair total"><div>Total Remaining</div><div>{{ number_format($grandRemaining, 2) }}</div></div>
     </div>
 
     @if($footerNote !== '')

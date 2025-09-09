@@ -379,7 +379,8 @@ public function index(Request $request)
     });
 }
 
-    public function print(Request $request, SaleInvoice $invoice)
+    // SaleInvoiceController.php
+public function print(Request $request, SaleInvoice $invoice)
 {
     $invoice->load(['items.product', 'customer', 'user']);
     $setting = Setting::first();
@@ -390,7 +391,72 @@ public function index(Request $request)
         $type = 'a4';
     }
 
-    return view("printer.sale_invoice_{$type}", compact('invoice', 'setting'));
+    // ---- Core invoice numbers ----
+    $gross  = (float) ($invoice->items?->sum('sub_total') ?? 0);
+    $disc   = (float) ($invoice->discount_amount ?? 0);
+    $tax    = (float) ($invoice->tax_amount ?? 0);
+    $total  = (float) ($invoice->total ?? ($gross - $disc + $tax));
+
+    $receivedOnInvoice = (float) ($invoice->total_receive ?? 0);
+    $remainThis        = max($total - $receivedOnInvoice, 0);
+
+// ---- Global Net (ledger header logic) + This-invoice remaining ----
+$customerId = (int) $invoice->customer_id;
+
+// 1) Sum ALL invoices (do NOT exclude current one)
+$allInv = \App\Models\SaleInvoice::where('customer_id', $customerId)->get([
+    'invoice_total','total','grand_total','net_total','gross_amount','sub_total',
+    'total_receive','total_recieve','received','amount_received'
+]);
+
+$allTotals   = 0.0;
+$allReceived = 0.0;
+foreach ($allInv as $inv) {
+    $t = (float) ($inv->invoice_total ?? $inv->total ?? $inv->grand_total ?? $inv->net_total ?? $inv->gross_amount ?? $inv->sub_total ?? 0);
+    $r = (float) ($inv->total_receive ?? $inv->total_recieve ?? $inv->received ?? $inv->amount_received ?? 0);
+    $allTotals   += $t;
+    $allReceived += $r;
+}
+
+// 2) Sum ALL payments from ledger (and include manual rows with credited_amount if you use them)
+$paymentsCred = (float) \App\Models\CustomerLedger::where('customer_id', $customerId)
+    ->where(function ($q) {
+        $q->whereRaw("LOWER(entry_type) = 'payment'")
+          ->orWhere(function ($q2) {
+              $q2->whereRaw("LOWER(entry_type) = 'manual'")
+                 ->whereRaw('COALESCE(credited_amount,0) <> 0');
+          });
+    })
+    ->sum(DB::raw('COALESCE(credited_amount,0)'));
+
+// 3) Global net (matches the ledger header): (Total Invoiced − Received on Invoice) − Received Payments
+$globalNet = ($allTotals - $allReceived) - $paymentsCred;
+if ($globalNet < 0) $globalNet = 0.0;
+
+// 4) Keep this-invoice remaining as-is (invoice total − invoice’s own received field)
+$gross  = (float) ($invoice->items?->sum('sub_total') ?? 0);
+$disc   = (float) ($invoice->discount_amount ?? 0);
+$tax    = (float) ($invoice->tax_amount ?? 0);
+$total  = (float) ($invoice->total ?? ($gross - $disc + $tax));
+
+$receivedOnInvoice = (float) ($invoice->total_receive ?? 0);
+$remainThis        = max($total - $receivedOnInvoice, 0);
+
+// 5) For display, you can derive "Old Remaining (Net)" as global minus this invoice’s remain (clamped ≥ 0)
+$oldRemainingNet = $globalNet - $remainThis;
+if ($oldRemainingNet < 0) $oldRemainingNet = 0.0;
+
+// 6) Pass to view
+return view("printer.sale_invoice_{$type}", [
+    'invoice'          => $invoice,
+    'setting'          => $setting,
+    'printTotal'       => $total,
+    'printReceive'     => $receivedOnInvoice,
+    'printRemainThis'  => $remainThis,
+    'printOldRemain'   => $oldRemainingNet,
+    'printGrandRemain' => $globalNet,   // <— will now match ledger Net Balance (e.g., 178)
+]);
+
 }
 
 }
