@@ -1,4 +1,6 @@
 @php
+    use Illuminate\Support\Facades\DB;
+
     $logo   = $setting->logo_url ?? null;
     $store  = $setting->store_name ?? 'Store Name';
     $phone  = $setting->phone_number ?? '';
@@ -13,10 +15,46 @@
     $pat    = $invoice->patient_name ?? '';
     $remarks= $invoice->remarks ?? '';
 
-    $gross  = $invoice->items->sum('sub_total');
-    $disc   = $invoice->discount_amount ?? 0;
-    $tax    = $invoice->tax_amount ?? 0;
-    $total  = $invoice->total ?? ($gross - $disc + $tax);
+    $gross  = (float)$invoice->items->sum('sub_total');
+    $disc   = (float)($invoice->discount_amount ?? 0);
+    $tax    = (float)($invoice->tax_amount ?? 0);
+
+    // --- Total (prefer controller's computed value) ---
+    $total  = isset($printTotal)
+                ? (float)$printTotal
+                : (float)($invoice->total ?? ($gross - $disc + $tax));
+
+    // --- Receive/Remaining for THIS invoice ---
+    $totalReceive = isset($printReceive)
+        ? (float)$printReceive
+        : (float)($invoice->total_receive ?? 0);
+
+    $remainThis = isset($printRemainThis)
+        ? (float)$printRemainThis
+        : max($total - $totalReceive, 0);
+
+    // --- Old remaining & Grand remaining ---
+    if (isset($printOldRemain)) {
+        $oldRemaining = (float)$printOldRemain;
+    } else {
+        // Fallback: simple sum of older invoices' positive dues
+        $oldRemaining = 0.0;
+        if ($invoice->customer_id) {
+            $oldRemaining = \App\Models\SaleInvoice::where('customer_id', $invoice->customer_id)
+                ->where('id', '<', $invoice->id)
+                ->sum(DB::raw("
+                    CASE
+                        WHEN COALESCE(total,0) - COALESCE(total_receive,0) > 0
+                        THEN COALESCE(total,0) - COALESCE(total_receive,0)
+                        ELSE 0
+                    END
+                "));
+        }
+    }
+
+    $grandRemaining = isset($printGrandRemain)
+        ? (float)$printGrandRemain
+        : ($remainThis + (float)$oldRemaining);
 
     // Footer note: prefer invoice.footer_note, else setting.note
     $footerNote = trim(($invoice->footer_note ?? '') !== '' ? $invoice->footer_note : ($setting->note ?? ''));
@@ -31,18 +69,10 @@
   * { box-sizing: border-box; }
   html, body { margin:0; padding:0; font-family: Arial, Helvetica, sans-serif; color:var(--text); }
 
-  /* Make page a column so footer can stick to bottom */
-  .page {
-    width: 210mm;
-    min-height: 297mm;
-    padding: 16mm 14mm;
-    margin: 0 auto;
-    display: flex;
-    flex-direction: column;
-  }
-  .print-actions { margin: 12px auto; width: 210mm; text-align: right; }
-  .print-actions button { padding: 8px 12px; cursor: pointer; }
-  @media print { .print-actions { display:none; } .page { padding: 10mm 10mm; } }
+  .page { width:210mm; min-height:297mm; padding:16mm 14mm; margin:0 auto; display:flex; flex-direction:column; }
+  .print-actions { margin:12px auto; width:210mm; text-align:right; }
+  .print-actions button { padding:8px 12px; cursor:pointer; }
+  @media print { .print-actions { display:none; } .page { padding:10mm 10mm; } }
 
   .header { display:flex; align-items:center; gap:16px; border-bottom:1px solid var(--border); padding-bottom:12px; }
   .logo { width:100px; height:100px; object-fit:contain; }
@@ -63,12 +93,12 @@
   tfoot td { padding:8px 6px; font-size:13px; }
   .right { text-align:right; }
 
-  .footer-total { width:50%; margin-left:auto; border:1px solid var(--border); border-radius:6px; overflow:hidden; margin-top:12px; }
+  .footer-total { width:55%; margin-left:auto; border:1px solid var(--border); border-radius:6px; overflow:hidden; margin-top:12px; }
   .footer-total .row { display:flex; justify-content:space-between; padding:10px 12px; }
   .footer-total .row + .row { border-top:1px solid var(--border); }
-  .footer-total .row.total { font-weight:800; font-size:14px; }
+  .footer-total .row.total { font-weight:800; }
+  .footer-total .row.grand { font-weight:900; font-size:14px; }
 
-  /* Bottom area pinned to page end */
   .bottom { margin-top:auto; }
   .footer-note { margin-top:12px; padding-top:8px; border-top:1px solid var(--border); font-size:11px; color:var(--muted); white-space:pre-wrap; }
   .thankyou { margin-top:10px; font-size:12px; text-align:center; }
@@ -144,15 +174,23 @@
     </tbody>
   </table>
 
-  {{-- Footer Totals --}}
+  {{-- Totals & Remaining --}}
   <div class="footer-total">
-    <div class="row"><div>Gross</div><div>{{ number_format((float)$gross, 2) }}</div></div>
-    <div class="row"><div>Discount Amount</div><div>{{ number_format((float)$disc, 2) }}</div></div>
-    <div class="row"><div>Tax Amount</div><div>{{ number_format((float)$tax, 2) }}</div></div>
-    <div class="row total"><div>Total</div><div>{{ number_format((float)$total, 2) }}</div></div>
+    <div class="row"><div>Gross</div><div>{{ number_format($gross, 2) }}</div></div>
+    <div class="row"><div>Discount</div><div>{{ number_format($disc, 2) }}</div></div>
+    <div class="row"><div>Tax</div><div>{{ number_format($tax, 2) }}</div></div>
+    <div class="row total"><div>Total</div><div>{{ number_format($total, 2) }}</div></div>
+
+    {{-- Same summary as thermal --}}
+    <div class="row"><div>Total Receive</div><div>{{ number_format($totalReceive, 2) }}</div></div>
+    <div class="row"><div>Remaining (This)</div><div>{{ number_format($remainThis, 2) }}</div></div>
+    @if($oldRemaining > 0)
+      <div class="row"><div>Old Remaining</div><div>{{ number_format($oldRemaining, 2) }}</div></div>
+    @endif
+    <div class="row grand"><div>Total Remaining</div><div>{{ number_format($grandRemaining, 2) }}</div></div>
   </div>
 
-  {{-- Bottom (sticks to page bottom) --}}
+  {{-- Bottom --}}
   <div class="bottom">
     @if($footerNote !== '')
       <div class="footer-note">{{ $footerNote }}</div>
