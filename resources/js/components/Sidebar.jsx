@@ -54,6 +54,7 @@ export default function Sidebar({ appName = "ERP", logoUrl = null }) {
 
     { type: "section", name: "System" },
     { name: "Settings", path: "/settings", icon: <Cog6ToothIcon className="w-6 h-6" /> },
+    { name: "Users", path: "/users", icon: <UserGroupIcon className="w-6 h-6" /> },
   ];
 
   // Keyboard focus handling

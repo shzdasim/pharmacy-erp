@@ -18,5 +18,13 @@ class AuthServiceProvider extends ServiceProvider
         Gate::before(function ($user, $ability) {
             return $user->hasRole('super-admin') ? true : null;
         });
+        Gate::define('manage-users', function ($user) {
+        // If using spatie/permission:
+        if (method_exists($user, 'hasAnyRole')) {
+            return $user->hasAnyRole(['Admin','Manager']);
+        }
+        // else allow all authenticated users or add your own check
+        return true;
+    });
     }
 }

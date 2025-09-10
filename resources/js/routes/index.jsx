@@ -36,7 +36,9 @@ import CreateStockAdjustment from "../pages/stock-adjustments/Create.jsx";
 import EditStockAdjustment from "../pages/stock-adjustments/Edit.jsx";
 import SupplierLedgerPage from "../pages/Ledger/SupplierLedgerPage.jsx";
 import CustomerLedgerPage from "../pages/Ledger/CustomerLedgerPage.jsx";
-
+import UsersIndex from "../pages/users/index.jsx";
+import CreateUser from "../pages/users/Create.jsx";
+import EditUser from "../pages/users/Edit.jsx";
 export default function AppRoutes() {
   return (
       <Routes>
@@ -380,7 +382,37 @@ export default function AppRoutes() {
         </ProtectedRoute>
       }
       />
-  
+      {/* Users */}
+      <Route
+      path="/users"
+      element= {
+        <ProtectedRoute>
+          <DashboardLayout>
+            <UsersIndex />
+          </DashboardLayout>
+        </ProtectedRoute>
+      }
+      />
+      <Route
+      path="/users/create"
+      element= {
+        <ProtectedRoute>
+          <DashboardLayout>
+            <CreateUser />
+          </DashboardLayout>
+        </ProtectedRoute>
+      }
+      />
+      <Route
+      path="/users/:id/edit"
+      element= {
+        <ProtectedRoute>
+          <DashboardLayout>
+            <EditUser />
+          </DashboardLayout>
+        </ProtectedRoute>
+      }
+      />
 
 </Routes>
   );

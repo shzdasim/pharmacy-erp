@@ -25,6 +25,7 @@ use App\Http\Controllers\StockAdjustmentController;
 use App\Http\Controllers\SupplierController;
 use App\Http\Controllers\SupplierImportController;
 use App\Http\Controllers\SupplierLedgerController;
+use App\Http\Controllers\UserController;
 
 Route::post('/login', [AuthController::class, 'login']);
 Route::middleware(['auth:sanctum'])->get('/user', [AuthController::class, 'user']);
@@ -33,6 +34,8 @@ Route::middleware('auth:sanctum')->post('/logout', [AuthController::class, 'logo
 Route::middleware('auth:sanctum')->group(function () {
     Route::post('/auth/confirm-password', [AuthController::class, 'confirmPassword']);
 
+    // Users
+    Route::resource('users', UserController::class);
 
     Route::get('/brands/search',    [BrandController::class, 'search']);
     Route::get('/categories/search',[CategoryController::class, 'search']);
