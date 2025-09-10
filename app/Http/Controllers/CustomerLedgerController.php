@@ -2,12 +2,16 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Customer;
 use App\Models\CustomerLedger;
 use App\Models\SaleInvoice;
+use App\Models\Setting;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\Rule;
 
 class CustomerLedgerController extends Controller
@@ -354,8 +358,159 @@ class CustomerLedgerController extends Controller
     /** ================================
      * GET /customer-ledger/print
      * ================================ */
-    public function printView(Request $request)
-    {
-        return response('<h3 style="font-family:sans-serif">Customer Ledger print endpoint is wired. Implement view as needed.</h3>');
+
+    public function print(Request $request)
+{
+    // -------- Validate + fetch basics --------
+    $customerId = (int) $request->query('customer_id');
+    abort_if(!$customerId, 404, 'Customer is required');
+
+    $customer = \App\Models\Customer::findOrFail($customerId);
+    $setting  = \App\Models\Setting::first();
+
+    // Accept aliases; default to A4
+    $type = strtolower((string) $request->query('type', $setting->printer_type ?? 'a4'));
+    $aliases = [
+        'invoice'      => 'a4',
+        'a4_invoice'   => 'a4',
+        'a4-portrait'  => 'a4',
+        'receipt'      => 'thermal',
+        'pos'          => 'thermal',
+    ];
+    if (isset($aliases[$type])) $type = $aliases[$type];
+    $type = in_array($type, ['a4', 'thermal'], true) ? $type : 'a4';
+    $view = $type === 'thermal'
+        ? 'printer.customer_ledger_thermal'
+        : 'printer.customer_ledger_a4';
+
+    $from = $request->query('from');
+    $to   = $request->query('to');
+
+    // -------- Choose existing date column safely --------
+    $hasInvoiceDate = \Illuminate\Support\Facades\Schema::hasColumn('sale_invoices', 'invoice_date');
+    $dateColumn     = $hasInvoiceDate ? 'invoice_date' : 'date';
+
+    // Optional: whether you have invoice_no column
+    $hasInvoiceNo   = \Illuminate\Support\Facades\Schema::hasColumn('sale_invoices', 'invoice_no');
+
+    // Build select list (only include columns that exist)
+    $selectCols = [
+        'id', 'posted_number', 'date',
+        'invoice_total','total','grand_total','net_total','gross_amount','sub_total',
+        'total_receive','total_recieve','received','amount_received',
+    ];
+    if ($hasInvoiceDate) $selectCols[] = 'invoice_date';
+    if ($hasInvoiceNo)   $selectCols[] = 'invoice_no';
+
+    // -------- 1) Read-through INVOICE rows from sale_invoices --------
+    $invoices = \App\Models\SaleInvoice::query()
+        ->where('customer_id', $customer->id)
+        ->when($from, fn($q) => $q->whereDate($dateColumn, '>=', $from))
+        ->when($to,   fn($q) => $q->whereDate($dateColumn, '<=', $to))
+        ->orderBy($dateColumn)
+        ->orderBy('id')
+        ->get($selectCols)
+        ->map(function ($inv) use ($hasInvoiceDate, $hasInvoiceNo) {
+            // robust totals
+            $t = (float) ($inv->invoice_total ?? $inv->total ?? $inv->grand_total ?? $inv->net_total ?? $inv->gross_amount ?? $inv->sub_total ?? 0);
+            $r = (float) ($inv->total_receive ?? $inv->total_recieve ?? $inv->received ?? $inv->amount_received ?? 0);
+
+            // entry date
+            $rawDate   = $hasInvoiceDate ? ($inv->invoice_date ?? $inv->date) : $inv->date;
+            $entryDate = $rawDate ? \Carbon\Carbon::parse($rawDate)->format('Y-m-d') : null;
+
+            // invoice number (fallback to posted_number if you want it visible)
+            $invoiceNumber = $hasInvoiceNo ? ($inv->invoice_no ?? null) : null;
+
+            return (object) [
+                'id'                 => $inv->id,
+                'entry_type'         => 'invoice',
+                'is_manual'          => false,
+                'entry_date'         => $entryDate,
+                'posted_number'      => $inv->posted_number,
+                'invoice_number'     => $invoiceNumber, // or: $inv->posted_number
+                'invoice_total'      => $t,
+                'total_received'     => $r,
+                'credited_amount'    => 0.0,
+                'payment_ref'        => null,
+                'description'        => $invoiceNumber ? ('Invoice #'.$invoiceNumber) : null,
+                'sale_invoice_id'    => $inv->id,
+            ];
+        });
+
+    // -------- 2) MANUAL + PAYMENT rows from customer_ledgers --------
+    $manualAndPayments = \App\Models\CustomerLedger::query()
+        ->where('customer_id', $customer->id)
+        ->whereIn('entry_type', ['payment', 'manual'])
+        ->when($from, fn($q) => $q->whereDate('entry_date', '>=', $from))
+        ->when($to,   fn($q) => $q->whereDate('entry_date', '<=', $to))
+        ->orderBy('entry_date')
+        ->orderBy('id')
+        ->get()
+        ->map(function (\App\Models\CustomerLedger $r) {
+            $isInvoiceLike = strtolower($r->entry_type) === 'manual'; // manual behaves like invoice row
+            return (object) [
+                'id'                 => $r->id,
+                'entry_type'         => strtolower($r->entry_type), // 'payment' | 'manual'
+                'is_manual'          => (bool) $r->is_manual,
+                'entry_date'         => optional($r->entry_date)->format('Y-m-d'),
+                'posted_number'      => $r->posted_number,
+                'invoice_number'     => null,
+                'invoice_total'      => $isInvoiceLike ? (float)($r->invoice_total ?? 0) : 0.0,
+                'total_received'     => $isInvoiceLike ? (float)($r->total_received ?? 0) : 0.0,
+                'credited_amount'    => (float)($r->credited_amount ?? 0),
+                'payment_ref'        => $r->payment_ref,
+                'description'        => $r->description,
+                'sale_invoice_id'    => $r->sale_invoice_id,
+            ];
+        });
+
+    // -------- 3) Merge + sort --------
+    $all = $invoices->merge($manualAndPayments)
+        ->sortBy(fn($r) => [$r->entry_date, $r->id ?? 0])
+        ->values();
+
+    // -------- 4) Running balance + per-row "credit remaining" --------
+    $balance = 0.0;
+    foreach ($all as $r) {
+        $type = strtolower($r->entry_type);
+        $creditRemaining = 0.0;
+
+        if (in_array($type, ['invoice', 'manual'], true)) {
+            $delta = (float)$r->invoice_total - (float)$r->total_received; // negative allowed for reversals
+            $creditRemaining = max($delta, 0);
+            $balance += $delta;
+        } elseif ($type === 'payment') {
+            $balance -= (float)$r->credited_amount;
+        }
+
+        $r->credit_remaining_calc = round($creditRemaining, 2);
+        $r->running_balance       = round($balance, 2);
     }
+
+    // -------- 5) Summary (matches your UI header math) --------
+    $sumInv   = (float) $all->whereIn('entry_type', ['invoice','manual'])->sum('invoice_total');
+    $sumRecv  = (float) $all->whereIn('entry_type', ['invoice','manual'])->sum('total_received');
+    $sumPay   = (float) $all->where('entry_type', 'payment')->sum('credited_amount');
+
+    $summary = [
+        'total_invoiced'      => $sumInv,
+        'received_on_invoice' => $sumRecv,
+        'payments_credited'   => $sumPay,
+        'net_balance'         => round(($sumInv - $sumRecv) - $sumPay, 2),
+    ];
+
+    // -------- Render --------
+    return view($view, [
+        'customer' => $customer,
+        'setting'  => $setting,
+        'rows'     => $all,
+        'summary'  => $summary,
+        'from'     => $from,
+        'to'       => $to,
+    ]);
+}
+
+    
+
 }

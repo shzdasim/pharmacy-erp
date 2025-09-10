@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\CustomerLedgerController;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\SaleInvoiceController;
 use App\Http\Controllers\SupplierLedgerController;
@@ -10,6 +11,8 @@ Route::get('/print/sale-invoices/{invoice}', [SaleInvoiceController::class, 'pri
     ->name('sale-invoices.print');
 Route::get('/supplier-ledger/print', [SupplierLedgerController::class, 'print'])
      ->name('supplier-ledger.print');
+
+Route::get('/customer-ledger/print', [CustomerLedgerController::class, 'print']);
 // (add any other Blade/PDF routes here)
 // Route::get('/reports/sale-detail/pdf', ...);
 
