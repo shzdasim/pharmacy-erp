@@ -10,6 +10,7 @@ import {
   ArrowDownTrayIcon,
 } from "@heroicons/react/24/solid";
 import CategoryImportModal from "../components/CategoryImportModel.jsx";
+import { usePermissions, Guard } from "@/api/usePermissions.js"; // 🔒
 
 export default function Categories() {
   const [categories, setCategories] = useState([]);
@@ -28,6 +29,9 @@ export default function Categories() {
   const nameRef = useRef(null);
   const saveBtnRef = useRef(null);
 
+  // 🔒 permissions
+  const { loading: permsLoading, can } = usePermissions();
+
   useEffect(() => {
     document.title = "Categories - Pharmacy ERP";
     fetchCategories();
@@ -39,8 +43,12 @@ export default function Categories() {
       const res = await axios.get("/api/categories");
       setCategories(res.data || []);
     } catch (err) {
-      console.error("Failed to fetch categories", err);
-      toast.error("Failed to load categories");
+      const status = err?.response?.status;
+      if (status === 403) {
+        toast.error("You don't have permission to view categories.");
+      } else {
+        toast.error("Failed to load categories");
+      }
     } finally {
       setLoading(false);
     }
@@ -48,16 +56,18 @@ export default function Categories() {
 
   useEffect(() => { nameRef.current?.focus(); }, [editingId]);
 
+  // 🔒 disable Alt+S if cannot create/update
   useEffect(() => {
     const onKeyDown = (e) => {
       if (e.altKey && (e.key || "").toLowerCase() === "s") {
-        e.preventDefault(); handleSave();
+        if (!can.create && !can.update) return;
+        e.preventDefault();
+        handleSave();
       }
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [form, editingId]);
+  }, [form, editingId, can.create, can.update]);
 
   const onEnterFocusNext = (e) => {
     if (e.key === "Enter") { e.preventDefault(); saveBtnRef.current?.focus(); }
@@ -69,6 +79,11 @@ export default function Categories() {
   };
 
   const handleSave = async () => {
+    // 🔒 guard
+    if (editingId ? !can.update : !can.create) {
+      toast.error("You don't have permission to save categories.");
+      return;
+    }
     if (saving) return;
     const name = (form.name || "").trim();
     if (!name) { toast.error("Name is required"); nameRef.current?.focus(); return; }
@@ -84,28 +99,43 @@ export default function Categories() {
       }
       resetForm(); fetchCategories();
     } catch (err) {
-      const msg = err?.response?.data?.message || err?.response?.data?.errors?.name?.[0] || "Save failed";
-      toast.error(msg);
+      const status = err?.response?.status;
+      if (status === 403) {
+        toast.error("You don't have permission to save categories.");
+      } else {
+        const msg = err?.response?.data?.message || err?.response?.data?.errors?.name?.[0] || "Save failed";
+        toast.error(msg);
+      }
     } finally { setSaving(false); }
   };
 
-  const handleEdit = (c) => { setForm({ name: c.name || "" }); setEditingId(c.id); };
+  const handleEdit = (c) => {
+    if (!can.update) return toast.error("You don't have permission to edit categories.");
+    setForm({ name: c.name || "" });
+    setEditingId(c.id);
+  };
 
   const handleDelete = async (c) => {
+    if (!can.delete) return toast.error("You don't have permission to delete categories.");
     try {
       await axios.delete(`/api/categories/${c.id}`);
       setCategories((prev) => prev.filter((x) => x.id !== c.id));
       if (editingId === c.id) resetForm();
       toast.success("Category deleted");
-    } catch (err) { toast.error(err?.response?.data?.message || "Could not delete category."); }
+    } catch (err) {
+      const status = err?.response?.status;
+      if (status === 403) toast.error("You don't have permission to delete categories.");
+      else toast.error(err?.response?.data?.message || "Could not delete category.");
+    }
   };
 
   const handleButtonKeyDown = (e, action) => {
     if (e.key === "Enter" || e.key === " ") { e.preventDefault(); action(); }
   };
 
-  // Export all categories
+  // 🔒 Export
   const handleExport = async () => {
+    if (!can.export) return toast.error("You don't have permission to export categories.");
     try {
       setExporting(true);
       const res = await axios.get("/api/categories/export", { responseType: "blob" });
@@ -116,8 +146,11 @@ export default function Categories() {
       const a = document.createElement("a");
       a.href = url; a.download = filename; document.body.appendChild(a); a.click(); a.remove();
       window.URL.revokeObjectURL(url);
-    } catch (e) { console.error(e); toast.error("Export failed"); }
-    finally { setExporting(false); }
+    } catch (e) {
+      const status = e?.response?.status;
+      if (status === 403) toast.error("You don't have permission to export categories.");
+      else toast.error("Export failed");
+    } finally { setExporting(false); }
   };
 
   // search + pagination
@@ -136,6 +169,8 @@ export default function Categories() {
   const start = (page - 1) * pageSize;
   const paged = filtered.slice(start, start + pageSize);
 
+  if (permsLoading) return <div className="p-6">Loading…</div>;
+
   return (
     <div className="p-6">
       {/* header + search */}
@@ -152,38 +187,42 @@ export default function Categories() {
         </div>
       </div>
 
-      {/* form */}
-      <form onSubmit={(e)=>e.preventDefault()} className="mb-4">
-        <div className="flex flex-col gap-2">
-          <div className="flex flex-col md:flex-row md:items-end md:gap-2">
-            <div className="w-full md:w-80">
-              <label className="block text-xs text-gray-700 mb-1">Name</label>
-              <input
-                type="text" placeholder="Category Name"
-                className="border rounded px-2 h-9 text-sm w-full"
-                value={form.name}
-                onChange={(e)=>setForm({ name: e.target.value })}
-                onKeyDown={onEnterFocusNext}
-                ref={nameRef} required
-              />
+      {/* 🔒 show form only if can create/update */}
+      <Guard when={can.create || can.update}>
+        <form onSubmit={(e)=>e.preventDefault()} className="mb-4">
+          <div className="flex flex-col gap-2">
+            <div className="flex flex-col md:flex-row md:items-end md:gap-2">
+              <div className="w-full md:w-80">
+                <label className="block text-xs text-gray-700 mb-1">Name</label>
+                <input
+                  type="text" placeholder="Category Name"
+                  className="border rounded px-2 h-9 text-sm w-full"
+                  value={form.name}
+                  onChange={(e)=>setForm({ name: e.target.value })}
+                  onKeyDown={onEnterFocusNext}
+                  ref={nameRef} required
+                  disabled={!can.create && !editingId}
+                />
+              </div>
             </div>
-          </div>
 
-          <div className="flex items-center justify-end">
-            <button
-              type="button" onClick={handleSave} ref={saveBtnRef}
-              title="Save (Alt+S)" aria-keyshortcuts="Alt+S"
-              className={`inline-flex items-center justify-center gap-2 px-4 h-10 rounded text-white text-sm min-w-[140px] md:w-44 ${
-                saving ? "bg-blue-400" : "bg-blue-600 hover:bg-blue-700"
-              }`} disabled={saving}
-            >
-              <CheckCircleIcon className="w-5 h-5" />
-              {editingId ? (saving ? "Updating…" : "Update") : (saving ? "Saving…" : "Save")}
-            </button>
+            <div className="flex items-center justify-end">
+              <button
+                type="button" onClick={handleSave} ref={saveBtnRef}
+                title={(editingId ? "Update" : "Save") + " (Alt+S)"} aria-keyshortcuts="Alt+S"
+                className={`inline-flex items-center justify-center gap-2 px-4 h-10 rounded text-white text-sm min-w-[140px] md:w-44 ${
+                  saving ? "bg-blue-400" : "bg-blue-600 hover:bg-blue-700"
+                }`}
+                disabled={saving || (!can.create && !can.update)}
+              >
+                <CheckCircleIcon className="w-5 h-5" />
+                {editingId ? (saving ? "Updating…" : "Update") : (saving ? "Saving…" : "Save")}
+              </button>
+            </div>
+            <div className="text-[11px] text-gray-500 md:text-right">Shortcut: Alt+S</div>
           </div>
-          <div className="text-[11px] text-gray-500 md:text-right">Shortcut: Alt+S</div>
-        </div>
-      </form>
+        </form>
+      </Guard>
 
       {/* meta */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-2">
@@ -203,7 +242,7 @@ export default function Categories() {
         </div>
       </div>
 
-      {/* table with toolbar in header */}
+      {/* table + toolbar */}
       <div className="w-full overflow-x-auto rounded border">
         <table className="w-full">
           <thead className="bg-gray-50 sticky top-0 z-10">
@@ -211,27 +250,34 @@ export default function Categories() {
             <tr>
               <th colSpan={2} className="border p-2">
                 <div className="flex items-center justify-start gap-2">
-                  <button
-                    onClick={() => setImportOpen(true)}
-                    onKeyDown={(e)=> (e.key==="Enter"||e.key===" ") && (e.preventDefault(), setImportOpen(true))}
-                    className="inline-flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-3 h-9 rounded text-sm"
-                    title="Import Categories (CSV)" aria-label="Import categories from CSV"
-                  >
-                    <ArrowUpTrayIcon className="w-5 h-5" />
-                    Import CSV
-                  </button>
-                  <button
-                    onClick={handleExport} disabled={exporting}
-                    onKeyDown={(e)=> (e.key==="Enter"||e.key===" ") && (e.preventDefault(), handleExport())}
-                    className={`inline-flex items-center gap-2 px-3 h-9 rounded text-sm border ${
-                      exporting ? "bg-gray-200 text-gray-600 cursor-not-allowed"
-                                : "bg-white hover:bg-gray-50 text-gray-800 border-gray-300"
-                    }`}
-                    title="Export all categories to CSV" aria-label="Export all categories to CSV"
-                  >
-                    <ArrowDownTrayIcon className="w-5 h-5" />
-                    {exporting ? "Exporting…" : "Export CSV"}
-                  </button>
+                  {/* 🔒 Import */}
+                  <Guard when={can.import}>
+                    <button
+                      onClick={() => setImportOpen(true)}
+                      onKeyDown={(e)=> (e.key==="Enter"||e.key===" ") && (e.preventDefault(), setImportOpen(true))}
+                      className="inline-flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-3 h-9 rounded text-sm"
+                      title="Import Categories (CSV)" aria-label="Import categories from CSV"
+                    >
+                      <ArrowUpTrayIcon className="w-5 h-5" />
+                      Import CSV
+                    </button>
+                  </Guard>
+
+                  {/* 🔒 Export */}
+                  <Guard when={can.export}>
+                    <button
+                      onClick={handleExport} disabled={exporting}
+                      onKeyDown={(e)=> (e.key==="Enter"||e.key===" ") && (e.preventDefault(), handleExport())}
+                      className={`inline-flex items-center gap-2 px-3 h-9 rounded text-sm border ${
+                        exporting ? "bg-gray-200 text-gray-600 cursor-not-allowed"
+                                  : "bg-white hover:bg-gray-50 text-gray-800 border-gray-300"
+                      }`}
+                      title="Export all categories to CSV" aria-label="Export all categories to CSV"
+                    >
+                      <ArrowDownTrayIcon className="w-5 h-5" />
+                      {exporting ? "Exporting…" : "Export CSV"}
+                    </button>
+                  </Guard>
                 </div>
               </th>
             </tr>
@@ -255,36 +301,43 @@ export default function Categories() {
                   <td className="border p-2">{c.name}</td>
                   <td className="border p-2">
                     <div className="flex gap-2 justify-center">
-                      <button
-                        onClick={() => handleEdit(c)}
-                        onKeyDown={(e)=>handleButtonKeyDown(e, ()=>handleEdit(c))}
-                        tabIndex={0}
-                        className="bg-yellow-500 text-white px-3 h-9 text-sm rounded inline-flex items-center gap-1"
-                        aria-label={`Edit category ${c.name}`}
-                      >
-                        <PencilSquareIcon className="w-5 h-5" />
-                        Edit
-                      </button>
-                      <button
-                        onClick={() =>
-                          used ? toast.error("Cannot delete: category is used by products.")
-                               : handleDelete(c)
-                        }
-                        onKeyDown={(e)=>handleButtonKeyDown(e, () =>
-                          used ? toast.error("Cannot delete: category is used by products.")
-                               : handleDelete(c)
-                        )}
-                        tabIndex={0}
-                        disabled={used}
-                        title={used ? "Cannot delete: category is used by products." : "Delete"}
-                        className={`px-3 h-9 text-sm rounded inline-flex items-center gap-1 ${
-                          used ? "bg-gray-300 text-gray-600 cursor-not-allowed" : "bg-red-600 text-white"
-                        }`}
-                        aria-label={`Delete category ${c.name}`}
-                      >
-                        <TrashIcon className="w-5 h-5" />
-                        Delete
-                      </button>
+                      {/* 🔒 Edit */}
+                      <Guard when={can.update}>
+                        <button
+                          onClick={() => handleEdit(c)}
+                          onKeyDown={(e)=>handleButtonKeyDown(e, ()=>handleEdit(c))}
+                          tabIndex={0}
+                          className="bg-yellow-500 text-white px-3 h-9 text-sm rounded inline-flex items-center gap-1"
+                          aria-label={`Edit category ${c.name}`}
+                        >
+                          <PencilSquareIcon className="w-5 h-5" />
+                          Edit
+                        </button>
+                      </Guard>
+
+                      {/* 🔒 Delete */}
+                      <Guard when={can.delete}>
+                        <button
+                          onClick={() =>
+                            used ? toast.error("Cannot delete: category is used by products.")
+                                 : handleDelete(c)
+                          }
+                          onKeyDown={(e)=>handleButtonKeyDown(e, () =>
+                            used ? toast.error("Cannot delete: category is used by products.")
+                                 : handleDelete(c)
+                          )}
+                          tabIndex={0}
+                          disabled={used}
+                          title={used ? "Cannot delete: category is used by products." : "Delete"}
+                          className={`px-3 h-9 text-sm rounded inline-flex items-center gap-1 ${
+                            used ? "bg-gray-300 text-gray-600 cursor-not-allowed" : "bg-red-600 text-white"
+                          }`}
+                          aria-label={`Delete category ${c.name}`}
+                        >
+                          <TrashIcon className="w-5 h-5" />
+                          Delete
+                        </button>
+                      </Guard>
                     </div>
                   </td>
                 </tr>
@@ -305,7 +358,7 @@ export default function Categories() {
         </div>
       </div>
 
-      {/* Import modal */}
+      {/* 🔒 Import modal only opens if user had permission (button is gated) */}
       <CategoryImportModal
         open={importOpen}
         onClose={() => setImportOpen(false)}

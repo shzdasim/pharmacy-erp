@@ -2,9 +2,7 @@
 
 namespace Database\Seeders;
 
-use App\Models\User;
 use Illuminate\Database\Seeder;
-use Illuminate\Support\Facades\Hash;
 use Spatie\Permission\Models\Permission;
 use Spatie\Permission\Models\Role;
 
@@ -14,22 +12,73 @@ class RolesAndPermissionsSeeder extends Seeder
     {
         app()[\Spatie\Permission\PermissionRegistrar::class]->forgetCachedPermissions();
 
-        $perms = [
+        $guard = 'sanctum';
+
+        // ---- Keep your existing custom perms ----
+        $baseCustom = [
+            // Users
             'user.view','user.create','user.update','user.delete',
             'user.assign.roles','user.assign.permissions','user.manage',
+            // Roles
             'role.view','role.create','role.update','role.delete','role.sync.permissions',
+            // Permissions registry
             'permission.view','permission.create','permission.delete',
-            // add your domain perms here...
+            // Legacy product/invoice (kept for compatibility if used anywhere)
             'product.view','product.create','product.update','product.delete',
             'invoice.view','invoice.create','invoice.update','invoice.delete',
         ];
 
-        foreach ($perms as $p) {
-            Permission::firstOrCreate(['name' => $p, 'guard_name' => 'sanctum']);
+        // ---- Domain modules & standard actions ----
+        // CRUD + export/import for master data
+        $masterModules = ['category','brand','supplier','product','customer'];
+        $masterActions = ['view','create','update','delete','export','import'];
+
+        // Documents (invoices/returns) – CRUD (+ export if you plan CSV/PDF dumps)
+        $docModules = [
+            'sale-invoice',
+            'purchase-invoice',
+            'sale-return',
+            'purchase-return',
+        ];
+        $docActions = ['view','create','update','delete','export'];
+
+        // Stock Adjustment – CRUD
+        $stockModules = ['stock-adjustment'];
+        $stockActions = ['view','create','update','delete'];
+
+        // Settings – usually view/update only
+        $settingsModules = ['settings'];
+        $settingsActions = ['view','update'];
+
+        // Build final list
+        $perms = [];
+
+        foreach ($baseCustom as $p) $perms[] = $p;
+
+        foreach ($masterModules as $m) {
+            foreach ($masterActions as $a) $perms[] = "{$m}.{$a}";
         }
 
-        $admin = Role::firstOrCreate(['name' => 'Admin', 'guard_name' => 'sanctum']);
-        $admin->syncPermissions(Permission::all());
+        foreach ($docModules as $m) {
+            foreach ($docActions as $a) $perms[] = "{$m}.{$a}";
+        }
+
+        foreach ($stockModules as $m) {
+            foreach ($stockActions as $a) $perms[] = "{$m}.{$a}";
+        }
+
+        foreach ($settingsModules as $m) {
+            foreach ($settingsActions as $a) $perms[] = "{$m}.{$a}";
+        }
+
+        // Create if missing
+        foreach (array_unique($perms) as $name) {
+            Permission::firstOrCreate(['name' => $name, 'guard_name' => $guard]);
+        }
+
+        // Ensure Admin role exists and has everything
+        $admin = Role::firstOrCreate(['name' => 'Admin', 'guard_name' => $guard]);
+        $admin->syncPermissions(Permission::where('guard_name', $guard)->pluck('name')->all());
 
         app()[\Spatie\Permission\PermissionRegistrar::class]->forgetCachedPermissions();
     }
