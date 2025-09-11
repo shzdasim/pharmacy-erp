@@ -7,12 +7,14 @@ use App\Models\Category;
 use App\Models\Customer;
 use App\Models\Product;
 use App\Models\PurchaseInvoice;
+use App\Models\PurchaseReturn;
 use App\Models\Supplier;
 use App\Policies\BrandPolicy;
 use App\Policies\CategoryPolicy;
 use App\Policies\CustomerPolicy;
 use App\Policies\ProductPolicy;
 use App\Policies\PurchaseInvoicePolicy;
+use App\Policies\PurchaseReturnPolicy;
 use App\Policies\SupplierPolicy;
 use Illuminate\Foundation\Support\Providers\AuthServiceProvider as ServiceProvider;
 use Illuminate\Support\Facades\Gate;
@@ -26,6 +28,7 @@ class AuthServiceProvider extends ServiceProvider
         Customer::class => CustomerPolicy::class,
         Product::class => ProductPolicy::class,
         PurchaseInvoice::class => PurchaseInvoicePolicy::class,
+        PurchaseReturn::class => PurchaseReturnPolicy::class,
     ];
     /**
      * Register any authentication / authorization services.

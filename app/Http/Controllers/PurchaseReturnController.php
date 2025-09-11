@@ -109,6 +109,7 @@ class PurchaseReturnController extends Controller
 // PurchaseReturnController@index
 public function index(Request $request)
 {
+    $this->authorize('viewAny', PurchaseReturn::class);
     $qPosted   = trim((string) $request->query('posted'));
     $qSupplier = trim((string) $request->query('supplier'));
 
@@ -129,11 +130,13 @@ public function index(Request $request)
 
     public function show(PurchaseReturn $purchaseReturn)
     {
+        $this->authorize('view', $purchaseReturn);
         return $purchaseReturn->load(['supplier', 'purchaseInvoice', 'items.product']);
     }
 
     public function store(Request $request)
     {
+        $this->authorize('create', PurchaseReturn::class);
         $data = $request->validate([
             'supplier_id'           => 'required|exists:suppliers,id',
             'posted_number'         => 'required|string',
@@ -185,6 +188,7 @@ public function index(Request $request)
 
     public function update(Request $request, PurchaseReturn $purchaseReturn)
     {
+        $this->authorize('update', $purchaseReturn);
         $data = $request->validate([
             'supplier_id'           => 'required|exists:suppliers,id',
             'posted_number'         => 'required|string',
@@ -244,6 +248,7 @@ public function index(Request $request)
 
     public function destroy(PurchaseReturn $purchaseReturn)
     {
+        $this->authorize('delete', $purchaseReturn);
         return DB::transaction(function () use ($purchaseReturn) {
             $this->revertItems($purchaseReturn);
             $purchaseReturn->items()->delete();
@@ -254,6 +259,7 @@ public function index(Request $request)
 
     public function generateNewCode()
     {
+        $this->authorize('create', PurchaseReturn::class);
         $last = PurchaseReturn::orderBy('id', 'desc')->first();
         $next = 1;
         if ($last && !empty($last->posted_number)) {
