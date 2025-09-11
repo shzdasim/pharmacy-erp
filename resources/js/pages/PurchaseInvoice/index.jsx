@@ -1,5 +1,4 @@
-// ...imports stay the same
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import axios from "axios";
 import toast from "react-hot-toast";
@@ -9,6 +8,7 @@ import {
   PencilSquareIcon,
   TrashIcon,
 } from "@heroicons/react/24/solid";
+import { usePermissions, Guard } from "@/api/usePermissions.js";
 
 export default function PurchaseInvoicesIndex() {
   const [invoices, setInvoices] = useState([]);
@@ -22,11 +22,21 @@ export default function PurchaseInvoicesIndex() {
 
   const navigate = useNavigate();
 
+  // 🔒 permissions
+  const { loading: permsLoading, canFor } = usePermissions();
+  const can = useMemo(
+    () =>
+      (typeof canFor === "function" ? canFor("purchase-invoice") : {
+        view: false, create: false, update: false, delete: false, import: false, export: false,
+      }),
+    [canFor]
+  );
+
   useEffect(() => {
-    fetchInvoices();
+    document.title = "Purchase Invoices - Pharmacy ERP";
   }, []);
 
-  // Alt+N -> create invoice (disabled while typing in inputs)
+  // Alt+N -> create invoice (only when can.create and not typing)
   useEffect(() => {
     const onKeyDown = (e) => {
       if (!e.altKey) return;
@@ -36,12 +46,19 @@ export default function PurchaseInvoicesIndex() {
       const isTyping =
         ["input", "textarea", "select"].includes(tag) || e.target?.isContentEditable;
       if (isTyping) return;
+      if (!can.create) return;
       e.preventDefault();
       navigate("/purchase-invoices/create");
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [navigate]);
+  }, [navigate, can.create]);
+
+  useEffect(() => {
+    if (permsLoading || !can.view) return;
+    fetchInvoices();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [permsLoading, can.view]);
 
   const fetchInvoices = async () => {
     try {
@@ -49,13 +66,15 @@ export default function PurchaseInvoicesIndex() {
       const res = await axios.get("/api/purchase-invoices");
       setInvoices(res.data || []);
     } catch (err) {
-      toast.error("Failed to fetch purchase invoices");
+      const status = err?.response?.status;
+      if (status === 403) toast.error("You don't have permission to view purchase invoices.");
+      else toast.error("Failed to fetch purchase invoices");
     } finally {
       setLoading(false);
     }
   };
 
-  // ===== NEW: secure delete modal state =====
+  // ===== secure delete modal =====
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [deleteStep, setDeleteStep] = useState(1); // 1=confirm, 2=password
   const [deletingId, setDeletingId] = useState(null);
@@ -63,6 +82,7 @@ export default function PurchaseInvoicesIndex() {
   const [deleting, setDeleting] = useState(false);
 
   const openDeleteModal = (id) => {
+    if (!can.delete) return toast.error("You don't have permission to delete invoices.");
     setDeletingId(id);
     setPassword("");
     setDeleteStep(1);
@@ -77,33 +97,30 @@ export default function PurchaseInvoicesIndex() {
     setPassword("");
   };
 
-  const proceedToPassword = () => {
-    setDeleteStep(2);
-  };
+  const proceedToPassword = () => setDeleteStep(2);
 
   const confirmAndDelete = async () => {
     if (!deletingId) return;
+    if (!can.delete) return toast.error("You don't have permission to delete invoices.");
     try {
       setDeleting(true);
-      // 1) confirm password
       await axios.post("/api/auth/confirm-password", { password });
-      // 2) delete invoice
       await axios.delete(`/api/purchase-invoices/${deletingId}`);
       toast.success("Invoice deleted successfully");
       closeDeleteModal();
       fetchInvoices();
     } catch (err) {
-      // if password wrong (422) or other
+      const status = err?.response?.status;
       const msg =
         err?.response?.data?.message ||
-        (err?.response?.status === 422 ? "Incorrect password" : "Failed to delete invoice");
+        (status === 422 ? "Incorrect password" : status === 403 ? "You don't have permission to delete invoices." : "Failed to delete invoice");
       toast.error(msg);
     } finally {
       setDeleting(false);
     }
   };
 
-  // ===== search + pagination (unchanged) =====
+  // ===== client search + pagination =====
   const norm = (v) => (v ?? "").toString().toLowerCase().trim();
   const filtered = useMemo(() => {
     const nPosted = norm(qPosted);
@@ -115,37 +132,38 @@ export default function PurchaseInvoicesIndex() {
     });
   }, [invoices, qPosted, qSupplier]);
 
-  useEffect(() => {
-    setPage(1);
-  }, [qPosted, qSupplier, pageSize]);
+  useEffect(() => { setPage(1); }, [qPosted, qSupplier, pageSize]);
 
   const pageCount = Math.max(1, Math.ceil(filtered.length / pageSize));
-  useEffect(() => {
-    if (page > pageCount) setPage(pageCount);
-  }, [page, pageCount]);
+  useEffect(() => { if (page > pageCount) setPage(pageCount); }, [page, pageCount]);
 
   const start = (page - 1) * pageSize;
   const paged = filtered.slice(start, start + pageSize);
 
-  if (loading) return <p className="p-6">Loading...</p>;
+  if (permsLoading) return <p className="p-6">Loading…</p>;
+  if (!can.view) return <div className="p-6 text-sm text-gray-700">You don’t have permission to view purchase invoices.</div>;
+  if (loading) return <p className="p-6">Loading…</p>;
 
   return (
     <div className="p-6">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
         <h1 className="text-2xl font-bold">Purchase Invoices</h1>
-        <Link
-          to="/purchase-invoices/create"
-          title="Add Invoice (Alt+N)"
-          aria-keyshortcuts="Alt+N"
-          className="bg-blue-600 text-white px-4 py-2 rounded flex items-center gap-2 hover:bg-blue-700"
-        >
-          <PlusCircleIcon className="w-5 h-5" />
-          Add Invoice
-          <span className="ml-2 hidden sm:inline text-xs opacity-80 border rounded px-1 py-0.5">
-            Alt+N
-          </span>
-        </Link>
+
+        <Guard when={can.create}>
+          <Link
+            to="/purchase-invoices/create"
+            title="Add Invoice (Alt+N)"
+            aria-keyshortcuts="Alt+N"
+            className="bg-blue-600 text-white px-4 py-2 rounded flex items-center gap-2 hover:bg-blue-700"
+          >
+            <PlusCircleIcon className="w-5 h-5" />
+            Add Invoice
+            <span className="ml-2 hidden sm:inline text-xs opacity-80 border rounded px-1 py-0.5">
+              Alt+N
+            </span>
+          </Link>
+        </Guard>
       </div>
 
       {/* Search toolbar */}
@@ -210,7 +228,9 @@ export default function PurchaseInvoicesIndex() {
                 <th className="p-2 border text-left">Supplier</th>
                 <th className="p-2 border text-left">Date</th>
                 <th className="p-2 border text-right">Amount</th>
-                <th className="p-2 border text-center">Actions</th>
+                {(can.update || can.delete) && (
+                  <th className="p-2 border text-center">Actions</th>
+                )}
               </tr>
             </thead>
             <tbody>
@@ -227,26 +247,32 @@ export default function PurchaseInvoicesIndex() {
                   <td className="p-2 border text-right">
                     {Number(inv.total_amount ?? 0).toLocaleString()}
                   </td>
-                  <td className="p-2 border">
-                    <div className="flex justify-center gap-2">
-                      <Link
-                        to={`/purchase-invoices/${inv.id}/edit`}
-                        className="bg-green-600 text-white px-3 py-1 rounded inline-flex items-center gap-1 hover:bg-green-700"
-                        title="Edit"
-                      >
-                        <PencilSquareIcon className="w-5 h-5" />
-                        Edit
-                      </Link>
-                      <button
-                        onClick={() => openDeleteModal(inv.id)}   
-                        className="bg-red-600 text-white px-3 py-1 rounded inline-flex items-center gap-1 hover:bg-red-700"
-                        title="Delete"
-                      >
-                        <TrashIcon className="w-5 h-5" />
-                        Delete
-                      </button>
-                    </div>
-                  </td>
+                  {(can.update || can.delete) && (
+                    <td className="p-2 border">
+                      <div className="flex justify-center gap-2">
+                        <Guard when={can.update}>
+                          <Link
+                            to={`/purchase-invoices/${inv.id}/edit`}
+                            className="bg-green-600 text-white px-3 py-1 rounded inline-flex items-center gap-1 hover:bg-green-700"
+                            title="Edit"
+                          >
+                            <PencilSquareIcon className="w-5 h-5" />
+                            Edit
+                          </Link>
+                        </Guard>
+                        <Guard when={can.delete}>
+                          <button
+                            onClick={() => openDeleteModal(inv.id)}
+                            className="bg-red-600 text-white px-3 py-1 rounded inline-flex items-center gap-1 hover:bg-red-700"
+                            title="Delete"
+                          >
+                            <TrashIcon className="w-5 h-5" />
+                            Delete
+                          </button>
+                        </Guard>
+                      </div>
+                    </td>
+                  )}
                 </tr>
               ))}
             </tbody>
@@ -265,7 +291,7 @@ export default function PurchaseInvoicesIndex() {
         </div>
       </div>
 
-      {/* ===== NEW: Delete confirmation modal ===== */}
+      {/* Delete confirmation modal */}
       {deleteModalOpen && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
@@ -281,10 +307,7 @@ export default function PurchaseInvoicesIndex() {
                   Are you sure you want to delete this invoice? This action cannot be undone.
                 </p>
                 <div className="mt-4 flex justify-end gap-2">
-                  <button
-                    className="px-3 py-1 rounded border"
-                    onClick={closeDeleteModal}
-                  >
+                  <button className="px-3 py-1 rounded border" onClick={closeDeleteModal}>
                     Cancel
                   </button>
                   <button
@@ -324,11 +347,7 @@ export default function PurchaseInvoicesIndex() {
                     ← Back
                   </button>
                   <div className="flex gap-2">
-                    <button
-                      className="px-3 py-1 rounded border"
-                      onClick={closeDeleteModal}
-                      disabled={deleting}
-                    >
+                    <button className="px-3 py-1 rounded border" onClick={closeDeleteModal} disabled={deleting}>
                       Cancel
                     </button>
                     <button

@@ -13,6 +13,7 @@ class PurchaseInvoiceController extends Controller
     // Generate new invoice code
     public function generateNewCode()
     {
+        $this->authorize('create', PurchaseInvoice::class);
         $lastInvoice = PurchaseInvoice::orderBy('id', 'desc')->first();
 
         if ($lastInvoice && $lastInvoice->posted_number && preg_match('/PRINV-(\d+)/', $lastInvoice->posted_number, $matches)) {
@@ -29,6 +30,7 @@ class PurchaseInvoiceController extends Controller
     // List all invoices
     public function index(Request $request)
     {
+        $this->authorize('viewAny', PurchaseInvoice::class);
         $qPosted   = trim((string) $request->query('posted'));
         $qSupplier = trim((string) $request->query('supplier'));
 
@@ -50,12 +52,14 @@ class PurchaseInvoiceController extends Controller
     // Show single invoice
     public function show(PurchaseInvoice $purchaseInvoice)
     {
+        $this->authorize('view', $purchaseInvoice);
         return $purchaseInvoice->load('supplier', 'items.product');
     }
 
     // Store new invoice
     public function store(Request $request)
     {
+        $this->authorize('create', PurchaseInvoice::class);
         $data = $request->validate([
             'supplier_id'          => 'required|exists:suppliers,id',
             'posted_number'        => 'required|string',
@@ -122,6 +126,7 @@ class PurchaseInvoiceController extends Controller
     // Update invoice
     public function update(Request $request, PurchaseInvoice $purchaseInvoice)
     {
+        $this->authorize('update', $purchaseInvoice);
         $data = $request->validate([
             'supplier_id'          => 'required|exists:suppliers,id',
             'posted_number'        => 'required|string',
@@ -194,6 +199,7 @@ class PurchaseInvoiceController extends Controller
     // Delete invoice
     public function destroy(PurchaseInvoice $purchaseInvoice)
     {
+        $this->authorize('delete', $purchaseInvoice);
         DB::beginTransaction();
 
         try {
@@ -322,6 +328,12 @@ class PurchaseInvoiceController extends Controller
             'invoice_number' => 'required|string',
             'exclude_id'     => 'nullable|integer',
         ]);
+        if ($request->filled('exclude_id')) {
+        $invoice = PurchaseInvoice::findOrFail($request->input('exclude_id'));
+        $this->authorize('update', $invoice);
+    } else {
+        $this->authorize('create', PurchaseInvoice::class);
+    }
 
         $query = \App\Models\PurchaseInvoice::where('supplier_id', $request->supplier_id)
             ->where('invoice_number', $request->invoice_number);
