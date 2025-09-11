@@ -11,6 +11,7 @@ class CustomerController extends Controller
 {
     public function search(Request $request)
 {
+    $this->authorize('viewAny', Customer::class);
     $q     = trim((string) $request->query('q', ''));
     $page  = max(1, (int) $request->query('page', 1));
     $limit = min(50, max(5, (int) $request->query('limit', 20)));
@@ -38,6 +39,7 @@ class CustomerController extends Controller
 
     public function index()
     {
+        $this->authorize('viewAny', Customer::class);
         // Count via subqueries (no dependency on relation names)
         $customers = Customer::query()
             ->select('customers.*')
@@ -63,6 +65,7 @@ class CustomerController extends Controller
 
     public function store(Request $request)
     {
+        $this->authorize('create', Customer::class);
         $validated = $request->validate([
             'name'    => 'required|unique:customers,name',
             'email'   => 'nullable|email|unique:customers,email',
@@ -75,11 +78,13 @@ class CustomerController extends Controller
 
     public function show(Customer $customer)
     {
+        $this->authorize('view', $customer);
         return response()->json($customer);
     }
 
     public function update(Request $request, Customer $customer)
     {
+        $this->authorize('update', $customer);
         $validated = $request->validate([
             'name'    => 'required|unique:customers,name,' . $customer->id,
             'email'   => 'nullable|email|unique:customers,email,' . $customer->id,
@@ -92,6 +97,7 @@ class CustomerController extends Controller
 
     public function destroy(Customer $customer)
     {
+        $this->authorize('delete', $customer);
         // Hard guard: block delete if referenced in invoices/returns
         $hasInvoices = DB::table('sale_invoices')->where('customer_id', $customer->id)->exists();
         $hasReturns  = DB::table('sale_returns')->where('customer_id', $customer->id)->exists();
@@ -107,6 +113,7 @@ class CustomerController extends Controller
     }
     public function export(): StreamedResponse
 {
+    $this->authorize('export', Customer::class);
     $file = 'customers_'.now()->format('Y-m-d_H-i-s').'.csv';
 
     return response()->streamDownload(function () {

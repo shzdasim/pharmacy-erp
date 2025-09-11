@@ -10,6 +10,7 @@ import {
   ArrowDownTrayIcon,
 } from "@heroicons/react/24/solid";
 import CustomerImportModal from "../components/CustomerImportModal.jsx";
+import { usePermissions, Guard } from "@/api/usePermissions.js"; // ← adjust to your path
 
 export default function Customers() {
   const [customers, setCustomers] = useState([]);
@@ -28,13 +29,15 @@ export default function Customers() {
   const saveBtnRef = useRef(null);
   const [saving, setSaving] = useState(false);
 
-  // NEW: import/export state
   const [importOpen, setImportOpen] = useState(false);
   const [exporting, setExporting] = useState(false);
 
+  // 🔒 permissions
+  const { loading: permsLoading, canFor } = usePermissions();
+  const can = canFor("customer");
+
   useEffect(() => {
     document.title = "Customers - Pharmacy ERP";
-    fetchCustomers();
   }, []);
 
   const fetchCustomers = async () => {
@@ -43,26 +46,34 @@ export default function Customers() {
       const res = await axios.get("/api/customers"); // returns transactions_count
       setCustomers(res.data || []);
     } catch (err) {
-      console.error("Failed to fetch customers", err);
-      toast.error("Failed to load customers");
+      if (err?.response?.status === 403) toast.error("You don't have permission to view customers.");
+      else toast.error("Failed to load customers");
     } finally {
       setLoading(false);
     }
   };
 
+  // initial load only when perms are ready and user can view
+  useEffect(() => {
+    if (permsLoading || !can.view) return;
+    fetchCustomers();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [permsLoading, can.view]);
+
   useEffect(() => { nameRef.current?.focus(); }, [editingId]);
 
+  // Alt+S -> Save (only if create/update allowed)
   useEffect(() => {
     const onKeyDown = (e) => {
       if (e.altKey && (e.key || "").toLowerCase() === "s") {
-        e.preventDefault();
-        handleSave();
+        if (!can.create && !can.update) return;
+        e.preventDefault(); handleSave();
       }
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [form, editingId]);
+  }, [form, editingId, can.create, can.update]);
 
   const onEnterFocusNext = (e, nextRef) => { if (e.key === "Enter") { e.preventDefault(); nextRef?.current?.focus(); } };
 
@@ -73,9 +84,15 @@ export default function Customers() {
   };
 
   const handleSave = async () => {
+    if (editingId ? !can.update : !can.create) {
+      toast.error("You don't have permission to save customers.");
+      return;
+    }
     if (saving) return;
+
     const name = (form.name || "").trim();
     if (!name) { toast.error("Name is required"); nameRef.current?.focus(); return; }
+
     try {
       setSaving(true);
       if (editingId) {
@@ -88,30 +105,35 @@ export default function Customers() {
       resetForm();
       fetchCustomers();
     } catch (err) {
-      const msg =
-        err?.response?.data?.message ||
-        err?.response?.data?.errors?.name?.[0] ||
-        err?.response?.data?.errors?.email?.[0] ||
-        "Save failed";
-      toast.error(msg);
-    } finally {
-      setSaving(false);
-    }
+      if (err?.response?.status === 403) {
+        toast.error("You don't have permission to save customers.");
+      } else {
+        const msg =
+          err?.response?.data?.message ||
+          err?.response?.data?.errors?.name?.[0] ||
+          err?.response?.data?.errors?.email?.[0] ||
+          "Save failed";
+        toast.error(msg);
+      }
+    } finally { setSaving(false); }
   };
 
   const handleEdit = (c) => {
+    if (!can.update) return toast.error("You don't have permission to edit customers.");
     setForm({ name: c.name || "", email: c.email || "", phone: c.phone || "", address: c.address || "" });
     setEditingId(c.id);
   };
 
   const handleDelete = async (c) => {
+    if (!can.delete) return toast.error("You don't have permission to delete customers.");
     try {
       await axios.delete(`/api/customers/${c.id}`);
       setCustomers((prev) => prev.filter((x) => Number(x.id) !== Number(c.id)));
       if (Number(editingId) === Number(c.id)) resetForm();
       toast.success("Customer deleted");
     } catch (err) {
-      toast.error(err?.response?.data?.message || "Delete failed");
+      if (err?.response?.status === 403) toast.error("You don't have permission to delete customers.");
+      else toast.error(err?.response?.data?.message || "Delete failed");
     }
   };
 
@@ -119,8 +141,9 @@ export default function Customers() {
     if (e.key === "Enter" || e.key === " ") { e.preventDefault(); action(); }
   };
 
-  // NEW: export all
+  // export all (only if can.export)
   const handleExport = async () => {
+    if (!can.export) return toast.error("You don't have permission to export customers.");
     try {
       setExporting(true);
       const res = await axios.get("/api/customers/export", { responseType: "blob" });
@@ -132,8 +155,8 @@ export default function Customers() {
       a.href = url; a.download = filename; document.body.appendChild(a); a.click(); a.remove();
       window.URL.revokeObjectURL(url);
     } catch (e) {
-      console.error(e);
-      toast.error("Export failed");
+      if (e?.response?.status === 403) toast.error("You don't have permission to export customers.");
+      else toast.error("Export failed");
     } finally { setExporting(false); }
   };
 
@@ -155,6 +178,12 @@ export default function Customers() {
   const start = (page - 1) * pageSize;
   const paged = filtered.slice(start, start + pageSize);
 
+  // perms loading / no-view states
+  if (permsLoading) return <div className="p-6">Loading…</div>;
+  if (!can.view) return <div className="p-6 text-sm text-gray-700">You don’t have permission to view customers.</div>;
+
+  const hasActions = can.update || can.delete;
+
   return (
     <div className="p-6">
       {/* header + search */}
@@ -171,74 +200,76 @@ export default function Customers() {
         </div>
       </div>
 
-      {/* form */}
-      <form onSubmit={(e) => e.preventDefault()} className="mb-4">
-        <div className="flex flex-col gap-2">
-          <div className="flex flex-col md:flex-row md:items-end md:gap-2">
-            <div className="flex-1 min-w-[160px]">
-              <label className="block text-xs text-gray-700 mb-1">Name</label>
-              <input
-                type="text" placeholder="Name (required)"
-                className="border rounded px-2 h-9 text-sm w-full"
-                value={form.name}
-                onChange={(e)=>setForm({ ...form, name: e.target.value })}
-                onKeyDown={(e)=>onEnterFocusNext(e, emailRef)}
-                ref={nameRef} required
-              />
+      {/* form (hidden unless can create or update) */}
+      <Guard when={can.create || can.update}>
+        <form onSubmit={(e) => e.preventDefault()} className="mb-4">
+          <div className="flex flex-col gap-2">
+            <div className="flex flex-col md:flex-row md:items-end md:gap-2">
+              <div className="flex-1 min-w-[160px]">
+                <label className="block text-xs text-gray-700 mb-1">Name</label>
+                <input
+                  type="text" placeholder="Name (required)"
+                  className="border rounded px-2 h-9 text-sm w-full"
+                  value={form.name}
+                  onChange={(e)=>setForm({ ...form, name: e.target.value })}
+                  onKeyDown={(e)=>onEnterFocusNext(e, emailRef)}
+                  ref={nameRef} required
+                />
+              </div>
+
+              <div className="flex-1 min-w-[200px]">
+                <label className="block text-xs text-gray-700 mb-1">Email</label>
+                <input
+                  type="email" placeholder="Email"
+                  className="border rounded px-2 h-9 text-sm w-full"
+                  value={form.email || ""}
+                  onChange={(e)=>setForm({ ...form, email: e.target.value })}
+                  onKeyDown={(e)=>onEnterFocusNext(e, phoneRef)}
+                  ref={emailRef}
+                />
+              </div>
+
+              <div className="w-full md:w-56">
+                <label className="block text-xs text-gray-700 mb-1">Phone</label>
+                <input
+                  type="text" placeholder="Phone"
+                  className="border rounded px-2 h-9 text-sm w-full"
+                  value={form.phone || ""}
+                  onChange={(e)=>setForm({ ...form, phone: e.target.value })}
+                  onKeyDown={(e)=>onEnterFocusNext(e, addressRef)}
+                  ref={phoneRef}
+                />
+              </div>
+
+              <div className="w-full md:flex-1 md:min-w-[240px]">
+                <label className="block text-xs text-gray-700 mb-1">Address</label>
+                <input
+                  type="text" placeholder="Address"
+                  className="border rounded px-2 h-9 text-sm w-full"
+                  value={form.address || ""}
+                  onChange={(e)=>setForm({ ...form, address: e.target.value })}
+                  onKeyDown={(e)=>onEnterFocusNext(e, saveBtnRef)}
+                  ref={addressRef}
+                />
+              </div>
             </div>
 
-            <div className="flex-1 min-w-[200px]">
-              <label className="block text-xs text-gray-700 mb-1">Email</label>
-              <input
-                type="email" placeholder="Email"
-                className="border rounded px-2 h-9 text-sm w-full"
-                value={form.email || ""}
-                onChange={(e)=>setForm({ ...form, email: e.target.value })}
-                onKeyDown={(e)=>onEnterFocusNext(e, phoneRef)}
-                ref={emailRef}
-              />
+            <div className="flex items-center justify-end">
+              <button
+                type="button" onClick={handleSave} ref={saveBtnRef}
+                title="Save (Alt+S)" aria-keyshortcuts="Alt+S"
+                className={`inline-flex items-center justify-center gap-2 px-4 h-10 rounded text-white text-sm min-w-[140px] md:w-44 ${
+                  saving ? "bg-blue-400" : "bg-blue-600 hover:bg-blue-700"
+                }`} disabled={saving || (!can.create && !can.update)}
+              >
+                <CheckCircleIcon className="w-5 h-5" />
+                {editingId ? (saving ? "Updating…" : "Update") : (saving ? "Saving…" : "Save")}
+              </button>
             </div>
-
-            <div className="w-full md:w-56">
-              <label className="block text-xs text-gray-700 mb-1">Phone</label>
-              <input
-                type="text" placeholder="Phone"
-                className="border rounded px-2 h-9 text-sm w-full"
-                value={form.phone || ""}
-                onChange={(e)=>setForm({ ...form, phone: e.target.value })}
-                onKeyDown={(e)=>onEnterFocusNext(e, addressRef)}
-                ref={phoneRef}
-              />
-            </div>
-
-            <div className="w-full md:flex-1 md:min-w-[240px]">
-              <label className="block text-xs text-gray-700 mb-1">Address</label>
-              <input
-                type="text" placeholder="Address"
-                className="border rounded px-2 h-9 text-sm w-full"
-                value={form.address || ""}
-                onChange={(e)=>setForm({ ...form, address: e.target.value })}
-                onKeyDown={(e)=>onEnterFocusNext(e, saveBtnRef)}
-                ref={addressRef}
-              />
-            </div>
+            <div className="text-[11px] text-gray-500 md:text-right">Shortcut: Alt+S</div>
           </div>
-
-          <div className="flex items-center justify-end">
-            <button
-              type="button" onClick={handleSave} ref={saveBtnRef}
-              title="Save (Alt+S)" aria-keyshortcuts="Alt+S"
-              className={`inline-flex items-center justify-center gap-2 px-4 h-10 rounded text-white text-sm min-w-[140px] md:w-44 ${
-                saving ? "bg-blue-400" : "bg-blue-600 hover:bg-blue-700"
-              }`} disabled={saving}
-            >
-              <CheckCircleIcon className="w-5 h-5" />
-              {editingId ? (saving ? "Updating…" : "Update") : (saving ? "Saving…" : "Save")}
-            </button>
-          </div>
-          <div className="text-[11px] text-gray-500 md:text-right">Shortcut: Alt+S</div>
-        </div>
-      </form>
+        </form>
+      </Guard>
 
       {/* meta */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-2">
@@ -264,48 +295,56 @@ export default function Customers() {
       <div className="w-full overflow-x-auto rounded border">
         <table className="w-full">
           <thead className="bg-gray-50 sticky top-0 z-10">
-            {/* Toolbar row */}
-            <tr>
-              <th colSpan={5} className="border p-2">
-                <div className="flex items-center justify-start gap-2">
-                  <button
-                    onClick={() => setImportOpen(true)}
-                    onKeyDown={(e)=> (e.key==="Enter"||e.key===" ") && (e.preventDefault(), setImportOpen(true))}
-                    className="inline-flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-3 h-9 rounded text-sm"
-                    title="Import Customers (CSV)" aria-label="Import customers from CSV"
-                  >
-                    <ArrowUpTrayIcon className="w-5 h-5" />
-                    Import CSV
-                  </button>
-                  <button
-                    onClick={handleExport} disabled={exporting}
-                    onKeyDown={(e)=> (e.key==="Enter"||e.key===" ") && (e.preventDefault(), handleExport())}
-                    className={`inline-flex items-center gap-2 px-3 h-9 rounded text-sm border ${
-                      exporting ? "bg-gray-200 text-gray-600 cursor-not-allowed"
-                                : "bg-white hover:bg-gray-50 text-gray-800 border-gray-300"
-                    }`}
-                    title="Export all customers to CSV" aria-label="Export all customers to CSV"
-                  >
-                    <ArrowDownTrayIcon className="w-5 h-5" />
-                    {exporting ? "Exporting…" : "Export CSV"}
-                  </button>
-                </div>
-              </th>
-            </tr>
+            {/* Toolbar row (hidden if no import/export) */}
+            {(can.import || can.export) && (
+              <tr>
+                <th colSpan={can.update || can.delete ? 5 : 4} className="border p-2">
+                  <div className="flex items-center justify-start gap-2">
+                    <Guard when={can.import}>
+                      <button
+                        onClick={() => setImportOpen(true)}
+                        onKeyDown={(e)=> (e.key==="Enter"||e.key===" ") && (e.preventDefault(), setImportOpen(true))}
+                        className="inline-flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-3 h-9 rounded text-sm"
+                        title="Import Customers (CSV)" aria-label="Import customers from CSV"
+                      >
+                        <ArrowUpTrayIcon className="w-5 h-5" />
+                        Import CSV
+                      </button>
+                    </Guard>
+                    <Guard when={can.export}>
+                      <button
+                        onClick={handleExport} disabled={exporting}
+                        onKeyDown={(e)=> (e.key==="Enter"||e.key===" ") && (e.preventDefault(), handleExport())}
+                        className={`inline-flex items-center gap-2 px-3 h-9 rounded text-sm border ${
+                          exporting ? "bg-gray-200 text-gray-600 cursor-not-allowed"
+                                    : "bg-white hover:bg-gray-50 text-gray-800 border-gray-300"
+                        }`}
+                        title="Export all customers to CSV" aria-label="Export all customers to CSV"
+                      >
+                        <ArrowDownTrayIcon className="w-5 h-5" />
+                        {exporting ? "Exporting…" : "Export CSV"}
+                      </button>
+                    </Guard>
+                  </div>
+                </th>
+              </tr>
+            )}
             {/* Column labels */}
             <tr>
               <th className="border p-2 text-left">Name</th>
               <th className="border p-2 text-left">Email</th>
               <th className="border p-2 text-left">Phone</th>
               <th className="border p-2 text-left">Address</th>
-              <th className="border p-2 text-center">Actions</th>
+              {(can.update || can.delete) && <th className="border p-2 text-center">Actions</th>}
             </tr>
           </thead>
 
           <tbody>
             {paged.length === 0 && !loading && (
               <tr>
-                <td className="border px-3 py-6 text-center text-gray-500" colSpan={5}>No customers found.</td>
+                <td className="border px-3 py-6 text-center text-gray-500" colSpan={(can.update || can.delete) ? 5 : 4}>
+                  No customers found.
+                </td>
               </tr>
             )}
             {paged.map((c) => {
@@ -316,40 +355,46 @@ export default function Customers() {
                   <td className="border p-2 break-all">{c.email}</td>
                   <td className="border p-2">{c.phone}</td>
                   <td className="border p-2">{c.address}</td>
-                  <td className="border p-2">
-                    <div className="flex gap-2 justify-center">
-                      <button
-                        onClick={() => handleEdit(c)}
-                        onKeyDown={(e)=>handleButtonKeyDown(e, ()=>handleEdit(c))}
-                        tabIndex={0}
-                        className="bg-yellow-500 text-white px-3 h-9 text-sm rounded inline-flex items-center gap-1"
-                        aria-label={`Edit customer ${c.name}`}
-                      >
-                        <PencilSquareIcon className="w-5 h-5" />
-                        Edit
-                      </button>
-                      <button
-                        onClick={() =>
-                          inUse ? toast.error("Cannot delete: customer has invoices/returns.")
-                                : handleDelete(c)
-                        }
-                        onKeyDown={(e)=>handleButtonKeyDown(e, () =>
-                          inUse ? toast.error("Cannot delete: customer has invoices/returns.")
-                                : handleDelete(c)
-                        )}
-                        tabIndex={0}
-                        disabled={inUse}
-                        title={inUse ? "Cannot delete: customer has invoices/returns." : "Delete"}
-                        className={`px-3 h-9 text-sm rounded inline-flex items-center gap-1 ${
-                          inUse ? "bg-gray-300 text-gray-600 cursor-not-allowed" : "bg-red-600 text-white"
-                        }`}
-                        aria-label={`Delete customer ${c.name}`}
-                      >
-                        <TrashIcon className="w-5 h-5" />
-                        Delete
-                      </button>
-                    </div>
-                  </td>
+                  {(can.update || can.delete) && (
+                    <td className="border p-2">
+                      <div className="flex gap-2 justify-center">
+                        <Guard when={can.update}>
+                          <button
+                            onClick={() => handleEdit(c)}
+                            onKeyDown={(e)=>handleButtonKeyDown(e, ()=>handleEdit(c))}
+                            tabIndex={0}
+                            className="bg-yellow-500 text-white px-3 h-9 text-sm rounded inline-flex items-center gap-1"
+                            aria-label={`Edit customer ${c.name}`}
+                          >
+                            <PencilSquareIcon className="w-5 h-5" />
+                            Edit
+                          </button>
+                        </Guard>
+                        <Guard when={can.delete}>
+                          <button
+                            onClick={() =>
+                              inUse ? toast.error("Cannot delete: customer has invoices/returns.")
+                                   : handleDelete(c)
+                            }
+                            onKeyDown={(e)=>handleButtonKeyDown(e, () =>
+                              inUse ? toast.error("Cannot delete: customer has invoices/returns.")
+                                   : handleDelete(c)
+                            )}
+                            tabIndex={0}
+                            disabled={inUse}
+                            title={inUse ? "Cannot delete: customer has invoices/returns." : "Delete"}
+                            className={`px-3 h-9 text-sm rounded inline-flex items-center gap-1 ${
+                              inUse ? "bg-gray-300 text-gray-600 cursor-not-allowed" : "bg-red-600 text-white"
+                            }`}
+                            aria-label={`Delete customer ${c.name}`}
+                          >
+                            <TrashIcon className="w-5 h-5" />
+                            Delete
+                          </button>
+                        </Guard>
+                      </div>
+                    </td>
+                  )}
                 </tr>
               );
             })}

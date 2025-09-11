@@ -30,12 +30,30 @@ export default function Categories() {
   const saveBtnRef = useRef(null);
 
   // 🔒 permissions
-  const { loading: permsLoading, can } = usePermissions();
+  const { loading: permsLoading, canFor } = usePermissions();
+  const can = useMemo(
+    () =>
+      (typeof canFor === "function" ? canFor("category") : null) ?? {
+        view: false,
+        create: false,
+        update: false,
+        delete: false,
+        import: false,
+        export: false,
+      },
+    [canFor]
+  );
 
   useEffect(() => {
     document.title = "Categories - Pharmacy ERP";
-    fetchCategories();
   }, []);
+
+  // Fetch only when user can view
+  useEffect(() => {
+    if (permsLoading || !can.view) return;
+    fetchCategories();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [permsLoading, can.view]);
 
   const fetchCategories = async () => {
     try {
@@ -44,11 +62,8 @@ export default function Categories() {
       setCategories(res.data || []);
     } catch (err) {
       const status = err?.response?.status;
-      if (status === 403) {
-        toast.error("You don't have permission to view categories.");
-      } else {
-        toast.error("Failed to load categories");
-      }
+      if (status === 403) toast.error("You don't have permission to view categories.");
+      else toast.error("Failed to load categories");
     } finally {
       setLoading(false);
     }
@@ -170,6 +185,10 @@ export default function Categories() {
   const paged = filtered.slice(start, start + pageSize);
 
   if (permsLoading) return <div className="p-6">Loading…</div>;
+  if (!can.view) return <div className="p-6 text-sm text-gray-700">You don’t have permission to view categories.</div>;
+
+  const hasActions = can.update || can.delete;
+  const colSpan = 1 + (hasActions ? 1 : 0);
 
   return (
     <div className="p-6">
@@ -246,52 +265,52 @@ export default function Categories() {
       <div className="w-full overflow-x-auto rounded border">
         <table className="w-full">
           <thead className="bg-gray-50 sticky top-0 z-10">
-            {/* Toolbar row */}
-            <tr>
-              <th colSpan={2} className="border p-2">
-                <div className="flex items-center justify-start gap-2">
-                  {/* 🔒 Import */}
-                  <Guard when={can.import}>
-                    <button
-                      onClick={() => setImportOpen(true)}
-                      onKeyDown={(e)=> (e.key==="Enter"||e.key===" ") && (e.preventDefault(), setImportOpen(true))}
-                      className="inline-flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-3 h-9 rounded text-sm"
-                      title="Import Categories (CSV)" aria-label="Import categories from CSV"
-                    >
-                      <ArrowUpTrayIcon className="w-5 h-5" />
-                      Import CSV
-                    </button>
-                  </Guard>
+            {/* Toolbar row (colSpan matches visible columns) */}
+            {(can.import || can.export) && (
+              <tr>
+                <th colSpan={colSpan} className="border p-2">
+                  <div className="flex items-center justify-start gap-2">
+                    <Guard when={can.import}>
+                      <button
+                        onClick={() => setImportOpen(true)}
+                        onKeyDown={(e)=> (e.key==="Enter"||e.key===" ") && (e.preventDefault(), setImportOpen(true))}
+                        className="inline-flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-3 h-9 rounded text-sm"
+                        title="Import Categories (CSV)" aria-label="Import categories from CSV"
+                      >
+                        <ArrowUpTrayIcon className="w-5 h-5" />
+                        Import CSV
+                      </button>
+                    </Guard>
+                    <Guard when={can.export}>
+                      <button
+                        onClick={handleExport} disabled={exporting}
+                        onKeyDown={(e)=> (e.key==="Enter"||e.key===" ") && (e.preventDefault(), handleExport())}
+                        className={`inline-flex items-center gap-2 px-3 h-9 rounded text-sm border ${
+                          exporting ? "bg-gray-200 text-gray-600 cursor-not-allowed"
+                                    : "bg-white hover:bg-gray-50 text-gray-800 border-gray-300"
+                        }`}
+                        title="Export all categories to CSV" aria-label="Export all categories to CSV"
+                      >
+                        <ArrowDownTrayIcon className="w-5 h-5" />
+                        {exporting ? "Exporting…" : "Export CSV"}
+                      </button>
+                    </Guard>
+                  </div>
+                </th>
+              </tr>
+            )}
 
-                  {/* 🔒 Export */}
-                  <Guard when={can.export}>
-                    <button
-                      onClick={handleExport} disabled={exporting}
-                      onKeyDown={(e)=> (e.key==="Enter"||e.key===" ") && (e.preventDefault(), handleExport())}
-                      className={`inline-flex items-center gap-2 px-3 h-9 rounded text-sm border ${
-                        exporting ? "bg-gray-200 text-gray-600 cursor-not-allowed"
-                                  : "bg-white hover:bg-gray-50 text-gray-800 border-gray-300"
-                      }`}
-                      title="Export all categories to CSV" aria-label="Export all categories to CSV"
-                    >
-                      <ArrowDownTrayIcon className="w-5 h-5" />
-                      {exporting ? "Exporting…" : "Export CSV"}
-                    </button>
-                  </Guard>
-                </div>
-              </th>
-            </tr>
             {/* column labels */}
             <tr>
               <th className="border p-2 text-left">Name</th>
-              <th className="border p-2 text-center">Actions</th>
+              {hasActions && <th className="border p-2 text-center">Actions</th>}
             </tr>
           </thead>
 
           <tbody>
             {paged.length === 0 && !loading && (
               <tr>
-                <td className="border px-3 py-6 text-center text-gray-500" colSpan={2}>No categories found.</td>
+                <td className="border px-3 py-6 text-center text-gray-500" colSpan={colSpan}>No categories found.</td>
               </tr>
             )}
             {paged.map((c) => {
@@ -299,47 +318,49 @@ export default function Categories() {
               return (
                 <tr key={c.id} className="odd:bg-white even:bg-gray-50 hover:bg-blue-50 transition-colors">
                   <td className="border p-2">{c.name}</td>
-                  <td className="border p-2">
-                    <div className="flex gap-2 justify-center">
-                      {/* 🔒 Edit */}
-                      <Guard when={can.update}>
-                        <button
-                          onClick={() => handleEdit(c)}
-                          onKeyDown={(e)=>handleButtonKeyDown(e, ()=>handleEdit(c))}
-                          tabIndex={0}
-                          className="bg-yellow-500 text-white px-3 h-9 text-sm rounded inline-flex items-center gap-1"
-                          aria-label={`Edit category ${c.name}`}
-                        >
-                          <PencilSquareIcon className="w-5 h-5" />
-                          Edit
-                        </button>
-                      </Guard>
+                  {hasActions && (
+                    <td className="border p-2">
+                      <div className="flex gap-2 justify-center">
+                        {/* 🔒 Edit */}
+                        <Guard when={can.update}>
+                          <button
+                            onClick={() => handleEdit(c)}
+                            onKeyDown={(e)=>handleButtonKeyDown(e, ()=>handleEdit(c))}
+                            tabIndex={0}
+                            className="bg-yellow-500 text-white px-3 h-9 text-sm rounded inline-flex items-center gap-1"
+                            aria-label={`Edit category ${c.name}`}
+                          >
+                            <PencilSquareIcon className="w-5 h-5" />
+                            Edit
+                          </button>
+                        </Guard>
 
-                      {/* 🔒 Delete */}
-                      <Guard when={can.delete}>
-                        <button
-                          onClick={() =>
-                            used ? toast.error("Cannot delete: category is used by products.")
-                                 : handleDelete(c)
-                          }
-                          onKeyDown={(e)=>handleButtonKeyDown(e, () =>
-                            used ? toast.error("Cannot delete: category is used by products.")
-                                 : handleDelete(c)
-                          )}
-                          tabIndex={0}
-                          disabled={used}
-                          title={used ? "Cannot delete: category is used by products." : "Delete"}
-                          className={`px-3 h-9 text-sm rounded inline-flex items-center gap-1 ${
-                            used ? "bg-gray-300 text-gray-600 cursor-not-allowed" : "bg-red-600 text-white"
-                          }`}
-                          aria-label={`Delete category ${c.name}`}
-                        >
-                          <TrashIcon className="w-5 h-5" />
-                          Delete
-                        </button>
-                      </Guard>
-                    </div>
-                  </td>
+                        {/* 🔒 Delete */}
+                        <Guard when={can.delete}>
+                          <button
+                            onClick={() =>
+                              used ? toast.error("Cannot delete: category is used by products.")
+                                   : handleDelete(c)
+                            }
+                            onKeyDown={(e)=>handleButtonKeyDown(e, () =>
+                              used ? toast.error("Cannot delete: category is used by products.")
+                                   : handleDelete(c)
+                            )}
+                            tabIndex={0}
+                            disabled={used}
+                            title={used ? "Cannot delete: category is used by products." : "Delete"}
+                            className={`px-3 h-9 text-sm rounded inline-flex items-center gap-1 ${
+                              used ? "bg-gray-300 text-gray-600 cursor-not-allowed" : "bg-red-600 text-white"
+                            }`}
+                            aria-label={`Delete category ${c.name}`}
+                          >
+                            <TrashIcon className="w-5 h-5" />
+                            Delete
+                          </button>
+                        </Guard>
+                      </div>
+                    </td>
+                  )}
                 </tr>
               );
             })}
@@ -358,7 +379,7 @@ export default function Categories() {
         </div>
       </div>
 
-      {/* 🔒 Import modal only opens if user had permission (button is gated) */}
+      {/* Import modal */}
       <CategoryImportModal
         open={importOpen}
         onClose={() => setImportOpen(false)}
