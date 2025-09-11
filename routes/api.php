@@ -120,29 +120,29 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/settings', [SettingController::class, 'update']);
 
     // Supplier Import
-    Route::get('/suppliers/import/template', [SupplierImportController::class, 'template']);
-    Route::post('/suppliers/import/validate', [SupplierImportController::class, 'validateUpload']);
-    Route::post('/suppliers/import/commit',    [SupplierImportController::class, 'commit']);
+    Route::get('/suppliers/import/template', [SupplierImportController::class, 'template']) ->middleware('permission:supplier.import');;
+    Route::post('/suppliers/import/validate', [SupplierImportController::class, 'validateUpload']) ->middleware('permission:supplier.import');;
+    Route::post('/suppliers/import/commit',    [SupplierImportController::class, 'commit']) ->middleware('permission:supplier.import');;
 
     // Brands import
-    Route::get('/brands/import/template', [BrandImportController::class, 'template']);
-    Route::post('/brands/import/validate', [BrandImportController::class, 'validateUpload']);
-    Route::post('/brands/import/commit',    [BrandImportController::class, 'commit']);
+    Route::get('/brands/import/template', [BrandImportController::class, 'template']) ->middleware('permission:brand.import');;
+    Route::post('/brands/import/validate', [BrandImportController::class, 'validateUpload']) ->middleware('permission:brand.import');;
+    Route::post('/brands/import/commit',    [BrandImportController::class, 'commit']) ->middleware('permission:brand.import');;
 
     // Categories import
-    Route::get('/categories/import/template', [CategoryImportController::class, 'template']);
-    Route::post('/categories/import/validate', [CategoryImportController::class, 'validateUpload']);
-    Route::post('/categories/import/commit',    [CategoryImportController::class, 'commit']);
+    Route::get('/categories/import/template', [CategoryImportController::class, 'template']) ->middleware('permission:category.import');;
+    Route::post('/categories/import/validate', [CategoryImportController::class, 'validateUpload']) ->middleware('permission:category.import');;
+    Route::post('/categories/import/commit',    [CategoryImportController::class, 'commit']) ->middleware('permission:category.import');;
 
     // Customers import
-    Route::get('/customers/import/template', [CustomerImportController::class, 'template']);
-    Route::post('/customers/import/validate', [CustomerImportController::class, 'validateUpload']);
-    Route::post('/customers/import/commit',    [CustomerImportController::class, 'commit']); 
+    Route::get('/customers/import/template', [CustomerImportController::class, 'template']) ->middleware('permission:customer.import');;
+    Route::post('/customers/import/validate', [CustomerImportController::class, 'validateUpload']) ->middleware('permission:customer.import');;
+    Route::post('/customers/import/commit',    [CustomerImportController::class, 'commit']) ->middleware('permission:customer.import');; 
     
     // Product import
-    Route::get('/products/import/template', [ProductImportController::class, 'template']);
-    Route::post('/products/import/validate', [ProductImportController::class, 'validateUpload']);
-    Route::post('/products/import/commit',    [ProductImportController::class, 'commit']);
+    Route::get('/products/import/template', [ProductImportController::class, 'template']) ->middleware('permission:product.import');;
+    Route::post('/products/import/validate', [ProductImportController::class, 'validateUpload']) ->middleware('permission:product.import');;
+    Route::post('/products/import/commit',    [ProductImportController::class, 'commit']) ->middleware('permission:product.import');;
 
     // Stock Adjustments
     Route::get('/stock-adjustments', [StockAdjustmentController::class, 'index']);

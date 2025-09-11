@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import axios from "axios";
 
 export function usePermissions() {
@@ -21,21 +21,26 @@ export function usePermissions() {
     })();
   }, []);
 
-  const has = (p) => roles.has("Admin") || perms.has(p);
+  const has = useCallback(
+    (ability) => roles.has("Admin") || perms.has(ability),
+    [roles, perms]
+  );
 
-  const can = useMemo(() => ({
-    // Category module abilities
-    view:   has("category.view"),
-    create: has("category.create"),
-    update: has("category.update"),
-    delete: has("category.delete"),
-    export: has("category.export"),
-    import: has("category.import"),
-  }), [roles, perms]);
+  const canFor = useCallback(
+    (mod) => ({
+      view:   has(`${mod}.view`),
+      create: has(`${mod}.create`),
+      update: has(`${mod}.update`),
+      delete: has(`${mod}.delete`),
+      export: has(`${mod}.export`),
+      import: has(`${mod}.import`),
+    }),
+    [has]
+  );
 
-  return { loading, roles, perms, has, can };
+  return { loading, roles, perms, has, canFor };
 }
 
-export function Guard({ when, fallback = null, children }) {
+export function Guard({ when, children, fallback = null }) {
   return when ? children : fallback;
 }
