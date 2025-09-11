@@ -1,6 +1,5 @@
 <?php
 
-// app/Http/Controllers/BrandController.php
 namespace App\Http\Controllers;
 
 use App\Models\Brand;
@@ -11,117 +10,114 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 class BrandController extends Controller
 {
     public function search(Request $req)
-{
-    $q     = trim($req->input('q', ''));
-    $limit = max(1, min((int)$req->input('limit', 20), 100));
+    {
+        $this->authorize('viewAny', Brand::class);
 
-    $query = Brand::select('id','name')->orderBy('name');
+        $q     = trim($req->input('q', ''));
+        $limit = max(1, min((int)$req->input('limit', 20), 100));
 
-    if ($q !== '') {
-        $query->where('name','like',"%{$q}%");
+        $query = Brand::select('id','name')->orderBy('name');
+
+        if ($q !== '') {
+            $query->where('name','like',"%{$q}%");
+        }
+
+        return $query->limit($limit)->get();
     }
-
-    return $query->limit($limit)->get();
-}
 
     public function index(Request $req)
-{
-    // page size: clamp 1..100 (default 25)
-    $perPage = max(1, min((int)$req->input('per_page', 25), 100));
+    {
+        $this->authorize('viewAny', Brand::class);
 
-    // simple name filter (like Products q_name)
-    $qName = trim((string)$req->input('q_name', ''));
+        $perPage = max(1, min((int)$req->input('per_page', 25), 100));
+        $qName = trim((string)$req->input('q_name', ''));
 
-    $q = Brand::query()
-        ->select(['id','name','image'])
-        ->withCount('products');
+        $q = Brand::query()->select(['id','name','image'])->withCount('products');
 
-    if ($qName !== '') {
-        $q->where('name', 'like', "%{$qName}%");
+        if ($qName !== '') {
+            $q->where('name', 'like', "%{$qName}%");
+        }
+
+        $q->orderBy('name');
+
+        return response()->json($q->paginate($perPage));
     }
 
-    // keep brands alphabetic (or switch to ->orderByDesc('id') to mimic “latest first”)
-    $q->orderBy('name');
+    public function store(Request $request)
+    {
+        $this->authorize('create', Brand::class);
 
-    // IMPORTANT: paginate (not get)
-    $page = $q->paginate($perPage);
-
-    return response()->json($page);
-}
-
-    public function store(Request $request) {
         $validated = $request->validate([
-            'name' => 'required|unique:brands,name',
+            'name'  => 'required|unique:brands,name',
             'image' => 'nullable|image|max:2048',
         ]);
 
         if ($request->hasFile('image')) {
-            $path = $request->file('image')->store('brands', 'public');
-            $validated['image'] = $path;
+            $validated['image'] = $request->file('image')->store('brands', 'public');
         }
 
         $brand = Brand::create($validated);
+
         return response()->json($brand, 201);
     }
 
-    public function show(Brand $brand) {
+    public function show(Brand $brand)
+    {
+        $this->authorize('view', $brand);
         return $brand;
     }
 
-    public function update(Request $request, Brand $brand) {
+    public function update(Request $request, Brand $brand)
+    {
+        $this->authorize('update', $brand);
+
         $validated = $request->validate([
-            'name' => 'required|unique:brands,name,' . $brand->id,
+            'name'  => 'required|unique:brands,name,' . $brand->id,
             'image' => 'nullable|image|max:2048',
         ]);
 
         if ($request->hasFile('image')) {
-            // delete old image if exists
-            if ($brand->image) {
-                Storage::disk('public')->delete($brand->image);
-            }
-            $path = $request->file('image')->store('brands', 'public');
-            $validated['image'] = $path;
+            if ($brand->image) Storage::disk('public')->delete($brand->image);
+            $validated['image'] = $request->file('image')->store('brands', 'public');
         }
 
         $brand->update($validated);
+
         return response()->json($brand);
     }
 
-    public function destroy(Brand $brand) {
-        // HARD GUARD: block delete if any product references this brand
+    public function destroy(Brand $brand)
+    {
+        $this->authorize('delete', $brand);
+
         if ($brand->products()->exists()) {
             return response()->json([
                 'message' => 'Cannot delete: brand is used by one or more products.'
             ], 422);
         }
-        if ($brand->image) {
-            Storage::disk('public')->delete($brand->image);
-        }
+
+        if ($brand->image) Storage::disk('public')->delete($brand->image);
         $brand->delete();
+
         return response()->json(null, 204);
     }
-    public function export(): StreamedResponse
-{
-    $file = 'brands_'.now()->format('Y-m-d_H-i-s').'.csv';
 
-    return response()->streamDownload(function () {
-        $out = fopen('php://output', 'w');
-        // UTF-8 BOM for Excel
-        fprintf($out, chr(0xEF).chr(0xBB).chr(0xBF));
-        // Header
-        fputcsv($out, ['name','image']);
-        // Rows
-        Brand::select('name','image')
-            ->orderBy('name')
-            ->chunk(1000, function ($chunk) use ($out) {
+    public function export(): StreamedResponse
+    {
+        $this->authorize('export', Brand::class);
+
+        $file = 'brands_'.now()->format('Y-m-d_H-i-s').'.csv';
+
+        return response()->streamDownload(function () {
+            $out = fopen('php://output', 'w');
+            fprintf($out, chr(0xEF).chr(0xBB).chr(0xBF)); // BOM
+            fputcsv($out, ['name','image']);
+            Brand::select('name','image')->orderBy('name')->chunk(1000, function ($chunk) use ($out) {
                 foreach ($chunk as $b) {
-                    fputcsv($out, [
-                        (string)($b->name ?? ''),
-                        (string)($b->image ?? ''), // relative path like brands/... or empty
-                    ]);
+                    fputcsv($out, [(string)($b->name ?? ''), (string)($b->image ?? '')]);
                 }
             });
-        fclose($out);
-    }, $file, ['Content-Type' => 'text/csv; charset=UTF-8']);
-}
+            fclose($out);
+        }, $file, ['Content-Type' => 'text/csv; charset=UTF-8']);
+    }
 }
