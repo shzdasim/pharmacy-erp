@@ -239,64 +239,51 @@ public function availableQuantity(\Illuminate\Http\Request $request)
     }
 
     // Delete product
-// replace your existing destroy($id) with this version
 public function destroy($id)
 {
     $product = Product::findOrFail($id);
 
-    // Hard business rules first
+    // Business rules (same as yours)
     if (($product->quantity ?? 0) > 0) {
-        return response()->json([
-            'message' => 'Cannot delete: product has on-hand quantity.'
-        ], 422);
+        return response()->json(['message' => 'Cannot delete: product has on-hand quantity.'], 422);
     }
-
     if ($product->batches()->exists()) {
-        return response()->json([
-            'message' => 'Cannot delete: product has batch records.'
-        ], 422);
+        return response()->json(['message' => 'Cannot delete: product has batch records.'], 422);
     }
 
-    // ---- NEW: block if referenced in any invoices/returns ----
-    // Assumptions (adjust if needed):
-    // - purchase_invoice_items table has product_id & purchase_invoice_id
-    // - purchase_invoices table has id & invoice_number
-    // - sale_invoice_items table has product_id & sale_invoice_id
-    // - sale_invoices table has id & invoice_number
-    // - purchase_return_items table has product_id & purchase_return_id
-    // - purchase_returns table has id & return_number (or invoice_number) -> rename below
-    // - sale_return_items table has product_id & sale_return_id
-    // - sale_returns table has id & return_number (or invoice_number) -> rename below
+    $capPerType = 8;
 
-    $capPerType = 8; // show up to 8 numbers per type in the toast
-
-    // Purchase Invoices
-    $purchaseInvoiceNos = PurchaseInvoiceItem::where('product_id', $product->id)
+    // Purchase Invoices → posted_number (fallback id)
+    $purchaseInvoiceNos = \App\Models\PurchaseInvoiceItem::where('product_id', $product->id)
         ->join('purchase_invoices', 'purchase_invoices.id', '=', 'purchase_invoice_items.purchase_invoice_id')
-        ->pluck('purchase_invoices.posted_number')
-        ->unique()
-        ->values();
+        ->pluck('purchase_invoices.posted_number', 'purchase_invoices.id')   // key = id for fallback
+        ->map(fn($num, $id) => $num ?: $id)
+        ->values()
+        ->unique();
 
-    // Sale Invoices
-    $saleInvoiceNos = SaleInvoiceItem::where('product_id', $product->id)
+    // Sale Invoices → posted_number
+    $saleInvoiceNos = \App\Models\SaleInvoiceItem::where('product_id', $product->id)
         ->join('sale_invoices', 'sale_invoices.id', '=', 'sale_invoice_items.sale_invoice_id')
-        ->pluck('sale_invoices.posted_number')
-        ->unique()
-        ->values();
+        ->pluck('sale_invoices.posted_number', 'sale_invoices.id')
+        ->map(fn($num, $id) => $num ?: $id)
+        ->values()
+        ->unique();
 
-    // Purchase Returns  (rename 'return_number' -> your actual column; sometimes it's 'invoice_number')
-    $purchaseReturnNos = PurchaseReturnItem::where('product_id', $product->id)
+    // Purchase Returns → posted_number  ✅ (fix from return_number)
+    $purchaseReturnNos = \App\Models\PurchaseReturnItem::where('product_id', $product->id)
         ->join('purchase_returns', 'purchase_returns.id', '=', 'purchase_return_items.purchase_return_id')
-        ->pluck('purchase_returns.return_number')
-        ->unique()
-        ->values();
+        ->pluck('purchase_returns.posted_number', 'purchase_returns.id')
+        ->map(fn($num, $id) => $num ?: $id)
+        ->values()
+        ->unique();
 
-    // Sale Returns (rename 'return_number' if needed)
-    $saleReturnNos = SaleReturnItem::where('product_id', $product->id)
+    // Sale Returns → posted_number
+    $saleReturnNos = \App\Models\SaleReturnItem::where('product_id', $product->id)
         ->join('sale_returns', 'sale_returns.id', '=', 'sale_return_items.sale_return_id')
-        ->pluck('sale_returns.posted_number')
-        ->unique()
-        ->values();
+        ->pluck('sale_returns.posted_number', 'sale_returns.id')
+        ->map(fn($num, $id) => $num ?: $id)
+        ->values()
+        ->unique();
 
     $hasRefs = $purchaseInvoiceNos->isNotEmpty()
         || $saleInvoiceNos->isNotEmpty()
@@ -304,7 +291,6 @@ public function destroy($id)
         || $saleReturnNos->isNotEmpty();
 
     if ($hasRefs) {
-        // Helper to pretty print with cap and “+N more”
         $fmt = function ($label, $coll) use ($capPerType) {
             if ($coll->isEmpty()) return null;
             $shown = $coll->take($capPerType)->all();
@@ -315,27 +301,24 @@ public function destroy($id)
 
         $parts = array_filter([
             $fmt('Purchase Invoices', $purchaseInvoiceNos),
-            $fmt('Sale Invoices', $saleInvoiceNos),
-            $fmt('Purchase Returns', $purchaseReturnNos),
-            $fmt('Sale Returns', $saleReturnNos),
+            $fmt('Sale Invoices',     $saleInvoiceNos),
+            $fmt('Purchase Returns',  $purchaseReturnNos),
+            $fmt('Sale Returns',      $saleReturnNos),
         ]);
 
-        // One clean message so your frontend toast shows everything nicely
-        $message = 'Product cannot be deleted because it exists in the following documents. '
-                 . implode(' | ', $parts);
-
-        return response()->json(['message' => $message], 422);
+        return response()->json([
+            'message' => 'Product cannot be deleted because it exists in the following documents. ' . implode(' | ', $parts)
+        ], 422);
     }
 
-    // If we reach here, safe to remove file and delete record
     if ($product->image) {
         Storage::disk('public')->delete($product->image);
     }
-
     $product->delete();
 
     return response()->json(['message' => 'Product deleted']);
 }
+
 
 
     public function bulkUpdateMeta(Request $request)
