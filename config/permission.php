@@ -1,6 +1,9 @@
 <?php
 
 return [
+    'defaults' => [
+        'guard' => 'sanctum', // <- important for your API-first app
+    ],
 
     'models' => [
 

@@ -9,23 +9,16 @@ use Spatie\Permission\Models\Role;
 
 class AdminUserSeeder extends Seeder
 {
-    public function run()
+    public function run(): void
     {
-        // Roles
-        $roles = ['super-admin', 'admin', 'pharmacist', 'salesman'];
-        foreach ($roles as $role) {
-            Role::firstOrCreate(['name' => $role, 'guard_name' => 'web']);
-        }
+        app()[\Spatie\Permission\PermissionRegistrar::class]->forgetCachedPermissions();
 
-        // Super Admin
-        $admin = User::firstOrCreate(
+        $user = User::firstOrCreate(
             ['email' => 'admin@example.com'],
-            [
-                'name' => 'Super Admin',
-                'password' => Hash::make('password'),
-            ]
+            ['name' => 'Admin User', 'password' => Hash::make('password123'), 'status' => 'active']
         );
 
-        $admin->assignRole('super-admin');
+        // IMPORTANT: matches the role created above and guard 'sanctum'
+        $user->syncRoles(['Admin']);
     }
 }

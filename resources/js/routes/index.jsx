@@ -39,6 +39,12 @@ import CustomerLedgerPage from "../pages/Ledger/CustomerLedgerPage.jsx";
 import UsersIndex from "../pages/users/index.jsx";
 import CreateUser from "../pages/users/Create.jsx";
 import EditUser from "../pages/users/Edit.jsx";
+import RolesIndex from "../pages/roles/index.jsx";
+import CreateRole from "../pages/roles/Create.jsx";
+import EditRole from "../pages/roles/Edit.jsx";
+
+
+
 export default function AppRoutes() {
   return (
       <Routes>
@@ -409,6 +415,37 @@ export default function AppRoutes() {
         <ProtectedRoute>
           <DashboardLayout>
             <EditUser />
+          </DashboardLayout>
+        </ProtectedRoute>
+      }
+      />
+      {/* Roles */}
+      <Route
+      path="/roles"
+      element= {
+        <ProtectedRoute>
+          <DashboardLayout>
+            <RolesIndex />
+          </DashboardLayout>
+        </ProtectedRoute>
+      }
+      />
+      <Route
+      path="/roles/create"
+      element= {
+        <ProtectedRoute>
+          <DashboardLayout>
+            <CreateRole />
+          </DashboardLayout>
+        </ProtectedRoute>
+      }
+      />
+      <Route
+      path="/roles/:id/edit"
+      element= {
+        <ProtectedRoute>
+          <DashboardLayout>
+            <EditRole />
           </DashboardLayout>
         </ProtectedRoute>
       }

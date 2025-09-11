@@ -16,15 +16,20 @@ class AuthServiceProvider extends ServiceProvider
 
         // This makes super-admin have all permissions automatically
         Gate::before(function ($user, $ability) {
-            return $user->hasRole('super-admin') ? true : null;
+            return $user->hasRole('Admin') ? true : null; // <- Admin has all abilities
         });
+
+        // keep your manage-users Gate but let’s tie it to either role or permission
         Gate::define('manage-users', function ($user) {
-        // If using spatie/permission:
-        if (method_exists($user, 'hasAnyRole')) {
-            return $user->hasAnyRole(['Admin','Manager']);
-        }
-        // else allow all authenticated users or add your own check
-        return true;
-    });
+            if (method_exists($user, 'hasAnyRole') && $user->hasAnyRole(['Admin','Manager'])) {
+                return true;
+            }
+            // OR allow via explicit permission:
+            if (method_exists($user, 'can') && $user->can('user.manage')) {
+                return true;
+            }
+            return false;
+        });
+
     }
 }

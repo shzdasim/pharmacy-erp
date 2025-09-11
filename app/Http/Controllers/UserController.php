@@ -10,16 +10,16 @@ use Illuminate\Support\Facades\Gate;
 
 class UserController extends Controller
 {
-    // GET /api/users?search=&page=&per_page=
     public function index(Request $request)
     {
-        Gate::authorize('manage-users'); // define below in AuthServiceProvider
+        Gate::authorize('manage-users');
 
-        $search   = trim($request->query('search', ''));
-        $perPage  = (int) $request->query('per_page', 15);
-        $perPage  = $perPage > 0 && $perPage <= 200 ? $perPage : 15;
+        $search  = trim($request->query('search', ''));
+        $perPage = (int) $request->query('per_page', 15);
+        $perPage = $perPage > 0 && $perPage <= 200 ? $perPage : 15;
 
         $q = User::query()
+            ->with(['roles:id,name', 'permissions:id,name'])
             ->when($search, function ($qq) use ($search) {
                 $like = '%'.$search.'%';
                 $qq->where(function ($w) use ($like) {
@@ -42,17 +42,20 @@ class UserController extends Controller
         ]);
     }
 
-    // POST /api/users
     public function store(Request $request)
     {
         Gate::authorize('manage-users');
 
         $data = $request->validate([
-            'name'     => ['required','string','max:255'],
-            'email'    => ['required','email','max:255','unique:users,email'],
-            'password' => ['required','string','min:6'],
-            'role'     => ['nullable','string','max:64'], // if using spatie roles
-            'status'   => ['nullable', Rule::in(['active','inactive'])],
+            'name'        => ['required','string','max:255'],
+            'email'       => ['required','email','max:255','unique:users,email'],
+            'password'    => ['required','string','min:6'],
+            'status'      => ['nullable', Rule::in(['active','inactive'])],
+            // NEW:
+            'roles'       => ['array'],
+            'roles.*'     => ['string','exists:roles,name'],
+            'permissions' => ['array'],
+            'permissions.*' => ['string','exists:permissions,name'],
         ]);
 
         $user = new User();
@@ -62,21 +65,18 @@ class UserController extends Controller
         $user->password = Hash::make($data['password']);
         $user->save();
 
-        if (isset($data['role']) && method_exists($user, 'assignRole')) {
-            $user->assignRole($data['role']);
-        }
+        if (!empty($data['roles']))        $user->syncRoles($data['roles']);
+        if (!empty($data['permissions']))  $user->syncPermissions($data['permissions']);
 
-        return response()->json($user, 201);
+        return response()->json($user->load('roles:id,name','permissions:id,name'), 201);
     }
 
-    // GET /api/users/{user}
     public function show(User $user)
     {
         Gate::authorize('manage-users');
-        return response()->json($user);
+        return response()->json($user->load('roles:id,name','permissions:id,name'));
     }
 
-    // PUT /api/users/{user}
     public function update(Request $request, User $user)
     {
         Gate::authorize('manage-users');
@@ -85,8 +85,12 @@ class UserController extends Controller
             'name'     => ['required','string','max:255'],
             'email'    => ['required','email','max:255', Rule::unique('users','email')->ignore($user->id)],
             'password' => ['nullable','string','min:6'],
-            'role'     => ['nullable','string','max:64'],
             'status'   => ['nullable', Rule::in(['active','inactive'])],
+            // optional role/permission sync on update:
+            'roles'       => ['sometimes','array'],
+            'roles.*'     => ['string','exists:roles,name'],
+            'permissions' => ['sometimes','array'],
+            'permissions.*' => ['string','exists:permissions,name'],
         ]);
 
         $user->name  = $data['name'];
@@ -95,24 +99,45 @@ class UserController extends Controller
         if (!empty($data['password'])) $user->password = Hash::make($data['password']);
         $user->save();
 
-        if (array_key_exists('role', $data) && method_exists($user, 'syncRoles')) {
-            $user->syncRoles($data['role'] ? [$data['role']] : []);
-        }
+        if (array_key_exists('roles', $data))        $user->syncRoles($data['roles'] ?? []);
+        if (array_key_exists('permissions', $data))  $user->syncPermissions($data['permissions'] ?? []);
 
-        return response()->json($user);
+        return response()->json($user->load('roles:id,name','permissions:id,name'));
     }
 
-    // DELETE /api/users/{user}
     public function destroy(User $user, Request $request)
     {
         Gate::authorize('manage-users');
 
-        // Don’t allow deleting yourself
         if ($request->user()->id === $user->id) {
             return response()->json(['message' => 'You cannot delete your own account.'], 422);
         }
-
         $user->delete();
         return response()->json(['message' => 'Deleted']);
+    }
+
+    // Optional: explicit endpoints if you prefer separate sync calls:
+    public function syncRoles(Request $request, User $user)
+    {
+        Gate::authorize('manage-users');
+
+        $data = $request->validate([
+            'roles' => ['array'],
+            'roles.*' => ['string','exists:roles,name'],
+        ]);
+        $user->syncRoles($data['roles'] ?? []);
+        return $user->load('roles:id,name','permissions:id,name');
+    }
+
+    public function syncPermissions(Request $request, User $user)
+    {
+        Gate::authorize('manage-users');
+
+        $data = $request->validate([
+            'permissions' => ['array'],
+            'permissions.*' => ['string','exists:permissions,name'],
+        ]);
+        $user->syncPermissions($data['permissions'] ?? []);
+        return $user->load('roles:id,name','permissions:id,name');
     }
 }

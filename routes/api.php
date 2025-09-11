@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Auth\MeController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\AuthController;
@@ -12,12 +13,14 @@ use App\Http\Controllers\CustomerController;
 use App\Http\Controllers\CustomerImportController;
 use App\Http\Controllers\CustomerLedgerController;
 use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\PermissionController;
 use App\Http\Controllers\ProductController;
 use App\Http\Controllers\ProductImportController;
 use App\Http\Controllers\PurchaseInvoiceController;
 use App\Http\Controllers\PurchaseOrderController;
 use App\Http\Controllers\PurchaseReturnController;
 use App\Http\Controllers\ReportsController;
+use App\Http\Controllers\RoleController;
 use App\Http\Controllers\SaleInvoiceController;
 use App\Http\Controllers\SaleReturnController;
 use App\Http\Controllers\SettingController;
@@ -34,8 +37,29 @@ Route::middleware('auth:sanctum')->post('/logout', [AuthController::class, 'logo
 Route::middleware('auth:sanctum')->group(function () {
     Route::post('/auth/confirm-password', [AuthController::class, 'confirmPassword']);
 
-    // Users
+
+    Route::get('/me', MeController::class);
+
+    // Users (resource already there)
     Route::resource('users', UserController::class);
+    // Optional: separate sync endpoints (if you use them)
+    Route::put('/users/{user}/roles', [UserController::class, 'syncRoles']);
+    Route::put('/users/{user}/permissions', [UserController::class, 'syncPermissions']);
+
+    // Roles
+   Route::get('/roles', [RoleController::class, 'index']);
+    Route::post('/roles', [RoleController::class, 'store']);
+    Route::get('/roles/{role}', [RoleController::class, 'show']);   // ← this must hit RoleController@show
+    Route::put('/roles/{role}', [RoleController::class, 'update']);
+    Route::delete('/roles/{role}', [RoleController::class, 'destroy']);
+
+    Route::get('/permissions', [PermissionController::class, 'index']);
+
+    // Permissions
+    Route::get('/permissions', [PermissionController::class, 'index'])->middleware('permission:permission.view');
+    Route::post('/permissions', [PermissionController::class, 'store'])->middleware('permission:permission.create');
+    Route::delete('/permissions/{permission}', [PermissionController::class, 'destroy'])->middleware('permission:permission.delete');
+
 
     Route::get('/brands/search',    [BrandController::class, 'search']);
     Route::get('/categories/search',[CategoryController::class, 'search']);
