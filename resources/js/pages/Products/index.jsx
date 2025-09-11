@@ -14,6 +14,7 @@ import {
 import Select from "react-select";
 import AsyncSelect from "react-select/async";
 import ProductImportModal from "../../components/ProductImportModal.jsx";
+import { usePermissions, Guard } from "@/api/usePermissions.js";
 
 /** ---- helpers ---- */
 const normalizeList = (payload) => {
@@ -46,8 +47,9 @@ const debouncePromise = (fn, wait = 300) => {
 };
 
 export default function ProductsIndex() {
-  const [rows, setRows] = useState([]); // current page rows
+  const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(false);
+
   // Import / Export
   const [importOpen, setImportOpen] = useState(false);
   const [exporting, setExporting] = useState(false);
@@ -73,7 +75,17 @@ export default function ProductsIndex() {
   const controllerRef = useRef(null);
   const debounceRef = useRef(null);
 
-  // === Alt+N => /products/create ===
+  // 🔒 permissions
+  const { loading: permsLoading, canFor } = usePermissions();
+  const can = useMemo(
+    () =>
+      (typeof canFor === "function" ? canFor("product") : {
+        view: false, create: false, update: false, delete: false, import: false, export: false,
+      }),
+    [canFor]
+  );
+
+  // === Alt+N => /products/create (only when can.create) ===
   useEffect(() => {
     const onKeyDown = (e) => {
       if (!e.altKey) return;
@@ -82,14 +94,16 @@ export default function ProductsIndex() {
       const tag = (e.target?.tagName || "").toLowerCase();
       const isTyping = ["input", "textarea", "select"].includes(tag) || e.target?.isContentEditable;
       if (isTyping) return;
+      if (!can.create) return; // guard
       e.preventDefault();
       navigate("/products/create");
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [navigate]);
+  }, [navigate, can.create]);
 
   const handleExport = async () => {
+    if (!can.export) return toast.error("You don't have permission to export products.");
     try {
       setExporting(true);
       const res = await axios.get("/api/products/export", { responseType: "blob" });
@@ -105,8 +119,9 @@ export default function ProductsIndex() {
       a.remove();
       window.URL.revokeObjectURL(url);
     } catch (e) {
-      console.error(e);
-      toast.error("Export failed");
+      const status = e?.response?.status;
+      if (status === 403) toast.error("You don't have permission to export products.");
+      else toast.error("Export failed");
     } finally {
       setExporting(false);
     }
@@ -126,7 +141,6 @@ export default function ProductsIndex() {
         signal,
       });
 
-      // Normalize Laravel paginator or array
       const items = Array.isArray(data?.data) ? data.data : Array.isArray(data) ? data : [];
       setRows(items);
       setTotal(Number(data?.total ?? items.length ?? 0));
@@ -135,24 +149,27 @@ export default function ProductsIndex() {
       if (page > lp) setPage(lp || 1);
     } catch (err) {
       if (axios.isCancel?.(err)) return;
-      console.error("Error fetching products", err);
-      toast.error("Failed to load products");
+      const status = err?.response?.status;
+      if (status === 403) toast.error("You don't have permission to view products.");
+      else toast.error("Failed to load products");
     } finally {
       setLoading(false);
     }
   };
 
-  // Initial + pager change (non-debounced)
+  // Initial + pager change (non-debounced) — only when can.view
   useEffect(() => {
+    if (permsLoading || !can.view) return;
     if (controllerRef.current) controllerRef.current.abort();
     const ctrl = new AbortController();
     controllerRef.current = ctrl;
     fetchProducts(ctrl.signal);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page, pageSize]);
+  }, [permsLoading, can.view, page, pageSize]);
 
-  // Debounce filter changes (qName/qBrand/qSupplier)
+  // Debounce filter changes — only when can.view
   useEffect(() => {
+    if (permsLoading || !can.view) return;
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => {
       setPage(1);
@@ -163,12 +180,12 @@ export default function ProductsIndex() {
     }, 300);
     return () => clearTimeout(debounceRef.current);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [qName, qBrand, qSupplier]);
+  }, [permsLoading, can.view, qName, qBrand, qSupplier]);
 
   const start = rows.length ? (page - 1) * pageSize + 1 : 0;
   const end = rows.length ? start + rows.length - 1 : 0;
 
-  // ===== NEW: secure delete modal state & handlers =====
+  // ===== secure delete modal state & handlers =====
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [deleteStep, setDeleteStep] = useState(1); // 1 = confirm, 2 = password
   const [deletingProduct, setDeletingProduct] = useState(null); // { id, name }
@@ -176,6 +193,7 @@ export default function ProductsIndex() {
   const [deleting, setDeleting] = useState(false);
 
   const openDeleteModal = (product) => {
+    if (!can.delete) return toast.error("You don't have permission to delete products.");
     const qty = Number(product.quantity || 0);
     const hasBatches = Number(product.batches_count || 0) > 0;
 
@@ -206,11 +224,10 @@ export default function ProductsIndex() {
 
   const confirmAndDelete = async () => {
     if (!deletingProduct?.id) return;
+    if (!can.delete) return toast.error("You don't have permission to delete products.");
     try {
       setDeleting(true);
-      // 1) confirm password (Sanctum-protected)
       await axios.post("/api/auth/confirm-password", { password });
-      // 2) delete product
       await axios.delete(`/api/products/${deletingProduct.id}`);
 
       toast.success("Product deleted");
@@ -223,15 +240,15 @@ export default function ProductsIndex() {
 
       closeDeleteModal();
 
-      // refresh current page
       if (controllerRef.current) controllerRef.current.abort();
       const ctrl = new AbortController();
       controllerRef.current = ctrl;
       fetchProducts(ctrl.signal);
     } catch (err) {
+      const status = err?.response?.status;
       const apiMsg =
         err?.response?.data?.message ||
-        (err?.response?.status === 422 ? "Incorrect password" : "Delete failed");
+        (status === 422 ? "Incorrect password" : status === 403 ? "You don't have permission to delete products." : "Delete failed");
       toast.error(apiMsg);
     } finally {
       setDeleting(false);
@@ -261,8 +278,16 @@ export default function ProductsIndex() {
   };
 
   const openBulkModal = () => {
-    setShowBulkModal(true); // async selects will fetch as user types
+    if (!can.update) return toast.error("You don't have permission to update products.");
+    setShowBulkModal(true);
   };
+
+  // permissions-driven table layout
+  const hasActions = can.update || can.delete;
+  const visibleColumns = 1 /*select*/ + 6 /*code,name,image,category,brand,supplier*/ + (hasActions ? 1 : 0);
+
+  if (permsLoading) return <div className="p-6">Loading…</div>;
+  if (!can.view) return <div className="p-6 text-sm text-gray-700">You don’t have permission to view products.</div>;
 
   return (
     <div className="p-6">
@@ -270,31 +295,36 @@ export default function ProductsIndex() {
       <div className="flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between mb-4">
         <h1 className="text-2xl font-bold">Products</h1>
         <div className="flex gap-2">
-          <button
-            disabled={selectedIds.size === 0}
-            onClick={openBulkModal}
-            className={`px-4 py-2 rounded flex items-center gap-2 ${
-              selectedIds.size === 0
-                ? "bg-gray-300 text-gray-600 cursor-not-allowed"
-                : "bg-emerald-600 text-white"
-            }`}
-            title="Edit selected products (bulk)"
-          >
-            <PencilSquareIcon className="w-5 h-5" />
-            Edit Selected ({selectedIds.size})
-          </button>
-          <Link
-            to="/products/create"
-            title="Add Product (Alt+N)"
-            aria-keyshortcuts="Alt+N"
-            className="bg-blue-600 text-white px-4 py-2 rounded flex items-center gap-2"
-          >
-            <PlusCircleIcon className="w-5 h-5" />
-            Add Product
-            <span className="ml-2 hidden sm:inline text-xs opacity-80 border rounded px-1 py-0.5">
-              Alt+N
-            </span>
-          </Link>
+          <Guard when={can.update}>
+            <button
+              disabled={selectedIds.size === 0}
+              onClick={openBulkModal}
+              className={`px-4 py-2 rounded flex items-center gap-2 ${
+                selectedIds.size === 0
+                  ? "bg-gray-300 text-gray-600 cursor-not-allowed"
+                  : "bg-emerald-600 text-white"
+              }`}
+              title="Edit selected products (bulk)"
+            >
+              <PencilSquareIcon className="w-5 h-5" />
+              Edit Selected ({selectedIds.size})
+            </button>
+          </Guard>
+
+          <Guard when={can.create}>
+            <Link
+              to="/products/create"
+              title="Add Product (Alt+N)"
+              aria-keyshortcuts="Alt+N"
+              className="bg-blue-600 text-white px-4 py-2 rounded flex items-center gap-2"
+            >
+              <PlusCircleIcon className="w-5 h-5" />
+              Add Product
+              <span className="ml-2 hidden sm:inline text-xs opacity-80 border rounded px-1 py-0.5">
+                Alt+N
+              </span>
+            </Link>
+          </Guard>
         </div>
       </div>
 
@@ -336,35 +366,42 @@ export default function ProductsIndex() {
       <div className="w-full overflow-x-auto rounded border">
         <table className="w-full">
           <thead className="bg-gray-50 sticky top-0">
-            <tr>
-              <th colSpan={8} className="border p-2">
-                <div className="flex items-center justify-start gap-2">
-                  <button
-                    onClick={() => setImportOpen(true)}
-                    className="inline-flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-3 h-9 rounded text-sm"
-                    title="Import Products (CSV)"
-                    aria-label="Import products from CSV"
-                  >
-                    <ArrowUpTrayIcon className="w-5 h-5" />
-                    Import CSV
-                  </button>
-                  <button
-                    onClick={handleExport}
-                    disabled={exporting}
-                    className={`inline-flex items-center gap-2 px-3 h-9 rounded text-sm border ${
-                      exporting
-                        ? "bg-gray-200 text-gray-600 cursor-not-allowed"
-                        : "bg-white hover:bg-gray-50 text-gray-800 border-gray-300"
-                    }`}
-                    title="Export all products to CSV"
-                    aria-label="Export all products to CSV"
-                  >
-                    <ArrowDownTrayIcon className="w-5 h-5" />
-                    {exporting ? "Exporting…" : "Export CSV"}
-                  </button>
-                </div>
-              </th>
-            </tr>
+            {(can.import || can.export) && (
+              <tr>
+                <th colSpan={visibleColumns} className="border p-2">
+                  <div className="flex items-center justify-start gap-2">
+                    <Guard when={can.import}>
+                      <button
+                        onClick={() => setImportOpen(true)}
+                        className="inline-flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-3 h-9 rounded text-sm"
+                        title="Import Products (CSV)"
+                        aria-label="Import products from CSV"
+                      >
+                        <ArrowUpTrayIcon className="w-5 h-5" />
+                        Import CSV
+                      </button>
+                    </Guard>
+                    <Guard when={can.export}>
+                      <button
+                        onClick={handleExport}
+                        disabled={exporting}
+                        className={`inline-flex items-center gap-2 px-3 h-9 rounded text-sm border ${
+                          exporting
+                            ? "bg-gray-200 text-gray-600 cursor-not-allowed"
+                            : "bg-white hover:bg-gray-50 text-gray-800 border-gray-300"
+                        }`}
+                        title="Export all products to CSV"
+                        aria-label="Export all products to CSV"
+                      >
+                        <ArrowDownTrayIcon className="w-5 h-5" />
+                        {exporting ? "Exporting…" : "Export CSV"}
+                      </button>
+                    </Guard>
+                  </div>
+                </th>
+              </tr>
+            )}
+
             <tr>
               <th className="border px-2 py-2 text-left">
                 <input
@@ -383,13 +420,13 @@ export default function ProductsIndex() {
               <th className="border px-2 py-2 text-left">Category</th>
               <th className="border px-2 py-2 text-left">Brand</th>
               <th className="border px-2 py-2 text-left">Supplier</th>
-              <th className="border px-2 py-2 text-center">Actions</th>
+              {hasActions && <th className="border px-2 py-2 text-center">Actions</th>}
             </tr>
           </thead>
           <tbody>
             {rows.length === 0 && !loading && (
               <tr>
-                <td className="border px-3 py-6 text-center text-gray-500" colSpan={8}>
+                <td className="border px-3 py-6 text-center text-gray-500" colSpan={visibleColumns}>
                   No products found.
                 </td>
               </tr>
@@ -434,30 +471,36 @@ export default function ProductsIndex() {
                   <td className="border px-2 py-2">{p.category?.name}</td>
                   <td className="border px-2 py-2">{p.brand?.name}</td>
                   <td className="border px-2 py-2">{p.supplier?.name}</td>
-                  <td className="border px-2 py-2">
-                    <div className="flex gap-2 justify-center">
-                      <Link
-                        to={`/products/${p.id}/edit`}
-                        className="bg-yellow-500 text-white px-3 py-1 rounded flex items-center gap-1"
-                      >
-                        <PencilSquareIcon className="w-5 h-5" />
-                        Edit
-                      </Link>
-                      <button
-                        onClick={() => openDeleteModal(p)}
-                        disabled={deleteDisabled}
-                        title={deleteTitle}
-                        className={`px-3 py-1 rounded flex items-center gap-1 ${
-                          deleteDisabled
-                            ? "bg-gray-300 text-gray-600 cursor-not-allowed"
-                            : "bg-red-600 text-white"
-                        }`}
-                      >
-                        <TrashIcon className="w-5 h-5" />
-                        Delete
-                      </button>
-                    </div>
-                  </td>
+                  {hasActions && (
+                    <td className="border px-2 py-2">
+                      <div className="flex gap-2 justify-center">
+                        <Guard when={can.update}>
+                          <Link
+                            to={`/products/${p.id}/edit`}
+                            className="bg-yellow-500 text-white px-3 py-1 rounded flex items-center gap-1"
+                          >
+                            <PencilSquareIcon className="w-5 h-5" />
+                            Edit
+                          </Link>
+                        </Guard>
+                        <Guard when={can.delete}>
+                          <button
+                            onClick={() => openDeleteModal(p)}
+                            disabled={deleteDisabled}
+                            title={deleteTitle}
+                            className={`px-3 py-1 rounded flex items-center gap-1 ${
+                              deleteDisabled
+                                ? "bg-gray-300 text-gray-600 cursor-not-allowed"
+                                : "bg-red-600 text-white"
+                            }`}
+                          >
+                            <TrashIcon className="w-5 h-5" />
+                            Delete
+                          </button>
+                        </Guard>
+                      </div>
+                    </td>
+                  )}
                 </tr>
               );
             })}
@@ -519,10 +562,10 @@ export default function ProductsIndex() {
         />
       )}
 
-      {/* Import modal */}
+      {/* Import modal (button is permission-guarded above) */}
       <ProductImportModal open={importOpen} onClose={() => setImportOpen(false)} onImported={fetchProducts} />
 
-      {/* ===== NEW: Delete confirmation modal ===== */}
+      {/* Delete confirmation modal */}
       {deleteModalOpen && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
@@ -536,9 +579,7 @@ export default function ProductsIndex() {
                 <h2 className="text-lg font-semibold mb-2">Delete product?</h2>
                 <p className="text-sm text-gray-600">
                   {deletingProduct?.name ? (
-                    <>
-                      Are you sure you want to delete <strong>{deletingProduct.name}</strong>?{" "}
-                    </>
+                    <>Are you sure you want to delete <strong>{deletingProduct.name}</strong>? </>
                   ) : (
                     "Are you sure you want to delete this product? "
                   )}
@@ -561,9 +602,7 @@ export default function ProductsIndex() {
             {deleteStep === 2 && (
               <div>
                 <h2 className="text-lg font-semibold mb-2">Confirm with password</h2>
-                <p className="text-sm text-gray-600">
-                  For security, please re-enter your password to delete this product.
-                </p>
+                <p className="text-sm text-gray-600">For security, please re-enter your password to delete this product.</p>
                 <input
                   type="password"
                   autoFocus
@@ -577,11 +616,7 @@ export default function ProductsIndex() {
                   }}
                 />
                 <div className="mt-4 flex justify-between">
-                  <button
-                    className="px-3 py-1 rounded border"
-                    onClick={() => setDeleteStep(1)}
-                    disabled={deleting}
-                  >
+                  <button className="px-3 py-1 rounded border" onClick={() => setDeleteStep(1)} disabled={deleting}>
                     ← Back
                   </button>
                   <div className="flex gap-2">
@@ -629,15 +664,11 @@ function BulkEditModal({ onClose, selectedCount, selectedIds, onSaved }) {
   const [brandOpt, setBrandOpt] = useState(null);
   const [suppOpt, setSuppOpt] = useState(null);
 
-  const selectStyles = {
-    menuPortal: (base) => ({ ...base, zIndex: 9999 }),
-  };
+  const selectStyles = { menuPortal: (base) => ({ ...base, zIndex: 9999 }) };
 
   // remote fetchers
   const fetchOptions = async (endpoint, inputValue) => {
-    const { data } = await axios.get(endpoint, {
-      params: { q: inputValue || "", limit: 20 },
-    });
+    const { data } = await axios.get(endpoint, { params: { q: inputValue || "", limit: 20 } });
     const list = normalizeList(data);
     return list.map((i) => ({ value: i.id, label: i.name }));
   };
@@ -656,11 +687,8 @@ function BulkEditModal({ onClose, selectedCount, selectedIds, onSaved }) {
   );
 
   const submit = async () => {
-    if (!catOpt && !brandOpt && !suppOpt) {
-      toast.error("Choose at least one field to update.");
-      return;
-    }
     try {
+      if (!catOpt && !brandOpt && !suppOpt) return toast.error("Choose at least one field to update.");
       setSaving(true);
       await axios.patch("/api/products/bulk-update-meta", {
         product_ids: selectedIds,
@@ -671,7 +699,6 @@ function BulkEditModal({ onClose, selectedCount, selectedIds, onSaved }) {
       toast.success("Products updated successfully");
       await onSaved();
     } catch (e) {
-      console.error(e);
       const apiMsg = e?.response?.data?.message || "Bulk update failed";
       toast.error(apiMsg);
     } finally {
@@ -692,9 +719,7 @@ function BulkEditModal({ onClose, selectedCount, selectedIds, onSaved }) {
           </div>
 
           <div className="p-4 space-y-4">
-            <p className="text-sm text-gray-600">
-              Leave any field blank to keep current values for that field.
-            </p>
+            <p className="text-sm text-gray-600">Leave any field blank to keep current values for that field.</p>
 
             <div className="grid grid-cols-1 gap-4">
               <div>
@@ -755,9 +780,7 @@ function BulkEditModal({ onClose, selectedCount, selectedIds, onSaved }) {
               Cancel
             </button>
             <button
-              className={`px-4 py-2 rounded text-white ${
-                saving ? "bg-emerald-400" : "bg-emerald-600 hover:bg-emerald-700"
-              }`}
+              className={`px-4 py-2 rounded text-white ${saving ? "bg-emerald-400" : "bg-emerald-600 hover:bg-emerald-700"}`}
               onClick={submit}
               disabled={saving}
             >

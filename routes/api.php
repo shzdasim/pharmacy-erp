@@ -81,8 +81,22 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('products/{product}/batches', [BatchController::class, 'index']);
     Route::get('products/available-quantity', [ProductController::class, 'availableQuantity']);
     Route::patch('/products/bulk-update-meta', [ProductController::class, 'bulkUpdateMeta']);
-    Route::get('/products/export', [ProductController::class, 'export'])->name('products.export');
-    Route::apiResource('products', ProductController::class);
+    Route::get('/products', [ProductController::class, 'index']); // policy: viewAny
+    Route::post('/products', [ProductController::class, 'store'])
+        ->middleware('can:product.create');
+
+    Route::get('/products/{id}', [ProductController::class, 'show']);  // policy: view(model)
+    Route::post('/products/{id}', [ProductController::class, 'update']) // method spoof PUT
+        ->middleware('can:product.update');
+
+    Route::delete('/products/{id}', [ProductController::class, 'destroy'])
+        ->middleware('can:product.delete');
+
+    Route::get('/products/export', [ProductController::class, 'export'])
+        ->middleware('can:product.export'); // if you have it
+
+    Route::patch('/products/bulk-update-meta', [ProductController::class, 'bulkUpdateMeta'])
+        ->middleware('can:product.update'); // or custom gate
 
     // Purchases
     Route::get('purchase-invoices/new-code', [PurchaseInvoiceController::class, 'generateNewCode']);

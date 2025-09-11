@@ -18,6 +18,8 @@ class ProductController extends Controller
 
     public function search(Request $req)
 {
+    $this->authorize('viewAny', Product::class);
+
     $q     = trim($req->input('q', ''));
     $ids   = $req->input('ids'); // can be array or comma-separated
     $limit = max(1, min((int)$req->input('limit', 30), 1000));
@@ -55,6 +57,7 @@ class ProductController extends Controller
 
 public function generateNewCode()
 {
+    $this->authorize('create', Product::class);
     // Get last product by id (latest)
     $lastProduct = Product::orderBy('id', 'desc')->first();
 
@@ -82,6 +85,7 @@ public function generateNewCode()
 
 public function availableQuantity(\Illuminate\Http\Request $request)
 {
+    $this->authorize('viewAny', Product::class);
     $productId = $request->query('product_id');
     $batch     = $request->query('batch');
 
@@ -115,6 +119,7 @@ public function availableQuantity(\Illuminate\Http\Request $request)
 
     public function index(Request $req)
 {
+    $this->authorize('viewAny', Product::class);
     // page size: clamp between 1 and 100 (default 25 or what you like)
     $perPage = max(1, min((int)$req->input('per_page', 25), 100));
 
@@ -160,6 +165,7 @@ public function availableQuantity(\Illuminate\Http\Request $request)
     // Store new product
     public function store(Request $request)
     {
+        $this->authorize('create', Product::class);
         $validated = $request->validate([
             'product_code' => 'required|unique:products,product_code',
             'name' => 'required|unique:products,name',
@@ -195,14 +201,16 @@ public function availableQuantity(\Illuminate\Http\Request $request)
     // Show single product
     public function show($id)
     {
-        return Product::with(['brand', 'category', 'supplier'])->findOrFail($id);
+        $product = Product::with(['brand','category','supplier'])->findOrFail($id);
+        $this->authorize('view', $product); // ✅ model, not class
+        return response()->json($product);
     }
 
     // Update product
     public function update(Request $request, $id)
     {
         $product = Product::findOrFail($id);
-        
+        $this->authorize('update', $product); // ✅ model, not class
         $validated = $request->validate([
             'product_code' => ['required', Rule::unique('products', 'product_code')->ignore($product->id)],
             'name' => ['required', Rule::unique('products', 'name')->ignore($product->id)],
@@ -242,7 +250,7 @@ public function availableQuantity(\Illuminate\Http\Request $request)
 public function destroy($id)
 {
     $product = Product::findOrFail($id);
-
+    $this->authorize('delete', $product); // ✅ model, not class
     // Business rules (same as yours)
     if (($product->quantity ?? 0) > 0) {
         return response()->json(['message' => 'Cannot delete: product has on-hand quantity.'], 422);
@@ -323,6 +331,7 @@ public function destroy($id)
 
     public function bulkUpdateMeta(Request $request)
 {
+    $this->authorize('bulkUpdate', Product::class);
     $validated = $request->validate([
         'product_ids'   => 'required|array|min:1',
         'product_ids.*' => 'integer|exists:products,id',
@@ -354,6 +363,7 @@ public function destroy($id)
 
 public function export(): StreamedResponse
 {
+    $this->authorize('export', Product::class);
     $file = 'products_'.now()->format('Y-m-d_H-i-s').'.csv';
 
     return response()->streamDownload(function () {
