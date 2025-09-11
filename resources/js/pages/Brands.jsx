@@ -10,29 +10,35 @@ import {
   ArrowDownTrayIcon,
 } from "@heroicons/react/24/solid";
 import BrandImportModal from "../components/BrandImportModal.jsx";
-import { usePermissions, Guard } from "@/api/usePermissions.js";
+import { usePermissions, Guard } from "@/api/usePermissions.js"; // ← adjust if no @ alias
 
 export default function Brands() {
+  // rows = current page rows (server-side)
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(false);
   const [exporting, setExporting] = useState(false);
 
+  // form/edit
   const [form, setForm] = useState({ name: "", image: null });
   const [editingId, setEditingId] = useState(null);
   const [preview, setPreview] = useState(null);
   const [saving, setSaving] = useState(false);
 
+  // import modal
   const [importOpen, setImportOpen] = useState(false);
 
+  // search + server pagination (match Products)
   const [qName, setQName] = useState("");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const [total, setTotal] = useState(0);
   const [lastPage, setLastPage] = useState(1);
 
+  // focus + save
   const nameRef = useRef(null);
   const saveBtnRef = useRef(null);
 
+  // fetch control (match Products)
   const controllerRef = useRef(null);
   const debounceRef = useRef(null);
 
@@ -43,7 +49,7 @@ export default function Brands() {
   useEffect(() => { document.title = "Brands - Pharmacy ERP"; }, []);
   useEffect(() => { nameRef.current?.focus(); }, [editingId]);
 
-  // Alt+S only if create/update allowed
+  // Keyboard shortcut Alt+S to save (only when allowed)
   useEffect(() => {
     const onKeyDown = (e) => {
       if (e.altKey && (e.key || "").toLowerCase() === "s") {
@@ -54,12 +60,14 @@ export default function Brands() {
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [form, editingId, can.create, can.update]);
 
   const onEnterFocusSave = (e) => {
     if (e.key === "Enter") { e.preventDefault(); saveBtnRef.current?.focus(); }
   };
 
+  // === SERVER FETCH (identical shape to Products) ===
   const fetchBrands = async (signal) => {
     try {
       setLoading(true);
@@ -68,6 +76,7 @@ export default function Brands() {
         signal,
       });
 
+      // Expect Laravel paginator
       const items = Array.isArray(data?.data)
         ? data.data
         : Array.isArray(data)
@@ -78,6 +87,7 @@ export default function Brands() {
       setTotal(Number(data?.total ?? items.length ?? 0));
       const lp = Number(data?.last_page ?? 1);
       setLastPage(lp);
+
       if (page > lp) setPage(lp || 1);
     } catch (err) {
       if (axios.isCancel?.(err)) return;
@@ -88,7 +98,7 @@ export default function Brands() {
     }
   };
 
-  // initial + page/pageSize (only when can.view is true)
+  // Initial + page/pageSize change (non-debounced) — only when can.view
   useEffect(() => {
     if (permsLoading || !can.view) return;
     if (controllerRef.current) controllerRef.current.abort();
@@ -96,9 +106,9 @@ export default function Brands() {
     controllerRef.current = ctrl;
     fetchBrands(ctrl.signal);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page, pageSize, can.view, permsLoading]);
+  }, [page, pageSize, permsLoading, can.view]);
 
-  // debounce search
+  // Debounce search (qName) — only when can.view
   useEffect(() => {
     if (permsLoading || !can.view) return;
     if (debounceRef.current) clearTimeout(debounceRef.current);
@@ -111,12 +121,14 @@ export default function Brands() {
     }, 300);
     return () => clearTimeout(debounceRef.current);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [qName, can.view, permsLoading]);
+  }, [qName, permsLoading, can.view]);
 
   const start = rows.length ? (page - 1) * pageSize + 1 : 0;
   const end = rows.length ? start + rows.length - 1 : 0;
 
-  const handleInputChange = (e) => setForm({ ...form, [e.target.name]: e.target.value });
+  // form helpers
+  const handleInputChange = (e) =>
+    setForm({ ...form, [e.target.name]: e.target.value });
 
   const handleFileChange = (e) => {
     const file = e.target.files?.[0] ?? null;
@@ -139,38 +151,51 @@ export default function Brands() {
     if (saving) return;
 
     const name = (form.name || "").trim();
-    if (!name) { toast.error("Name is required"); nameRef.current?.focus(); return; }
-
+    if (!name) {
+      toast.error("Name is required");
+      nameRef.current?.focus();
+      return;
+    }
     try {
       setSaving(true);
-      const fd = new FormData();
-      fd.append("name", name);
-      if (form.image) fd.append("image", form.image);
+      const data = new FormData();
+      data.append("name", name);
+      if (form.image) data.append("image", form.image);
 
       if (editingId) {
-        fd.append("_method", "PUT");
-        await axios.post(`/api/brands/${editingId}`, fd, { headers: { "Content-Type": "multipart/form-data" } });
+        data.append("_method", "PUT");
+        await axios.post(`/api/brands/${editingId}`, data, {
+          headers: { "Content-Type": "multipart/form-data" },
+        });
         toast.success("Brand updated");
       } else {
-        await axios.post("/api/brands", fd, { headers: { "Content-Type": "multipart/form-data" } });
+        await axios.post("/api/brands", data, {
+          headers: { "Content-Type": "multipart/form-data" },
+        });
         toast.success("Brand saved");
       }
 
       resetForm();
+
+      // refetch current page
       if (controllerRef.current) controllerRef.current.abort();
       const ctrl = new AbortController();
       controllerRef.current = ctrl;
       await fetchBrands(ctrl.signal);
     } catch (err) {
-      if (err?.response?.status === 403) toast.error("You don't have permission to save brands.");
-      else {
-        const msg = err?.response?.data?.message
-          || err?.response?.data?.errors?.name?.[0]
-          || err?.response?.data?.errors?.image?.[0]
-          || "Save failed";
+      if (err?.response?.status === 403) {
+        toast.error("You don't have permission to save brands.");
+      } else {
+        const msg =
+          err?.response?.data?.message ||
+          err?.response?.data?.errors?.name?.[0] ||
+          err?.response?.data?.errors?.image?.[0] ||
+          "Save failed";
         toast.error(msg);
       }
-    } finally { setSaving(false); }
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleEdit = (b) => {
@@ -188,10 +213,12 @@ export default function Brands() {
     try {
       await axios.delete(`/api/brands/${b.id}`);
       toast.success("Brand deleted");
+
       if (controllerRef.current) controllerRef.current.abort();
       const ctrl = new AbortController();
       controllerRef.current = ctrl;
       await fetchBrands(ctrl.signal);
+
       if (editingId === b.id) resetForm();
     } catch (err) {
       if (err?.response?.status === 403) toast.error("You don't have permission to delete brands.");
@@ -199,32 +226,38 @@ export default function Brands() {
     }
   };
 
+  const handleButtonKeyDown = (e, action) => {
+    if (e.key === "Enter" || e.key === " ") { e.preventDefault(); action(); }
+  };
+
+  // export all brands
   const handleExport = async () => {
     if (!can.export) return toast.error("You don't have permission to export brands.");
     try {
       setExporting(true);
       const res = await axios.get("/api/brands/export", { responseType: "blob" });
       const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
+      const filename = `brands_${stamp}.csv`;
       const blob = new Blob([res.data], { type: "text/csv;charset=utf-8" });
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement("a");
-      a.href = url; a.download = `brands_${stamp}.csv`;
-      document.body.appendChild(a); a.click(); a.remove();
+      a.href = url; a.download = filename; document.body.appendChild(a); a.click(); a.remove();
       window.URL.revokeObjectURL(url);
     } catch (e) {
       if (e?.response?.status === 403) toast.error("You don't have permission to export brands.");
       else toast.error("Export failed");
-    } finally { setExporting(false); }
+    } finally {
+      setExporting(false);
+    }
   };
 
-  const handleButtonKeyDown = (e, action) => {
-    if (e.key === "Enter" || e.key === " ") { e.preventDefault(); action(); }
-  };
-
-  // perms loading UI
+  // perms loading / no-view states
   if (permsLoading) return <div className="p-6">Loading…</div>;
-  // no view perms → hide whole screen
   if (!can.view) return <div className="p-6 text-sm text-gray-700">You don’t have permission to view brands.</div>;
+
+  const hasActions = can.update || can.delete;
+  const toolbarColSpan = hasActions ? 3 : 2;
+  const emptyColSpan = hasActions ? 3 : 2;
 
   return (
     <div className="p-6">
@@ -242,7 +275,7 @@ export default function Brands() {
         </div>
       </div>
 
-      {/* form (create/update) */}
+      {/* form (hidden if no create/update) */}
       <Guard when={can.create || can.update}>
         <form onSubmit={(e) => e.preventDefault()} className="mb-4" encType="multipart/form-data">
           <div className="flex flex-col gap-2">
@@ -295,29 +328,41 @@ export default function Brands() {
       {/* meta */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-2">
         <div className="text-sm text-gray-600">
-          {loading ? "Loading…" : <>Showing <strong>{rows.length === 0 ? 0 : start}-{end}</strong> of <strong>{total}</strong></>}
+          {loading ? "Loading…" : (
+            <>
+              Showing <strong>{rows.length === 0 ? 0 : start}-{end}</strong>{" "}
+              of <strong>{total}</strong>
+            </>
+          )}
         </div>
         <div className="flex items-center gap-2">
           <label className="text-sm text-gray-600">Rows per page</label>
-          <select value={pageSize} onChange={(e) => setPageSize(Number(e.target.value))}
-                  className="border rounded px-2 h-9 text-sm">
-            <option value={10}>10</option><option value={25}>25</option><option value={50}>50</option><option value={100}>100</option>
+          <select
+            value={pageSize}
+            onChange={(e) => setPageSize(Number(e.target.value))}
+            className="border rounded px-2 h-9 text-sm"
+          >
+            <option value={10}>10</option>
+            <option value={25}>25</option>
+            <option value={50}>50</option>
+            <option value={100}>100</option>
           </select>
         </div>
       </div>
 
-      {/* table */}
+      {/* table with toolbar in header */}
       <div className="w-full overflow-x-auto rounded border">
         <table className="w-full">
           <thead className="bg-gray-50 sticky top-0 z-10">
+            {/* Toolbar row (hidden if no import/export) */}
             {(can.import || can.export) && (
               <tr>
-                <th colSpan={3} className="border p-2">
+                <th colSpan={toolbarColSpan} className="border p-2">
                   <div className="flex items-center justify-start gap-2">
                     <Guard when={can.import}>
                       <button
                         onClick={() => setImportOpen(true)}
-                        onKeyDown={(e) => (e.key==="Enter"||e.key===" ") && (e.preventDefault(), setImportOpen(true))}
+                        onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && (e.preventDefault(), setImportOpen(true))}
                         className="inline-flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-3 h-9 rounded text-sm"
                         title="Import Brands (CSV)" aria-label="Import brands from CSV"
                       >
@@ -343,35 +388,33 @@ export default function Brands() {
                 </th>
               </tr>
             )}
-
+            {/* column labels */}
             <tr>
               <th className="border p-2 text-left">Name</th>
               <th className="border p-2 text-left">Image</th>
-              {(can.update || can.delete) && <th className="border p-2 text-center">Actions</th>}
+              {hasActions && <th className="border p-2 text-center">Actions</th>}
             </tr>
           </thead>
 
           <tbody>
             {rows.length === 0 && !loading && (
               <tr>
-                <td className="border px-3 py-6 text-center text-gray-500" colSpan={(can.update || can.delete) ? 3 : 2}>
+                <td className="border px-3 py-6 text-center text-gray-500" colSpan={emptyColSpan}>
                   No brands found.
                 </td>
               </tr>
             )}
-
             {rows.map((b) => {
               const used = Number(b.products_count || 0) > 0;
               return (
                 <tr key={b.id} className="odd:bg-white even:bg-gray-50 hover:bg-blue-50 transition-colors">
                   <td className="border p-2">{b.name}</td>
                   <td className="border p-2">
-                    {b.image
-                      ? <img src={`/storage/${b.image}`} alt={b.name} className="w-16 h-16 object-contain border rounded bg-white" />
-                      : <span className="text-gray-500 text-sm">No image</span>}
+                    {b.image ? (
+                      <img src={`/storage/${b.image}`} alt={b.name} className="w-16 h-16 object-contain border rounded bg-white" />
+                    ) : <span className="text-gray-500 text-sm">No image</span>}
                   </td>
-
-                  {(can.update || can.delete) && (
+                  {hasActions && (
                     <td className="border p-2">
                       <div className="flex gap-2 justify-center">
                         <Guard when={can.update}>
@@ -386,7 +429,6 @@ export default function Brands() {
                             Edit
                           </button>
                         </Guard>
-
                         <Guard when={can.delete}>
                           <button
                             onClick={() => used ? toast.error("Cannot delete: brand is used by products.") : handleDelete(b)}
@@ -413,7 +455,7 @@ export default function Brands() {
         </table>
       </div>
 
-      {/* pagination */}
+      {/* pagination (server) */}
       <div className="mt-4 flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between">
         <div className="text-sm text-gray-600">Page {page} of {lastPage}</div>
         <div className="flex items-center gap-2">
@@ -424,7 +466,7 @@ export default function Brands() {
         </div>
       </div>
 
-      {/* import modal (button is gated) */}
+      {/* Import modal */}
       <BrandImportModal
         open={importOpen}
         onClose={() => setImportOpen(false)}
