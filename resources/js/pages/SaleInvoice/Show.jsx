@@ -2,6 +2,8 @@ import { useEffect, useRef, useState, useMemo } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import axios from "axios";
 import toast from "react-hot-toast";
+// 🔒 add permissions
+import { usePermissions, Guard } from "@/api/usePermissions.js";
 
 export default function SaleInvoiceShow() {
   const { id } = useParams();
@@ -12,13 +14,23 @@ export default function SaleInvoiceShow() {
   const [printerType, setPrinterType] = useState("a4"); // from Settings
   const popupRef = useRef(null);
 
+  // 🔒 permissions
+  const { loading: permsLoading, canFor } = usePermissions();
+  const can = useMemo(
+    () =>
+      (typeof canFor === "function" ? canFor("sale-invoice") : {
+        view:false, create:false, update:false, delete:false, import:false, export:false
+      }),
+    [canFor]
+  );
+
   // ===== Delete modal state (same flow as index) =====
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [deleteStep, setDeleteStep] = useState(1); // 1 confirm -> 2 choose -> 3 password
   const [deleteMode, setDeleteMode] = useState("none"); // 'credit' | 'refund' | 'none'
   const [password, setPassword] = useState("");
 
-  // Fetch invoice + settings
+  // Fetch invoice + settings (keep your original logic)
   useEffect(() => {
     (async () => {
       try {
@@ -68,6 +80,8 @@ export default function SaleInvoiceShow() {
 
   // ===== Delete flow =====
   const openDeleteModal = () => {
+    // 🔒 respect can.delete
+    if (!can.delete) return toast.error("You don't have permission to delete sale invoices.");
     setDeleteMode("none");
     setPassword("");
     setDeleteStep(1);
@@ -92,6 +106,8 @@ export default function SaleInvoiceShow() {
 
   const confirmAndDelete = async () => {
     if (!id) return;
+    // 🔒 respect can.delete
+    if (!can.delete) return toast.error("You don't have permission to delete sale invoices.");
     try {
       setDeleting(true);
       // 1) password confirm
@@ -193,17 +209,36 @@ export default function SaleInvoiceShow() {
     const onKey = (e) => {
       if (!e.altKey) return;
       const k = (e.key || "").toLowerCase();
-      if (k === "n") { e.preventDefault(); navigate("/sale-invoices/create"); }
+      if (k === "n") { 
+        // 🔒 respect can.create
+        if (!can.create) return;
+        e.preventDefault(); 
+        navigate("/sale-invoices/create"); 
+      }
       if (k === "b") { e.preventDefault(); navigate(-1); }
-      if (k === "p") { e.preventDefault(); handlePrint(); }
-      if (k === "d") { e.preventDefault(); openDeleteModal(); }
-      if (k === "e") { e.preventDefault(); navigate(`/sale-invoices/${id}/edit`); }
+      if (k === "p") { 
+        // 🔒 printing allowed for viewers; if you want to guard, use !can.view check here
+        e.preventDefault(); 
+        handlePrint(); 
+      }
+      if (k === "d") { 
+        // 🔒 respect can.delete
+        if (!can.delete) return;
+        e.preventDefault(); 
+        openDeleteModal(); 
+      }
+      if (k === "e") { 
+        // 🔒 respect can.update
+        if (!can.update) return;
+        e.preventDefault(); 
+        navigate(`/sale-invoices/${id}/edit`); 
+      }
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [navigate, id]);
+  }, [navigate, id, can]);
 
-  if (loading) return <div className="p-4 text-sm">Loading…</div>;
+  if (loading || permsLoading) return <div className="p-4 text-sm">Loading…</div>;
   if (!inv) return <div className="p-4 text-sm">Invoice not found.</div>;
 
   const fmt = (v) => ((v ?? "") === "" ? "" : String(v));
@@ -330,28 +365,35 @@ export default function SaleInvoiceShow() {
 
       {/* Actions */}
       <div className="no-print flex flex-wrap gap-2 justify-end pt-2">
-        <button
-          className="bg-red-600 text-white px-4 py-2 rounded text-sm disabled:opacity-60"
-          onClick={openDeleteModal}
-          disabled={deleting}
-          title="Alt+D"
-        >
-          🗑 Delete
-        </button>
-        <button
-          className="bg-yellow-600 text-white px-4 py-2 rounded text-sm"
-          onClick={() => navigate(`/sale-invoices/${id}/edit`)}
-          title="Alt+E"
-        >
-          ✏️ Edit Invoice
-        </button>
-        <button
-          className="bg-blue-600 text-white px-4 py-2 rounded text-sm"
-          onClick={() => navigate("/sale-invoices/create")}
-          title="Alt+N"
-        >
-          + Add New Invoice
-        </button>
+        {/* 🔒 guard Delete/Edit/Create buttons only */}
+        <Guard when={can.delete}>
+          <button
+            className="bg-red-600 text-white px-4 py-2 rounded text-sm disabled:opacity-60"
+            onClick={openDeleteModal}
+            disabled={deleting}
+            title="Alt+D"
+          >
+            🗑 Delete
+          </button>
+        </Guard>
+        <Guard when={can.update}>
+          <button
+            className="bg-yellow-600 text-white px-4 py-2 rounded text-sm"
+            onClick={() => navigate(`/sale-invoices/${id}/edit`)}
+            title="Alt+E"
+          >
+            ✏️ Edit Invoice
+          </button>
+        </Guard>
+        <Guard when={can.create}>
+          <button
+            className="bg-blue-600 text-white px-4 py-2 rounded text-sm"
+            onClick={() => navigate("/sale-invoices/create")}
+            title="Alt+N"
+          >
+            + Add New Invoice
+          </button>
+        </Guard>
         <button
           className="bg-gray-500 text-white px-4 py-2 rounded text-sm"
           onClick={() => navigate(-1)}
@@ -359,6 +401,7 @@ export default function SaleInvoiceShow() {
         >
           ← Go Back
         </button>
+        {/* Print left as-is (viewers can print); if you want, wrap in <Guard when={can.view}> */}
         <button
           className="bg-green-600 text-white px-4 py-2 rounded text-sm"
           onClick={handlePrint}

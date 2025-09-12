@@ -9,6 +9,8 @@ import {
   EyeIcon,
   TrashIcon,
 } from "@heroicons/react/24/solid";
+// 🔒 add permissions
+import { usePermissions, Guard } from "@/api/usePermissions.js";
 
 export default function SaleInvoicesIndex() {
   const [invoices, setInvoices] = useState([]);
@@ -22,18 +24,33 @@ export default function SaleInvoicesIndex() {
 
   const navigate = useNavigate();
 
+  // 🔒 permissions
+  const { loading: permsLoading, canFor } = usePermissions();
+  const can = useMemo(
+    () =>
+      (typeof canFor === "function" ? canFor("sale-invoice") : {
+        view:false, create:false, update:false, delete:false, import:false, export:false
+      }),
+    [canFor]
+  );
+
   useEffect(() => {
     (async () => {
+      // 🔒 if no view permission, don’t fetch
+      if (permsLoading) return;
+      if (!can.view) { setInvoices([]); setLoading(false); return; }
       try {
         const res = await axios.get("/api/sale-invoices"); // returns customer relation + totals
         setInvoices(res.data || []);
-      } catch {
-        toast.error("Failed to fetch sale invoices");
+      } catch (e) {
+        const status = e?.response?.status;
+        if (status === 403) toast.error("You don't have permission to view sale invoices.");
+        else toast.error("Failed to fetch sale invoices");
       } finally {
         setLoading(false);
       }
     })();
-  }, []);
+  }, [permsLoading, can.view]);
 
   // Alt+N -> create (ignore when typing in inputs)
   useEffect(() => {
@@ -43,12 +60,14 @@ export default function SaleInvoicesIndex() {
       const tag = (e.target?.tagName || "").toLowerCase();
       const typing = ["input", "textarea", "select"].includes(tag) || e.target?.isContentEditable;
       if (typing) return;
+      // 🔒 respect can.create
+      if (!can.create) return;
       e.preventDefault();
       navigate("/sale-invoices/create");
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [navigate]);
+  }, [navigate, can.create]);
 
   // ===== secure delete modal state & handlers =====
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
@@ -72,10 +91,11 @@ export default function SaleInvoicesIndex() {
 
   // user decision
   const [deleteMode, setDeleteMode] = useState("none"); // 'credit' | 'refund' | 'none'
-
   const needsChoice = !!selectedInvoice && (invReceived > 0 || Math.abs(invRemaining) > 0.0001);
 
   const openDeleteModal = (id) => {
+    // 🔒 respect can.delete
+    if (!can.delete) return toast.error("You don't have permission to delete sale invoices.");
     setDeletingId(id);
     setPassword("");
     setDeleteMode("none");
@@ -107,6 +127,8 @@ export default function SaleInvoicesIndex() {
 
   const confirmAndDelete = async () => {
     if (!deletingId) return;
+    // 🔒 respect can.delete
+    if (!can.delete) return toast.error("You don't have permission to delete sale invoices.");
     try {
       setDeleting(true);
       // 1) confirm password
@@ -149,6 +171,9 @@ export default function SaleInvoicesIndex() {
   const start = (page - 1) * pageSize;
   const paged = filtered.slice(start, start + pageSize);
 
+  // 🔒 follow PurchaseReturn UX for perms
+  if (permsLoading) return <div className="p-6">Loading…</div>;
+  if (!can.view) return <div className="p-6 text-sm text-gray-700">You don’t have permission to view sale invoices.</div>;
   if (loading) return <p className="p-6">Loading...</p>;
 
   return (
@@ -156,18 +181,21 @@ export default function SaleInvoicesIndex() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
         <h1 className="text-2xl font-bold">Sale Invoices</h1>
-        <Link
-          to="/sale-invoices/create"
-          title="Add Sale Invoice (Alt+N)"
-          aria-keyshortcuts="Alt+N"
-          className="bg-blue-600 text-white px-4 py-2 rounded flex items-center gap-2 hover:bg-blue-700"
-        >
-          <PlusCircleIcon className="w-5 h-5" />
-          Add Sale Invoice
-          <span className="ml-2 hidden sm:inline text-xs opacity-80 border rounded px-1 py-0.5">
-            Alt+N
-          </span>
-        </Link>
+        {/* 🔒 Add guarded */}
+        <Guard when={can.create}>
+          <Link
+            to="/sale-invoices/create"
+            title="Add Sale Invoice (Alt+N)"
+            aria-keyshortcuts="Alt+N"
+            className="bg-blue-600 text-white px-4 py-2 rounded flex items-center gap-2 hover:bg-blue-700"
+          >
+            <PlusCircleIcon className="w-5 h-5" />
+            Add Sale Invoice
+            <span className="ml-2 hidden sm:inline text-xs opacity-80 border rounded px-1 py-0.5">
+              Alt+N
+            </span>
+          </Link>
+        </Guard>
       </div>
 
       {/* Search toolbar */}
@@ -244,14 +272,18 @@ export default function SaleInvoicesIndex() {
                   </td>
                   <td className="p-2 border">
                     <div className="flex justify-center gap-2">
-                      <Link
-                        to={`/sale-invoices/${invoice.id}/edit`}
-                        className="bg-green-600 text-white px-3 py-1 rounded inline-flex items-center gap-1 hover:bg-green-700"
-                        title="Edit"
-                      >
-                        <PencilSquareIcon className="w-5 h-5" />
-                        Edit
-                      </Link>
+                      {/* 🔒 Edit guarded */}
+                      <Guard when={can.update}>
+                        <Link
+                          to={`/sale-invoices/${invoice.id}/edit`}
+                          className="bg-green-600 text-white px-3 py-1 rounded inline-flex items-center gap-1 hover:bg-green-700"
+                          title="Edit"
+                        >
+                          <PencilSquareIcon className="w-5 h-5" />
+                          Edit
+                        </Link>
+                      </Guard>
+                      {/* View stays visible (you didn’t request to guard View on index) */}
                       <Link
                         to={`/sale-invoices/${invoice.id}`}
                         className="bg-blue-600 text-white px-3 py-1 rounded inline-flex items-center gap-1 hover:bg-blue-700"
@@ -260,14 +292,17 @@ export default function SaleInvoicesIndex() {
                         <EyeIcon className="w-5 h-5" />
                         View
                       </Link>
-                      <button
-                        onClick={() => openDeleteModal(invoice.id)}
-                        className="bg-red-600 text-white px-3 py-1 rounded inline-flex items-center gap-1 hover:bg-red-700"
-                        title="Delete"
-                      >
-                        <TrashIcon className="w-5 h-5" />
-                        Delete
-                      </button>
+                      {/* 🔒 Delete guarded */}
+                      <Guard when={can.delete}>
+                        <button
+                          onClick={() => openDeleteModal(invoice.id)}
+                          className="bg-red-600 text-white px-3 py-1 rounded inline-flex items-center gap-1 hover:bg-red-700"
+                          title="Delete"
+                        >
+                          <TrashIcon className="w-5 h-5" />
+                          Delete
+                        </button>
+                      </Guard>
                     </div>
                   </td>
                 </tr>

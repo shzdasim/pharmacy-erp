@@ -120,6 +120,8 @@ class SaleInvoiceController extends Controller
 
     public function generateNewCode()
     {
+        // 🔒 require create
+        $this->authorize('create', SaleInvoice::class);
         $last = SaleInvoice::orderBy('id', 'desc')->first();
         $next = $last ? ($last->id + 1) : 1;
         $code = 'SI-' . str_pad((string)$next, 6, '0', STR_PAD_LEFT);
@@ -129,6 +131,8 @@ class SaleInvoiceController extends Controller
     // SaleInvoiceController@index
 public function index(Request $request)
 {
+    // 🔒 list
+        $this->authorize('viewAny', SaleInvoice::class);
     $qPosted   = trim((string) $request->query('posted'));
     $qCustomer = trim((string) $request->query('customer'));
 
@@ -149,12 +153,15 @@ public function index(Request $request)
 
     public function show($id)
     {
+        // must authorize against the *instance*
         $invoice = SaleInvoice::with(['customer', 'items.product'])->findOrFail($id);
+        $this->authorize('view', $invoice);
         return response()->json($invoice);
     }
 
     public function store(Request $request)
     {
+        $this->authorize('create', SaleInvoice::class);
         if (!$request->user()) {
             return response()->json(['message' => 'Unauthenticated'], 401);
         }
@@ -218,6 +225,8 @@ public function index(Request $request)
     public function update(Request $request, $id)
     {
         $invoice = SaleInvoice::with('items')->findOrFail($id);
+        // 🔒 update against instance
+        $this->authorize('update', $invoice);
 
         $data = $request->validate([
             'customer_id'         => 'required|exists:customers,id',
@@ -285,7 +294,8 @@ public function index(Request $request)
     public function destroy(Request $request, $id)
 {
     $invoice = SaleInvoice::with(['items', 'customer'])->findOrFail($id);
-
+    // 🔒 delete against instance
+        $this->authorize('delete', $invoice);
     // read chosen mode from query/body; default to 'none'
     $mode = strtolower(trim((string)($request->query('mode', $request->input('mode', 'none')))));
     if (!in_array($mode, ['none', 'credit', 'refund'], true)) {
@@ -382,6 +392,7 @@ public function index(Request $request)
     // SaleInvoiceController.php
 public function print(Request $request, SaleInvoice $invoice)
 {
+    $this->authorize('view', $invoice);
     $invoice->load(['items.product', 'customer', 'user']);
     $setting = Setting::first();
 
