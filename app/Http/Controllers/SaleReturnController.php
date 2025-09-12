@@ -111,34 +111,41 @@ class SaleReturnController extends Controller
 
     // ===== CRUD =====
 
-    // SaleReturnController@index
-public function index(Request $request)
-{
-    $qPosted   = trim((string) $request->query('posted'));
-    $qCustomer = trim((string) $request->query('customer'));
+    // 🔒 SaleReturnController@index
+    public function index(Request $request)
+    {
+        $this->authorize('viewAny', SaleReturn::class);
 
-    $query = \App\Models\SaleReturn::with(['customer'])->latest();
+        $qPosted   = trim((string) $request->query('posted'));
+        $qCustomer = trim((string) $request->query('customer'));
 
-    if ($qPosted !== '') {
-        $query->where('posted_number', 'like', '%' . $qPosted . '%');
+        $query = \App\Models\SaleReturn::with(['customer'])->latest();
+
+        if ($qPosted !== '') {
+            $query->where('posted_number', 'like', '%' . $qPosted . '%');
+        }
+        if ($qCustomer !== '') {
+            $query->whereHas('customer', function ($q) use ($qCustomer) {
+                $q->where('name', 'like', '%' . $qCustomer . '%');
+            });
+        }
+
+        return $query->get();
     }
-    if ($qCustomer !== '') {
-        $query->whereHas('customer', function ($q) use ($qCustomer) {
-            $q->where('name', 'like', '%' . $qCustomer . '%');
-        });
-    }
-
-    return $query->get();
-}
-
 
     public function show(SaleReturn $saleReturn)
     {
+        // 🔒 view
+        $this->authorize('view', $saleReturn);
+
         return $saleReturn->load(['customer', 'saleInvoice', 'items.product']);
     }
 
     public function store(Request $request)
     {
+        // 🔒 create
+        $this->authorize('create', SaleReturn::class);
+
         $data = $request->validate([
             'customer_id'         => 'required|exists:customers,id',
             'posted_number'       => 'required|string',
@@ -193,6 +200,9 @@ public function index(Request $request)
 
     public function update(Request $request, SaleReturn $saleReturn)
     {
+        // 🔒 update
+        $this->authorize('update', $saleReturn);
+
         $data = $request->validate([
             'customer_id'         => 'required|exists:customers,id',
             'posted_number'       => 'required|string',
@@ -252,6 +262,9 @@ public function index(Request $request)
 
     public function destroy(SaleReturn $saleReturn)
     {
+        // 🔒 delete
+        $this->authorize('delete', $saleReturn);
+
         return DB::transaction(function () use ($saleReturn) {
             $this->revertItems($saleReturn);
             $saleReturn->items()->delete();
@@ -262,6 +275,9 @@ public function index(Request $request)
 
     public function generateNewCode()
     {
+        // 🔒 usually tied to create permission
+        $this->authorize('create', SaleReturn::class);
+
         $last = SaleReturn::orderBy('id', 'desc')->first();
         $next = 1;
         if ($last && !empty($last->posted_number)) {
