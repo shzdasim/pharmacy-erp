@@ -392,7 +392,6 @@ public function index(Request $request)
     // SaleInvoiceController.php
 public function print(Request $request, SaleInvoice $invoice)
 {
-    $this->authorize('view', $invoice);
     $invoice->load(['items.product', 'customer', 'user']);
     $setting = Setting::first();
 

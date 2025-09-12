@@ -366,7 +366,6 @@ class CustomerLedgerController extends Controller
 
     public function print(Request $request)
 {
-    $this->authorize('viewAny', CustomerLedger::class);
     // -------- Validate + fetch basics --------
     $customerId = (int) $request->query('customer_id');
     abort_if(!$customerId, 404, 'Customer is required');

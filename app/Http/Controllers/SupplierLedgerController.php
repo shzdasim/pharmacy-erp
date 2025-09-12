@@ -199,7 +199,6 @@ class SupplierLedgerController extends Controller
 
     public function print(Request $request)
     {
-        $this->authorize('viewAny', SupplierLedger::class);
 
         $supplierId = (int) $request->query('supplier_id');
         abort_if(!$supplierId, 404, 'Supplier is required');
