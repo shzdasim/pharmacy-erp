@@ -1,5 +1,4 @@
-// src/pages/Setting.jsx
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useMemo } from "react";
 import axios from "axios";
 import toast from "react-hot-toast";
 
@@ -9,6 +8,8 @@ import FilePondPluginImagePreview from "filepond-plugin-image-preview";
 import FilePondPluginFileValidateType from "filepond-plugin-file-validate-type";
 import "filepond/dist/filepond.min.css";
 import "filepond-plugin-image-preview/dist/filepond-plugin-image-preview.css";
+
+import { usePermissions, Guard } from "@/api/usePermissions.js"; // 🔒
 
 registerPlugin(FilePondPluginImagePreview, FilePondPluginFileValidateType);
 
@@ -37,31 +38,46 @@ export default function Setting() {
   const thermalRef = useRef(null);
   const saveBtnRef = useRef(null);
 
-  useEffect(() => {
-    fetchSettings();
-  }, []);
+  // 🔒 permissions
+  const { loading: permsLoading, canFor } = usePermissions();
+  const can = useMemo(
+    () =>
+      (typeof canFor === "function" ? canFor("settings") : {
+        view:false, create:false, update:false, delete:false, import:false, export:false
+      }),
+    [canFor]
+  );
 
   useEffect(() => {
-    if (!loading) {
+    if (permsLoading) return;
+    if (!can.view) { setLoading(false); return; }
+    fetchSettings();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [permsLoading, can.view]);
+
+  useEffect(() => {
+    if (!loading && can.view) {
       const t = setTimeout(() => storeNameRef.current?.focus(), 120);
       return () => clearTimeout(t);
     }
-  }, [loading]);
+  }, [loading, can.view]);
 
-  // Alt+S to save
+  // Alt+S to save (only if can.update)
   useEffect(() => {
     const handleShortcut = (e) => {
-      if (e.altKey && e.key.toLowerCase() === "s") {
+      if (e.altKey && (e.key || "").toLowerCase() === "s") {
         e.preventDefault();
-        handleSave();
+        if (can.update) handleSave();
+        else toast.error("You don’t have permission to update settings.");
       }
     };
     window.addEventListener("keydown", handleShortcut);
     return () => window.removeEventListener("keydown", handleShortcut);
-  }, [form, files]);
+  }, [form, files, can.update]);
 
   const fetchSettings = async () => {
     try {
+      setLoading(true);
       const { data } = await axios.get("/api/settings");
       setForm({
         store_name: data.store_name || "",
@@ -74,17 +90,14 @@ export default function Setting() {
 
       // Preload existing logo into FilePond as remote file
       if (data.logo_url) {
-        setFiles([
-          {
-            source: data.logo_url,
-            options: { type: "remote" },
-          },
-        ]);
+        setFiles([{ source: data.logo_url, options: { type: "remote" } }]);
       } else {
         setFiles([]);
       }
     } catch (err) {
-      toast.error("Failed to load settings");
+      const status = err?.response?.status;
+      if (status === 403) toast.error("You don't have permission to view settings.");
+      else toast.error("Failed to load settings");
     } finally {
       setLoading(false);
     }
@@ -96,6 +109,10 @@ export default function Setting() {
   };
 
   const handleSave = async () => {
+    if (!can.update) {
+      toast.error("You don’t have permission to update settings.");
+      return;
+    }
     try {
       setSaving(true);
       const fd = new FormData();
@@ -140,13 +157,17 @@ export default function Setting() {
     }
   };
 
-  if (loading) {
-    return (
-      <div className="p-4">
-        <div className="animate-pulse text-gray-500">Loading settings…</div>
-      </div>
-    );
+  if (permsLoading) {
+    return <div className="p-4"><div className="animate-pulse text-gray-500">Loading…</div></div>;
   }
+  if (!can.view) {
+    return <div className="p-4 text-sm text-gray-700">You don’t have permission to view settings.</div>;
+  }
+  if (loading) {
+    return <div className="p-4"><div className="animate-pulse text-gray-500">Loading settings…</div></div>;
+  }
+
+  const disableInputs = !can.update || saving;
 
   return (
     <div className="p-4 max-w-4xl mx-auto">
@@ -155,13 +176,13 @@ export default function Setting() {
         <button
           ref={saveBtnRef}
           onClick={handleSave}
-          disabled={saving}
+          disabled={!can.update || saving}
           className={`px-4 py-2 rounded-lg text-white ${
-            saving ? "bg-gray-400" : "bg-blue-600 hover:bg-blue-700"
+            (!can.update || saving) ? "bg-gray-400 cursor-not-allowed" : "bg-blue-600 hover:bg-blue-700"
           }`}
-          title="Alt+S"
+          title={can.update ? "Alt+S" : "You lack update permission"}
         >
-          {saving ? "Saving…" : "Save (Alt+S)"}
+          {saving ? "Saving…" : (can.update ? "Save (Alt+S)" : "Save Disabled")}
         </button>
       </div>
 
@@ -175,13 +196,11 @@ export default function Setting() {
             name="store_name"
             value={form.store_name}
             onChange={handleChange}
+            disabled={disableInputs}
             onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                e.preventDefault();
-                phoneRef.current?.focus();
-              }
+              if (e.key === "Enter") { e.preventDefault(); phoneRef.current?.focus(); }
             }}
-            className="border rounded-lg px-3 py-2 outline-none focus:ring w-full"
+            className="border rounded-lg px-3 py-2 outline-none focus:ring w-full disabled:bg-gray-100"
             placeholder="e.g., My Pharmacy"
           />
         </div>
@@ -195,13 +214,11 @@ export default function Setting() {
             name="phone_number"
             value={form.phone_number}
             onChange={handleChange}
+            disabled={disableInputs}
             onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                e.preventDefault();
-                addressRef.current?.focus();
-              }
+              if (e.key === "Enter") { e.preventDefault(); addressRef.current?.focus(); }
             }}
-            className="border rounded-lg px-3 py-2 outline-none focus:ring w-full"
+            className="border rounded-lg px-3 py-2 outline-none focus:ring w-full disabled:bg-gray-100"
             placeholder="+92 xx xxxxxxx"
           />
         </div>
@@ -215,13 +232,11 @@ export default function Setting() {
             name="address"
             value={form.address}
             onChange={handleChange}
+            disabled={disableInputs}
             onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                e.preventDefault();
-                licenseRef.current?.focus();
-              }
+              if (e.key === "Enter") { e.preventDefault(); licenseRef.current?.focus(); }
             }}
-            className="border rounded-lg px-3 py-2 outline-none focus:ring w-full"
+            className="border rounded-lg px-3 py-2 outline-none focus:ring w-full disabled:bg-gray-100"
             placeholder="Street, City"
           />
         </div>
@@ -235,14 +250,11 @@ export default function Setting() {
             name="license_number"
             value={form.license_number}
             onChange={handleChange}
+            disabled={disableInputs}
             onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                e.preventDefault();
-                // jump to Note
-                noteRef.current?.focus();
-              }
+              if (e.key === "Enter") { e.preventDefault(); noteRef.current?.focus(); }
             }}
-            className="border rounded-lg px-3 py-2 outline-none focus:ring w-full"
+            className="border rounded-lg px-3 py-2 outline-none focus:ring w-full disabled:bg-gray-100"
             placeholder="e.g., ABC-12345"
           />
         </div>
@@ -259,11 +271,9 @@ export default function Setting() {
                 value="thermal"
                 checked={form.printer_type === "thermal"}
                 onChange={handleChange}
+                disabled={disableInputs}
                 onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    e.preventDefault();
-                    saveBtnRef.current?.focus();
-                  }
+                  if (e.key === "Enter") { e.preventDefault(); saveBtnRef.current?.focus(); }
                 }}
               />
               <span>Thermal</span>
@@ -275,11 +285,9 @@ export default function Setting() {
                 value="a4"
                 checked={form.printer_type === "a4"}
                 onChange={handleChange}
+                disabled={disableInputs}
                 onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    e.preventDefault();
-                    saveBtnRef.current?.focus();
-                  }
+                  if (e.key === "Enter") { e.preventDefault(); saveBtnRef.current?.focus(); }
                 }}
               />
               <span>A4</span>
@@ -295,15 +303,15 @@ export default function Setting() {
             name="note"
             value={form.note}
             onChange={handleChange}
+            disabled={disableInputs}
             rows={3}
             onKeyDown={(e) => {
               if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
-                // Ctrl/Cmd+Enter to save
                 e.preventDefault();
-                handleSave();
+                if (can.update) handleSave();
               }
             }}
-            className="border rounded-lg px-3 py-2 outline-none focus:ring w-full"
+            className="border rounded-lg px-3 py-2 outline-none focus:ring w-full disabled:bg-gray-100"
             placeholder="This note will be printed at the bottom of the invoice…"
           />
         </div>
@@ -314,9 +322,13 @@ export default function Setting() {
           <div className="mt-2">
             <FilePond
               files={files}
-              onupdatefiles={setFiles}
+              onupdatefiles={(fl) => {
+                if (!can.update) { toast.error("No permission to update settings."); return; }
+                setFiles(fl);
+              }}
               allowMultiple={false}
               acceptedFileTypes={["image/*"]}
+              disabled={disableInputs}
               labelIdle='Drag & Drop your logo or <span class="filepond--label-action">Browse</span>'
               credits={false}
             />
@@ -329,13 +341,13 @@ export default function Setting() {
         <button
           ref={saveBtnRef}
           onClick={handleSave}
-          disabled={saving}
+          disabled={!can.update || saving}
           className={`px-4 py-2 rounded-lg text-white ${
-            saving ? "bg-gray-400" : "bg-blue-600 hover:bg-blue-700"
+            (!can.update || saving) ? "bg-gray-400 cursor-not-allowed" : "bg-blue-600 hover:bg-blue-700"
           }`}
-          title="Alt+S"
+          title={can.update ? "Alt+S" : "You lack update permission"}
         >
-          {saving ? "Saving…" : "Save (Alt+S)"}
+          {saving ? "Saving…" : (can.update ? "Save (Alt+S)" : "Save Disabled")}
         </button>
       </div>
     </div>

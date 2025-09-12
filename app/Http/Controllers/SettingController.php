@@ -12,6 +12,7 @@ class SettingController extends Controller
     // GET /api/settings
     public function show()
     {
+        $this->authorize('view', Setting::class);
         $setting = Setting::firstOrCreate(['id' => 1], [
             'printer_type' => 'thermal',
         ]);
@@ -22,6 +23,7 @@ class SettingController extends Controller
     // POST /api/settings  (multipart/form-data supported)
     public function update(Request $request)
     {
+        $this->authorize('update', Setting::class);
         $setting = Setting::firstOrCreate(['id' => 1]);
 
         $validated = $request->validate([
