@@ -1,3 +1,4 @@
+// src/pages/SaleInvoiceShow.jsx
 import { useEffect, useRef, useState, useMemo } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import axios from "axios";
@@ -8,29 +9,32 @@ import { usePermissions, Guard } from "@/api/usePermissions.js";
 export default function SaleInvoiceShow() {
   const { id } = useParams();
   const navigate = useNavigate();
+
   const [inv, setInv] = useState(null);
   const [loading, setLoading] = useState(true);
   const [deleting, setDeleting] = useState(false);
   const [printerType, setPrinterType] = useState("a4"); // from Settings
-  const popupRef = useRef(null);
+
+  // NEW: hidden iframe for printing (no popup)
+  const iframeRef = useRef(null);
 
   // 🔒 permissions
   const { loading: permsLoading, canFor } = usePermissions();
   const can = useMemo(
     () =>
-      (typeof canFor === "function" ? canFor("sale-invoice") : {
-        view:false, create:false, update:false, delete:false, import:false, export:false
-      }),
+      (typeof canFor === "function"
+        ? canFor("sale-invoice")
+        : { view: false, create: false, update: false, delete: false, import: false, export: false }),
     [canFor]
   );
 
-  // ===== Delete modal state (same flow as index) =====
+  // ===== Delete modal state =====
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [deleteStep, setDeleteStep] = useState(1); // 1 confirm -> 2 choose -> 3 password
   const [deleteMode, setDeleteMode] = useState("none"); // 'credit' | 'refund' | 'none'
   const [password, setPassword] = useState("");
 
-  // Fetch invoice + settings (keep your original logic)
+  // Fetch invoice + settings
   useEffect(() => {
     (async () => {
       try {
@@ -51,13 +55,19 @@ export default function SaleInvoiceShow() {
   }, [id]);
 
   // Derived numbers for display + delete decision
-  const invTotal = useMemo(() => Number(inv?.total ?? inv?.grand_total ?? inv?.gross_amount ?? 0), [inv]);
+  const invTotal = useMemo(
+    () => Number(inv?.total ?? inv?.grand_total ?? inv?.gross_amount ?? 0),
+    [inv]
+  );
   const invReceived = useMemo(
     () => Number(inv?.total_receive ?? inv?.total_recieve ?? inv?.received ?? 0),
     [inv]
   );
-  const invRemaining = useMemo(() => Math.max(invTotal - invReceived, 0), [invTotal, invReceived]);
-  const needsChoice = (invReceived > 0) || (Math.abs(invRemaining) > 0.0001);
+  const invRemaining = useMemo(
+    () => Math.max(invTotal - invReceived, 0),
+    [invTotal, invReceived]
+  );
+  const needsChoice = invReceived > 0 || Math.abs(invRemaining) > 0.0001;
 
   // After delete: go to previous invoice (by id), else index
   const goToPrevOrIndex = async (deletedId) => {
@@ -80,7 +90,6 @@ export default function SaleInvoiceShow() {
 
   // ===== Delete flow =====
   const openDeleteModal = () => {
-    // 🔒 respect can.delete
     if (!can.delete) return toast.error("You don't have permission to delete sale invoices.");
     setDeleteMode("none");
     setPassword("");
@@ -96,7 +105,7 @@ export default function SaleInvoiceShow() {
   };
   const proceedAfterConfirm = () => {
     if (needsChoice) {
-      setDeleteMode("credit"); // default
+      setDeleteMode("credit");
       setDeleteStep(2);
     } else {
       setDeleteStep(3);
@@ -106,13 +115,10 @@ export default function SaleInvoiceShow() {
 
   const confirmAndDelete = async () => {
     if (!id) return;
-    // 🔒 respect can.delete
     if (!can.delete) return toast.error("You don't have permission to delete sale invoices.");
     try {
       setDeleting(true);
-      // 1) password confirm
       await axios.post("/api/auth/confirm-password", { password });
-      // 2) delete with mode
       await axios.delete(`/api/sale-invoices/${id}`, { params: { mode: deleteMode } });
       toast.success("Sale invoice deleted");
       await goToPrevOrIndex(id);
@@ -127,111 +133,82 @@ export default function SaleInvoiceShow() {
     }
   };
 
-  // Print
+  // ===== Direct Print (no popup) using hidden iframe
   const handlePrint = () => {
     if (!id) return;
 
+    // Must be same-origin to access iframe.contentWindow.print()
     const WEB_BASE =
       (import.meta.env.VITE_BACKEND_WEB_BASE || "").replace(/\/$/, "") ||
       window.location.origin;
 
-    const url = `${WEB_BASE}/print/sale-invoices/${id}`;
+    // Honor A4/thermal via query param; cache-bust with ts
+    const url = `${WEB_BASE}/print/sale-invoices/${id}?type=${encodeURIComponent(
+      printerType
+    )}&ts=${Date.now()}`;
 
-    const width = 900;
-    const height = 700;
-    const left = Math.max(
-      0,
-      (window.screenX || window.screenLeft || 0) + (window.outerWidth - width) / 2
-    );
-    const top = Math.max(
-      0,
-      (window.screenY || window.screenTop || 0) + (window.outerHeight - height) / 2
-    );
-
-    const features = [
-      `width=${Math.round(width)}`,
-      `height=${Math.round(height)}`,
-      `left=${Math.round(left)}`,
-      `top=${Math.round(top)}`,
-      "menubar=no",
-      "toolbar=no",
-      "location=no",
-      "status=no",
-      "scrollbars=yes",
-      "resizable=yes",
-    ].join(",");
-
-    let w = popupRef.current;
-
-    if (!w || w.closed) {
-      w = window.open("about:blank", "salePrintWin", features);
-      if (!w) {
-        toast.error("Popup blocked. Please allow popups to print.");
-        return;
-      }
-      try { w.opener = null; } catch {}
-      popupRef.current = w;
-    } else {
-      try { w.focus(); } catch {}
+    // Create the iframe once and reuse
+    let iframe = iframeRef.current;
+    if (!iframe) {
+      iframe = document.createElement("iframe");
+      iframeRef.current = iframe;
+      iframe.style.position = "fixed";
+      iframe.style.right = "0";
+      iframe.style.bottom = "0";
+      iframe.style.width = "0";
+      iframe.style.height = "0";
+      iframe.style.border = "0";
+      iframe.setAttribute("aria-hidden", "true");
+      document.body.appendChild(iframe);
     }
 
-    try {
-      w.location.replace(url);
-    } catch {
-      const w2 = window.open(url, "salePrintWin", features);
-      if (!w2) {
-        toast.error("Popup blocked. Please allow popups to print.");
-        return;
-      }
-      try { w2.opener = null; } catch {}
-      popupRef.current = w2;
-      w = w2;
-    }
-
-    try {
-      w.onload = () => {
-        try { w.focus(); w.print(); } catch {}
-      };
-    } catch {}
-
-    const timer = setInterval(() => {
+    const onLoad = () => {
       try {
-        if (w.document?.readyState === "complete") {
-          w.focus(); w.print(); clearInterval(timer);
-        }
-      } catch {}
-      if (w.closed) clearInterval(timer);
-    }, 400);
+        const w = iframe.contentWindow;
+        if (!w) return;
+        // Short delay helps fonts/images settle before print
+        setTimeout(() => {
+          w.focus();
+          w.print();
+        }, 50);
+      } catch {
+        // ignore cross-origin errors (shouldn't happen if same-origin)
+      } finally {
+        iframe.removeEventListener("load", onLoad);
+      }
+    };
+
+    iframe.addEventListener("load", onLoad);
+    iframe.src = url; // triggers load -> print
   };
 
-  // Keyboard shortcuts
+  // Keyboard shortcuts (Alt+N/B/P/D/E)
   useEffect(() => {
     const onKey = (e) => {
       if (!e.altKey) return;
       const k = (e.key || "").toLowerCase();
-      if (k === "n") { 
-        // 🔒 respect can.create
+      if (k === "n") {
         if (!can.create) return;
-        e.preventDefault(); 
-        navigate("/sale-invoices/create"); 
+        e.preventDefault();
+        navigate("/sale-invoices/create");
       }
-      if (k === "b") { e.preventDefault(); navigate(-1); }
-      if (k === "p") { 
-        // 🔒 printing allowed for viewers; if you want to guard, use !can.view check here
-        e.preventDefault(); 
-        handlePrint(); 
+      if (k === "b") {
+        e.preventDefault();
+        navigate(-1);
       }
-      if (k === "d") { 
-        // 🔒 respect can.delete
+      if (k === "p") {
+        e.preventDefault();
+        handlePrint();
+      }
+      if (k === "d") {
         if (!can.delete) return;
-        e.preventDefault(); 
-        openDeleteModal(); 
+        e.preventDefault();
+        openDeleteModal();
       }
-      if (k === "e") { 
-        // 🔒 respect can.update
+      if (k === "e") {
         if (!can.update) return;
-        e.preventDefault(); 
-        navigate(`/sale-invoices/${id}/edit`); 
+        e.preventDefault();
+        navigate(`/sale-invoices/${id}/edit`);
       }
     };
     document.addEventListener("keydown", onKey);
@@ -251,6 +228,14 @@ export default function SaleInvoiceShow() {
           .print-table th, .print-table td { border: 1px solid #000; }
         }
       `}</style>
+
+      {/* Hidden iframe used for direct printing (kept in DOM; could be created dynamically too) */}
+      <iframe
+        ref={iframeRef}
+        style={{ position: "fixed", width: 0, height: 0, border: 0 }}
+        aria-hidden="true"
+        title="sale-print-frame"
+      />
 
       <h2 className="text-lg font-bold">Sale Invoice</h2>
 
@@ -323,7 +308,7 @@ export default function SaleInvoiceShow() {
         </table>
       </div>
 
-      {/* Footer totals — now includes Total Receive & Remaining */}
+      {/* Footer totals — includes Total Receive & Remaining */}
       <table className="w-full border-collapse text-xs">
         <tbody>
           <tr>
@@ -365,7 +350,6 @@ export default function SaleInvoiceShow() {
 
       {/* Actions */}
       <div className="no-print flex flex-wrap gap-2 justify-end pt-2">
-        {/* 🔒 guard Delete/Edit/Create buttons only */}
         <Guard when={can.delete}>
           <button
             className="bg-red-600 text-white px-4 py-2 rounded text-sm disabled:opacity-60"
@@ -401,7 +385,7 @@ export default function SaleInvoiceShow() {
         >
           ← Go Back
         </button>
-        {/* Print left as-is (viewers can print); if you want, wrap in <Guard when={can.view}> */}
+        {/* Print visible to viewers; guard if required */}
         <button
           className="bg-green-600 text-white px-4 py-2 rounded text-sm"
           onClick={handlePrint}
@@ -419,7 +403,9 @@ export default function SaleInvoiceShow() {
       {deleteModalOpen && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
-          onClick={(e) => { if (e.target === e.currentTarget) closeDeleteModal(); }}
+          onClick={(e) => {
+            if (e.target === e.currentTarget) closeDeleteModal();
+          }}
         >
           <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-5">
             {/* Step 1: Confirm delete */}
@@ -427,10 +413,18 @@ export default function SaleInvoiceShow() {
               <div>
                 <h2 className="text-lg font-semibold mb-2">Delete sale invoice?</h2>
                 <div className="text-xs text-gray-600 mb-2">
-                  <div><b>Posted #:</b> {inv?.posted_number}</div>
-                  <div><b>Total:</b> {invTotal.toLocaleString()}</div>
-                  <div><b>Received:</b> {invReceived.toLocaleString()}</div>
-                  <div><b>Remaining:</b> {invRemaining.toLocaleString()}</div>
+                  <div>
+                    <b>Posted #:</b> {inv?.posted_number}
+                  </div>
+                  <div>
+                    <b>Total:</b> {invTotal.toLocaleString()}
+                  </div>
+                  <div>
+                    <b>Received:</b> {invReceived.toLocaleString()}
+                  </div>
+                  <div>
+                    <b>Remaining:</b> {invRemaining.toLocaleString()}
+                  </div>
                 </div>
                 <p className="text-sm text-gray-600">This action cannot be undone.</p>
                 <div className="mt-4 flex justify-end gap-2">
@@ -464,7 +458,8 @@ export default function SaleInvoiceShow() {
                       onChange={() => setDeleteMode("credit")}
                     />
                     <span>
-                      <b>Credit the customer (recommended)</b><br />
+                      <b>Credit the customer (recommended)</b>
+                      <br />
                       Keep the received amount as an unapplied credit in the ledger.
                     </span>
                   </label>
@@ -476,7 +471,8 @@ export default function SaleInvoiceShow() {
                       onChange={() => setDeleteMode("refund")}
                     />
                     <span>
-                      <b>Refund the customer</b><br />
+                      <b>Refund the customer</b>
+                      <br />
                       Record a refund payment for the received amount.
                     </span>
                   </label>
