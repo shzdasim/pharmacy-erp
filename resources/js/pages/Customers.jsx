@@ -1,3 +1,4 @@
+// src/pages/Customers.jsx
 import { useEffect, useMemo, useRef, useState } from "react";
 import axios from "axios";
 import toast from "react-hot-toast";
@@ -9,8 +10,24 @@ import {
   ArrowUpTrayIcon,
   ArrowDownTrayIcon,
 } from "@heroicons/react/24/solid";
+import {
+  ChevronDoubleLeftIcon,
+  ChevronLeftIcon,
+  ChevronRightIcon,
+  ChevronDoubleRightIcon,
+} from "@heroicons/react/24/outline";
+
 import CustomerImportModal from "../components/CustomerImportModal.jsx";
-import { usePermissions, Guard } from "@/api/usePermissions.js"; // ← adjust to your path
+import { usePermissions, Guard } from "@/api/usePermissions.js";
+
+// 🧊 Glass primitives (under components)
+import {
+  GlassCard,
+  GlassSectionHeader,
+  GlassToolbar,
+  GlassInput,
+  GlassBtn,
+} from "../components/Glass.jsx";
 
 export default function Customers() {
   const [customers, setCustomers] = useState([]);
@@ -75,7 +92,9 @@ export default function Customers() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [form, editingId, can.create, can.update]);
 
-  const onEnterFocusNext = (e, nextRef) => { if (e.key === "Enter") { e.preventDefault(); nextRef?.current?.focus(); } };
+  const onEnterFocusNext = (e, nextRef) => {
+    if (e.key === "Enter") { e.preventDefault(); nextRef?.current?.focus(); }
+  };
 
   const resetForm = () => {
     setForm({ name: "", email: "", phone: "", address: "" });
@@ -185,231 +204,288 @@ export default function Customers() {
   const hasActions = can.update || can.delete;
 
   return (
-    <div className="p-6">
-      {/* header + search */}
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-4">
-        <h1 className="text-2xl font-bold">Customers</h1>
-        <div className="relative w-full md:w-[28rem]">
-          <MagnifyingGlassIcon className="w-5 h-5 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-          <input
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            placeholder="Search by name, email, phone, or address…"
-            className="w-full pl-10 pr-3 h-9 text-sm border rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
-        </div>
-      </div>
+    <div className="p-4 space-y-4 bg-gradient-to-br from-slate-50 via-white to-blue-50/30">
+      {/* Header + search */}
+      <GlassCard>
+        <GlassSectionHeader
+          title="Customers"
+          right={
+            <div className="relative w-[28rem] max-w-full">
+              <MagnifyingGlassIcon className="w-5 h-5 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+              <GlassInput
+                value={q}
+                onChange={(e) => setQ(e.target.value)}
+                placeholder="Search by name, email, phone, or address…"
+                className="pl-9 w-full"
+                aria-label="Search customers"
+              />
+            </div>
+          }
+        />
+      </GlassCard>
 
-      {/* form (hidden unless can create or update) */}
+      {/* Form (create/update) */}
       <Guard when={can.create || can.update}>
-        <form onSubmit={(e) => e.preventDefault()} className="mb-4">
-          <div className="flex flex-col gap-2">
-            <div className="flex flex-col md:flex-row md:items-end md:gap-2">
-              <div className="flex-1 min-w-[160px]">
-                <label className="block text-xs text-gray-700 mb-1">Name</label>
-                <input
-                  type="text" placeholder="Name (required)"
-                  className="border rounded px-2 h-9 text-sm w-full"
-                  value={form.name}
-                  onChange={(e)=>setForm({ ...form, name: e.target.value })}
-                  onKeyDown={(e)=>onEnterFocusNext(e, emailRef)}
-                  ref={nameRef} required
-                />
-              </div>
-
-              <div className="flex-1 min-w-[200px]">
-                <label className="block text-xs text-gray-700 mb-1">Email</label>
-                <input
-                  type="email" placeholder="Email"
-                  className="border rounded px-2 h-9 text-sm w-full"
-                  value={form.email || ""}
-                  onChange={(e)=>setForm({ ...form, email: e.target.value })}
-                  onKeyDown={(e)=>onEnterFocusNext(e, phoneRef)}
-                  ref={emailRef}
-                />
-              </div>
-
-              <div className="w-full md:w-56">
-                <label className="block text-xs text-gray-700 mb-1">Phone</label>
-                <input
-                  type="text" placeholder="Phone"
-                  className="border rounded px-2 h-9 text-sm w-full"
-                  value={form.phone || ""}
-                  onChange={(e)=>setForm({ ...form, phone: e.target.value })}
-                  onKeyDown={(e)=>onEnterFocusNext(e, addressRef)}
-                  ref={phoneRef}
-                />
-              </div>
-
-              <div className="w-full md:flex-1 md:min-w-[240px]">
-                <label className="block text-xs text-gray-700 mb-1">Address</label>
-                <input
-                  type="text" placeholder="Address"
-                  className="border rounded px-2 h-9 text-sm w-full"
-                  value={form.address || ""}
-                  onChange={(e)=>setForm({ ...form, address: e.target.value })}
-                  onKeyDown={(e)=>onEnterFocusNext(e, saveBtnRef)}
-                  ref={addressRef}
-                />
-              </div>
+        <GlassCard>
+          <GlassSectionHeader title={editingId ? "Edit Customer" : "Add Customer"} />
+          <GlassToolbar className="grid grid-cols-1 md:grid-cols-4 gap-3">
+            <div className="flex-1 min-w-[160px]">
+              <label className="block text-xs text-gray-700 mb-1">Name</label>
+              <GlassInput
+                type="text"
+                placeholder="Name (required)"
+                value={form.name}
+                onChange={(e)=>setForm({ ...form, name: e.target.value })}
+                onKeyDown={(e)=>onEnterFocusNext(e, emailRef)}
+                ref={nameRef}
+                required
+              />
             </div>
 
-            <div className="flex items-center justify-end">
-              <button
-                type="button" onClick={handleSave} ref={saveBtnRef}
-                title="Save (Alt+S)" aria-keyshortcuts="Alt+S"
-                className={`inline-flex items-center justify-center gap-2 px-4 h-10 rounded text-white text-sm min-w-[140px] md:w-44 ${
-                  saving ? "bg-blue-400" : "bg-blue-600 hover:bg-blue-700"
-                }`} disabled={saving || (!can.create && !can.update)}
-              >
-                <CheckCircleIcon className="w-5 h-5" />
-                {editingId ? (saving ? "Updating…" : "Update") : (saving ? "Saving…" : "Save")}
-              </button>
+            <div className="flex-1 min-w-[200px]">
+              <label className="block text-xs text-gray-700 mb-1">Email</label>
+              <GlassInput
+                type="email"
+                placeholder="Email"
+                value={form.email || ""}
+                onChange={(e)=>setForm({ ...form, email: e.target.value })}
+                onKeyDown={(e)=>onEnterFocusNext(e, phoneRef)}
+                ref={emailRef}
+              />
             </div>
-            <div className="text-[11px] text-gray-500 md:text-right">Shortcut: Alt+S</div>
+
+            <div className="w-full md:w-56">
+              <label className="block text-xs text-gray-700 mb-1">Phone</label>
+              <GlassInput
+                type="text"
+                placeholder="Phone"
+                value={form.phone || ""}
+                onChange={(e)=>setForm({ ...form, phone: e.target.value })}
+                onKeyDown={(e)=>onEnterFocusNext(e, addressRef)}
+                ref={phoneRef}
+              />
+            </div>
+
+            <div className="w-full md:flex-1 md:min-w-[240px]">
+              <label className="block text-xs text-gray-700 mb-1">Address</label>
+              <GlassInput
+                type="text"
+                placeholder="Address"
+                value={form.address || ""}
+                onChange={(e)=>setForm({ ...form, address: e.target.value })}
+                onKeyDown={(e)=>onEnterFocusNext(e, saveBtnRef)}
+                ref={addressRef}
+              />
+            </div>
+          </GlassToolbar>
+
+          <div className="px-4 pb-4 flex items-center justify-end gap-2">
+            <GlassBtn
+              type="button"
+              onClick={resetForm}
+              variant="ghost"
+              className="min-w-[110px]"
+              disabled={saving}
+            >
+              Clear
+            </GlassBtn>
+            <GlassBtn
+              type="button"
+              onClick={handleSave}
+              ref={saveBtnRef}
+              title="Save (Alt+S)"
+              aria-keyshortcuts="Alt+S"
+              variant="primary"
+              className="min-w-[140px] inline-flex items-center justify-center gap-2"
+              disabled={saving || (!can.create && !can.update)}
+            >
+              <CheckCircleIcon className="w-5 h-5" />
+              {editingId ? (saving ? "Updating…" : "Update") : (saving ? "Saving…" : "Save")}
+            </GlassBtn>
           </div>
-        </form>
+          <div className="text-[11px] text-gray-500 px-4 pb-4 md:text-right">Shortcut: Alt+S</div>
+        </GlassCard>
       </Guard>
 
-      {/* meta */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-2">
-        <div className="text-sm text-gray-600">
-          {loading ? "Loading…" : (
-            <>
-              Showing <strong>{filtered.length===0?0:start+1}-{Math.min(filtered.length, start+pageSize)}</strong>{" "}
-              of <strong>{customers.length}</strong>{" "}
-              {filtered.length!==customers.length && <> (filtered: <strong>{filtered.length}</strong>)</>}
-            </>
-          )}
-        </div>
-        <div className="flex items-center gap-2">
-          <label className="text-sm text-gray-600">Rows per page</label>
-          <select value={pageSize} onChange={(e)=>setPageSize(Number(e.target.value))}
-                  className="border rounded px-2 h-9 text-sm">
-            <option value={10}>10</option><option value={25}>25</option><option value={50}>50</option>
-          </select>
-        </div>
-      </div>
-
-      {/* table with toolbar in header */}
-      <div className="w-full overflow-x-auto rounded border">
-        <table className="w-full">
-          <thead className="bg-gray-50 sticky top-0 z-10">
-            {/* Toolbar row (hidden if no import/export) */}
-            {(can.import || can.export) && (
-              <tr>
-                <th colSpan={can.update || can.delete ? 5 : 4} className="border p-2">
-                  <div className="flex items-center justify-start gap-2">
-                    <Guard when={can.import}>
-                      <button
-                        onClick={() => setImportOpen(true)}
-                        onKeyDown={(e)=> (e.key==="Enter"||e.key===" ") && (e.preventDefault(), setImportOpen(true))}
-                        className="inline-flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-3 h-9 rounded text-sm"
-                        title="Import Customers (CSV)" aria-label="Import customers from CSV"
-                      >
-                        <ArrowUpTrayIcon className="w-5 h-5" />
-                        Import CSV
-                      </button>
-                    </Guard>
-                    <Guard when={can.export}>
-                      <button
-                        onClick={handleExport} disabled={exporting}
-                        onKeyDown={(e)=> (e.key==="Enter"||e.key===" ") && (e.preventDefault(), handleExport())}
-                        className={`inline-flex items-center gap-2 px-3 h-9 rounded text-sm border ${
-                          exporting ? "bg-gray-200 text-gray-600 cursor-not-allowed"
-                                    : "bg-white hover:bg-gray-50 text-gray-800 border-gray-300"
-                        }`}
-                        title="Export all customers to CSV" aria-label="Export all customers to CSV"
-                      >
-                        <ArrowDownTrayIcon className="w-5 h-5" />
-                        {exporting ? "Exporting…" : "Export CSV"}
-                      </button>
-                    </Guard>
-                  </div>
-                </th>
-              </tr>
+      {/* Meta + page size */}
+      <GlassCard>
+        <div className="px-4 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <div className="text-sm text-gray-700">
+            {loading ? "Loading…" : (
+              <>
+                Showing <strong>{filtered.length===0?0:start+1}-{Math.min(filtered.length, start+pageSize)}</strong>{" "}
+                of <strong>{customers.length}</strong>{" "}
+                {filtered.length!==customers.length && <> (filtered: <strong>{filtered.length}</strong>)</>}
+              </>
             )}
-            {/* Column labels */}
-            <tr>
-              <th className="border p-2 text-left">Name</th>
-              <th className="border p-2 text-left">Email</th>
-              <th className="border p-2 text-left">Phone</th>
-              <th className="border p-2 text-left">Address</th>
-              {(can.update || can.delete) && <th className="border p-2 text-center">Actions</th>}
-            </tr>
-          </thead>
+          </div>
+          <div className="flex items-center gap-2">
+            <label className="text-sm text-gray-700">Rows per page</label>
+            <select
+              value={pageSize}
+              onChange={(e)=>setPageSize(Number(e.target.value))}
+              className="h-9 px-2 rounded-xl bg-white/70 backdrop-blur-sm border border-gray-200/70 text-sm"
+            >
+              <option value={10}>10</option>
+              <option value={25}>25</option>
+              <option value={50}>50</option>
+            </select>
+          </div>
+        </div>
+      </GlassCard>
 
-          <tbody>
-            {paged.length === 0 && !loading && (
-              <tr>
-                <td className="border px-3 py-6 text-center text-gray-500" colSpan={(can.update || can.delete) ? 5 : 4}>
-                  No customers found.
-                </td>
+      {/* Table + toolbar */}
+      <GlassCard>
+        <GlassSectionHeader
+          title="All Customers"
+          right={
+            <div className="flex items-center gap-2">
+              <Guard when={can.import}>
+                <GlassBtn
+                  onClick={() => setImportOpen(true)}
+                  variant="primary"
+                  title="Import Customers (CSV)"
+                  aria-label="Import customers from CSV"
+                  className="inline-flex items-center gap-2"
+                >
+                  <ArrowUpTrayIcon className="w-5 h-5" />
+                  Import CSV
+                </GlassBtn>
+              </Guard>
+              <Guard when={can.export}>
+                <GlassBtn
+                  onClick={handleExport}
+                  disabled={exporting}
+                  variant="ghost"
+                  className="inline-flex items-center gap-2"
+                  title="Export all customers to CSV"
+                  aria-label="Export all customers to CSV"
+                >
+                  <ArrowDownTrayIcon className="w-5 h-5" />
+                  {exporting ? "Exporting…" : "Export CSV"}
+                </GlassBtn>
+              </Guard>
+            </div>
+          }
+        />
+
+        {/* Scroll region so sticky header behaves; ensure contrast */}
+        <div className="max-h-[60vh] overflow-auto">
+          <table className="w-full text-sm text-gray-900">
+            <thead className="sticky top-0 bg-white/90 backdrop-blur-sm z-10 border-b border-gray-200/70">
+              <tr className="text-left">
+                <th className="px-3 py-2 font-medium">Name</th>
+                <th className="px-3 py-2 font-medium">Email</th>
+                <th className="px-3 py-2 font-medium">Phone</th>
+                <th className="px-3 py-2 font-medium">Address</th>
+                {hasActions && <th className="px-3 py-2 font-medium text-center">Actions</th>}
               </tr>
-            )}
-            {paged.map((c) => {
-              const inUse = Number(c.transactions_count || 0) > 0;
-              return (
-                <tr key={c.id} className="odd:bg-white even:bg-gray-50 hover:bg-blue-50 transition-colors">
-                  <td className="border p-2">{c.name}</td>
-                  <td className="border p-2 break-all">{c.email}</td>
-                  <td className="border p-2">{c.phone}</td>
-                  <td className="border p-2">{c.address}</td>
-                  {(can.update || can.delete) && (
-                    <td className="border p-2">
-                      <div className="flex gap-2 justify-center">
-                        <Guard when={can.update}>
-                          <button
-                            onClick={() => handleEdit(c)}
-                            onKeyDown={(e)=>handleButtonKeyDown(e, ()=>handleEdit(c))}
-                            tabIndex={0}
-                            className="bg-yellow-500 text-white px-3 h-9 text-sm rounded inline-flex items-center gap-1"
-                            aria-label={`Edit customer ${c.name}`}
-                          >
-                            <PencilSquareIcon className="w-5 h-5" />
-                            Edit
-                          </button>
-                        </Guard>
-                        <Guard when={can.delete}>
-                          <button
-                            onClick={() =>
-                              inUse ? toast.error("Cannot delete: customer has invoices/returns.")
-                                   : handleDelete(c)
-                            }
-                            onKeyDown={(e)=>handleButtonKeyDown(e, () =>
-                              inUse ? toast.error("Cannot delete: customer has invoices/returns.")
-                                   : handleDelete(c)
-                            )}
-                            tabIndex={0}
-                            disabled={inUse}
-                            title={inUse ? "Cannot delete: customer has invoices/returns." : "Delete"}
-                            className={`px-3 h-9 text-sm rounded inline-flex items-center gap-1 ${
-                              inUse ? "bg-gray-300 text-gray-600 cursor-not-allowed" : "bg-red-600 text-white"
-                            }`}
-                            aria-label={`Delete customer ${c.name}`}
-                          >
-                            <TrashIcon className="w-5 h-5" />
-                            Delete
-                          </button>
-                        </Guard>
-                      </div>
-                    </td>
-                  )}
+            </thead>
+
+            <tbody>
+              {paged.length === 0 && !loading && (
+                <tr>
+                  <td className="px-3 py-6 text-center text-gray-600" colSpan={hasActions ? 5 : 4}>
+                    No customers found.
+                  </td>
                 </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
+              )}
 
-      {/* pagination */}
-      <div className="mt-4 flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between">
-        <div className="text-sm text-gray-600">Page {page} of {pageCount}</div>
+              {paged.map((c, idx) => {
+                const inUse = Number(c.transactions_count || 0) > 0;
+                return (
+                  <tr
+                    key={c.id ?? idx}
+                    className="odd:bg-white/90 even:bg-white/70 hover:bg-blue-50 transition-colors"
+                  >
+                    <td className="px-3 py-2">{c.name}</td>
+                    <td className="px-3 py-2 break-all">{c.email}</td>
+                    <td className="px-3 py-2">{c.phone}</td>
+                    <td className="px-3 py-2">{c.address}</td>
+
+                    {hasActions && (
+                      <td className="px-3 py-2">
+                        <div className="flex gap-2 justify-center">
+                          <Guard when={can.update}>
+                            <GlassBtn
+                              onClick={() => handleEdit(c)}
+                              onKeyDown={(e)=>handleButtonKeyDown(e, ()=>handleEdit(c))}
+                              className="inline-flex items-center gap-1"
+                            >
+                              <PencilSquareIcon className="w-5 h-5" />
+                              Edit
+                            </GlassBtn>
+                          </Guard>
+
+                          <Guard when={can.delete}>
+                            <GlassBtn
+                              onClick={() =>
+                                inUse ? toast.error("Cannot delete: customer has invoices/returns.")
+                                     : handleDelete(c)
+                              }
+                              onKeyDown={(e)=>handleButtonKeyDown(e, () =>
+                                inUse ? toast.error("Cannot delete: customer has invoices/returns.")
+                                     : handleDelete(c)
+                              )}
+                              title={inUse ? "Cannot delete: customer has invoices/returns." : "Delete"}
+                              className={`inline-flex items-center gap-1 ${inUse ? "opacity-60 cursor-not-allowed" : ""}`}
+                              disabled={inUse}
+                            >
+                              <TrashIcon className="w-5 h-5" />
+                              Delete
+                            </GlassBtn>
+                          </Guard>
+                        </div>
+                      </td>
+                    )}
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </GlassCard>
+
+      {/* Pagination */}
+      <div className="flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between">
+        <div className="text-sm text-gray-700 px-1">Page {page} of {pageCount}</div>
         <div className="flex items-center gap-2">
-          <button onClick={() => setPage(1)} disabled={page === 1} className="px-3 py-1 border rounded disabled:opacity-50">⏮ First</button>
-          <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page === 1} className="px-3 py-1 border rounded disabled:opacity-50">◀ Prev</button>
-          <button onClick={() => setPage((p) => Math.min(pageCount, p + 1))} disabled={page === pageCount} className="px-3 py-1 border rounded disabled:opacity-50">Next ▶</button>
-          <button onClick={() => setPage(pageCount)} disabled={page === pageCount} className="px-3 py-1 border rounded disabled:opacity-50">Last ⏭</button>
+          <GlassBtn
+            onClick={() => setPage(1)}
+            disabled={page === 1}
+            title="First"
+            className="inline-flex items-center gap-1 disabled:opacity-50"
+          >
+            <ChevronDoubleLeftIcon className="w-4 h-4" />
+            First
+          </GlassBtn>
+          <GlassBtn
+            onClick={() => setPage((p) => Math.max(1, p - 1))}
+            disabled={page === 1}
+            title="Previous"
+            className="inline-flex items-center gap-1 disabled:opacity-50"
+          >
+            <ChevronLeftIcon className="w-4 h-4" />
+            Prev
+          </GlassBtn>
+          <GlassBtn
+            onClick={() => setPage((p) => Math.min(pageCount, p + 1))}
+            disabled={page === pageCount}
+            title="Next"
+            className="inline-flex items-center gap-1 disabled:opacity-50"
+          >
+            Next
+            <ChevronRightIcon className="w-4 h-4" />
+          </GlassBtn>
+          <GlassBtn
+            onClick={() => setPage(pageCount)}
+            disabled={page === pageCount}
+            title="Last"
+            className="inline-flex items-center gap-1 disabled:opacity-50"
+          >
+            Last
+            <ChevronDoubleRightIcon className="w-4 h-4" />
+          </GlassBtn>
         </div>
       </div>
 
