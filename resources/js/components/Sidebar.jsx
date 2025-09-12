@@ -1,66 +1,101 @@
 // src/components/Sidebar.jsx
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, useMemo } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
   HomeIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
   BuildingStorefrontIcon,
-  UserGroupIcon,
+  UsersIcon,
   Squares2X2Icon,
   TagIcon,
   CubeIcon,
-  DocumentTextIcon,
-  FolderMinusIcon,
+  ClipboardDocumentListIcon,
+  ArrowUturnLeftIcon,
   DocumentCurrencyDollarIcon,
-  DocumentMinusIcon,
-  TruckIcon,
+  ArrowUturnDownIcon,
+  ClipboardDocumentCheckIcon,
+  ArrowsRightLeftIcon,
+  BanknotesIcon,
   ChartBarIcon,
   Cog6ToothIcon,
+  UserGroupIcon,
+  KeyIcon,
 } from "@heroicons/react/24/outline";
+import { usePermissions } from "@/api/usePermissions";
 
-export default function Sidebar({ appName = "ERP", logoUrl = null }) {
+export default function Sidebar() {
   const [collapsed, setCollapsed] = useState(false);
   const { pathname } = useLocation();
   const navigate = useNavigate();
 
-  // Menu (with icons)
-  const menu = [
-    { name: "Dashboard", path: "/dashboard", icon: <HomeIcon className="w-6 h-6" /> },
+  const { loading: permsLoading, has } = usePermissions();
 
-    { type: "section", name: "Masters" },
-    { name: "Suppliers", path: "/suppliers", icon: <BuildingStorefrontIcon className="w-6 h-6" /> },
-    { name: "Customers", path: "/customers", icon: <UserGroupIcon className="w-6 h-6" /> },
-    { name: "Categories", path: "/categories", icon: <Squares2X2Icon className="w-6 h-6" /> },
-    { name: "Brands", path: "/brands", icon: <TagIcon className="w-6 h-6" /> },
-    { name: "Products", path: "/products", icon: <CubeIcon className="w-6 h-6" /> },
+  const brandName = "Karobar App";
+  const logoCandidates = ["/storage/logos/logo.png", "/logo.png"];
 
-    { type: "section", name: "Transactions" },
-    { name: "Purchase Invoice", path: "/purchase-invoices", icon: <DocumentTextIcon className="w-6 h-6" /> },
-    { name: "Purchase Return", path: "/purchase-returns", icon: <FolderMinusIcon className="w-6 h-6" /> },
-    { name: "Sale Invoice", path: "/sale-invoices", icon: <DocumentCurrencyDollarIcon className="w-6 h-6" /> },
-    { name: "Sale Return", path: "/sale-returns", icon: <DocumentMinusIcon className="w-6 h-6" /> },
-    { name: "Purchase Orders", path: "/purchase-orders", icon: <TruckIcon className="w-6 h-6" /> },
-    { name: "Stock Adjustments", path: "/stock-adjustments", icon: <TagIcon className="w-6 h-6" /> },
+  const rawMenu = useMemo(
+    () => [
+      { name: "Dashboard", path: "/dashboard", icon: <HomeIcon className="w-6 h-6" /> },
 
-    { type: "section", name: "Ledger" },
-    { name: "Supplier Ledger", path: "/supplier-ledger", icon: <DocumentTextIcon className="w-6 h-6" /> },
-    { name: "Customer Ledger", path: "/customer-ledger", icon: <DocumentTextIcon className="w-6 h-6" /> },
+      { type: "section", name: "Masters" },
+      { name: "Suppliers",  path: "/suppliers",  icon: <BuildingStorefrontIcon className="w-6 h-6" />, perm: "supplier.view" },
+      { name: "Customers",  path: "/customers",  icon: <UsersIcon className="w-6 h-6" />, perm: "customer.view" },
+      { name: "Categories", path: "/categories", icon: <Squares2X2Icon className="w-6 h-6" />, perm: "category.view" },
+      { name: "Brands",     path: "/brands",     icon: <TagIcon className="w-6 h-6" />, perm: "brand.view" },
+      { name: "Products",   path: "/products",   icon: <CubeIcon className="w-6 h-6" />, perm: "product.view" },
 
-    { type: "section", name: "Reports" },
-    { name: "Cost of Sale Report", path: "/reports/cost-of-sale", icon: <ChartBarIcon className="w-6 h-6" /> },
-    { name: "Purchase Detail Report", path: "/reports/purchase-detail", icon: <ChartBarIcon className="w-6 h-6" /> },
-    { name: "Sale Detail Report", path: "/reports/sale-detail", icon: <ChartBarIcon className="w-6 h-6" /> },
+      { type: "section", name: "Transactions" },
+      { name: "Purchase Invoice",  path: "/purchase-invoices",  icon: <ClipboardDocumentListIcon className="w-6 h-6" />, perm: "purchase-invoice.view" },
+      { name: "Purchase Return",   path: "/purchase-returns",   icon: <ArrowUturnLeftIcon className="w-6 h-6" />, perm: "purchase-return.view" },
+      { name: "Sale Invoice",      path: "/sale-invoices",      icon: <DocumentCurrencyDollarIcon className="w-6 h-6" />, perm: "sale-invoice.view" },
+      { name: "Sale Return",       path: "/sale-returns",       icon: <ArrowUturnDownIcon className="w-6 h-6" />, perm: "sale-return.view" },
+      { name: "Purchase Orders",   path: "/purchase-orders",    icon: <ClipboardDocumentCheckIcon className="w-6 h-6" />, perm: "purchase-order.view" },
+      { name: "Stock Adjustments", path: "/stock-adjustments",  icon: <ArrowsRightLeftIcon className="w-6 h-6" />, perm: "stock-adjustment.view" },
 
-    { type: "section", name: "System" },
-    { name: "Settings", path: "/settings", icon: <Cog6ToothIcon className="w-6 h-6" /> },
-    { name: "Users", path: "/users", icon: <UserGroupIcon className="w-6 h-6" /> },
-    { name: "Roles", path: "/roles", icon: <UserGroupIcon className="w-6 h-6" /> },
-  ];
+      { type: "section", name: "Ledger" },
+      { name: "Supplier Ledger", path: "/supplier-ledger", icon: <BanknotesIcon className="w-6 h-6" />, perm: "ledger.supplier.view" },
+      { name: "Customer Ledger", path: "/customer-ledger", icon: <BanknotesIcon className="w-6 h-6" />, perm: "ledger.customer.view" },
 
-  // Keyboard focus handling
+      { type: "section", name: "Reports" },
+      { name: "Cost of Sale Report",     path: "/reports/cost-of-sale",    icon: <ChartBarIcon className="w-6 h-6" />, perm: "report.cost-of-sale.view" },
+      { name: "Purchase Detail Report",  path: "/reports/purchase-detail", icon: <ChartBarIcon className="w-6 h-6" />, perm: "report.purchase-detail.view" },
+      { name: "Sale Detail Report",      path: "/reports/sale-detail",     icon: <ChartBarIcon className="w-6 h-6" />, perm: "report.sale-detail.view" },
+
+      { type: "section", name: "System" },
+      { name: "Settings", path: "/settings", icon: <Cog6ToothIcon className="w-6 h-6" />, perm: "settings.view" },
+      { name: "Users",    path: "/users",    icon: <UserGroupIcon className="w-6 h-6" />, perm: "user.view" },
+      { name: "Roles",    path: "/roles",    icon: <KeyIcon className="w-6 h-6" />, perm: "role.view" },
+    ],
+    []
+  );
+
+  const menu = useMemo(() => {
+    const visible = [];
+    for (let i = 0; i < rawMenu.length; i++) {
+      const it = rawMenu[i];
+      if (it.type === "section") { visible.push(it); continue; }
+      const allowed = it.perm ? (!permsLoading && has(it.perm)) : true;
+      if (allowed) visible.push(it);
+    }
+    const cleaned = [];
+    for (let i = 0; i < visible.length; i++) {
+      const it = visible[i];
+      if (it.type === "section") {
+        let keep = false;
+        for (let j = i + 1; j < visible.length; j++) {
+          if (!visible[j].type) { keep = true; break; }
+          if (visible[j].type === "section") break;
+        }
+        if (keep) cleaned.push(it);
+      } else cleaned.push(it);
+    }
+    if (cleaned.length && cleaned[cleaned.length - 1].type === "section") cleaned.pop();
+    return cleaned;
+  }, [rawMenu, permsLoading, has]);
+
   const itemRefs = useRef([]);
-  const flatMenu = menu.filter((m) => !m.type);
+  const flatMenu = useMemo(() => menu.filter((m) => !m.type), [menu]);
   const [focusedIndex, setFocusedIndex] = useState(-1);
 
   useEffect(() => {
@@ -68,7 +103,7 @@ export default function Sidebar({ appName = "ERP", logoUrl = null }) {
       (item) => pathname === item.path || pathname.startsWith(item.path + "/")
     );
     setFocusedIndex(idx);
-  }, [pathname]);
+  }, [pathname, flatMenu]);
 
   useEffect(() => {
     if (focusedIndex >= 0 && itemRefs.current[focusedIndex]) {
@@ -81,70 +116,90 @@ export default function Sidebar({ appName = "ERP", logoUrl = null }) {
     switch (e.key) {
       case "ArrowDown":
         e.preventDefault();
-        setFocusedIndex((prev) => (prev + 1) % flatMenu.length);
+        setFocusedIndex((p) => (p + 1) % flatMenu.length);
         break;
       case "ArrowUp":
         e.preventDefault();
-        setFocusedIndex((prev) => (prev <= 0 ? flatMenu.length - 1 : prev - 1));
+        setFocusedIndex((p) => (p <= 0 ? flatMenu.length - 1 : p - 1));
         break;
       case "Home":
-        e.preventDefault();
-        setFocusedIndex(0);
-        break;
+        e.preventDefault(); setFocusedIndex(0); break;
       case "End":
-        e.preventDefault();
-        setFocusedIndex(flatMenu.length - 1);
-        break;
+        e.preventDefault(); setFocusedIndex(flatMenu.length - 1); break;
       case "Enter":
       case " ":
         e.preventDefault();
         if (focusedIndex >= 0) navigate(flatMenu[focusedIndex].path);
         break;
-      default:
-        break;
+      default: break;
     }
   }
 
   const isActive = (path) => pathname === path || pathname.startsWith(path + "/");
-  const linkClass = (path) =>
-    `flex items-center p-2 mx-2 mt-2 rounded-lg transition focus:outline-none ${
-      isActive(path) ? "bg-blue-100 text-blue-600" : "hover:bg-gray-100 text-gray-900"
-    }`;
 
-  const initial = (appName || "ERP").trim().charAt(0).toUpperCase();
+  const widthCls = collapsed ? "w-20" : "w-64";
+
+  // Floating shell
+  const shell =
+    "relative h-screen px-3 py-3 " +
+    "bg-transparent";
+
+  const card =
+    "relative flex h-full flex-col rounded-2xl " +
+    "bg-white/70 backdrop-blur-sm ring-1 ring-gray-200/60 shadow-xl " +
+    "transition-[width] duration-300 overflow-hidden " + widthCls;
+
+  // Scroll shadows (top & bottom) using ::before/::after style masks
+  const scrollShadow =
+    "before:pointer-events-none before:content-[''] before:absolute before:left-0 before:right-0 before:top-[64px] before:h-4 before:bg-gradient-to-b before:from-white/70 before:to-transparent " +
+    "after:pointer-events-none after:content-[''] after:absolute after:left-0 after:right-0 after:bottom-[56px] after:h-6 after:bg-gradient-to-t after:from-white/70 after:to-transparent";
+
+  // Item styles
+  const itemBase =
+    "group relative mx-2 mt-2 flex items-center gap-3 rounded-xl px-3 py-2 text-gray-900 " +
+    "hover:translate-y-[-2px] hover:bg-white/80 hover:shadow-md transition focus:outline-none " +
+    "focus:ring-2 focus:ring-blue-400/60 focus:ring-offset-2 focus:ring-offset-transparent";
+  const itemActive = "bg-white shadow-md ring-1 ring-blue-200/70";
+  const leftRail =
+    "absolute left-0 top-1/2 -translate-y-1/2 h-6 w-1 rounded-full transition-all";
+
+  // Custom thin scrollbar (WebKit) – safe fallback elsewhere
+  const scrollAreaCls =
+    "flex-1 overflow-y-auto min-h-0 mt-2 pb-4 " +
+    "[&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-thumb]:rounded-full " +
+    "[&::-webkit-scrollbar-thumb]:bg-gray-300/70 hover:[&::-webkit-scrollbar-thumb]:bg-gray-400/70 " +
+    "[&::-webkit-scrollbar-track]:bg-transparent";
 
   return (
-    <aside
-      className={`bg-white shadow-md transition-[width] duration-300 ${
-        collapsed ? "w-20" : "w-64"
-      } h-screen overflow-hidden`} // prevent page scroll from sidebar
-    >
-      {/* Inner column wrapper ensures proper overflow behavior */}
-      <div className="flex flex-col h-full min-h-0">
-        {/* Header (brand + collapse) */}
-        <div className="flex items-center justify-between p-4 border-b shrink-0">
-          <div className="flex items-center gap-2 overflow-hidden">
-            {logoUrl ? (
-              <img src={logoUrl} alt={appName} className="h-8 w-8 object-contain rounded" />
-            ) : (
-              <div className="h-8 w-8 rounded bg-blue-600 text-white flex items-center justify-center text-sm font-semibold">
-                {initial}
-              </div>
-            )}
-            {!collapsed && <span className="text-lg font-bold truncate">{appName || "ERP"}</span>}
+    <aside className={shell}>
+      <div className={`${card} ${scrollShadow}`}>
+        {/* Sticky header */}
+        <div className="sticky top-0 z-10 bg-white/80 backdrop-blur-sm border-b border-gray-200/60 px-4 py-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2 overflow-hidden">
+              <picture>
+                {logoCandidates.map((src) => (
+                  <img
+                    key={src}
+                    src={src}
+                    alt={brandName}
+                    className="h-10 w-10 object-contain rounded hidden"
+                    onLoad={(e) => {
+                      const imgs = e.currentTarget.parentElement.querySelectorAll("img");
+                      imgs.forEach((im) => (im.style.display = "none"));
+                      e.currentTarget.style.display = "block";
+                    }}
+                  />
+                ))}
+              </picture>
+              {!collapsed && <span className="text-base font-semibold truncate">{brandName}</span>}
+            </div>
           </div>
-          <button
-            onClick={() => setCollapsed((v) => !v)}
-            className="p-1 rounded hover:bg-gray-100"
-            aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-          >
-            {collapsed ? <ChevronRightIcon className="w-5 h-5" /> : <ChevronLeftIcon className="w-5 h-5" />}
-          </button>
         </div>
 
-        {/* Scrollable NAV ONLY (so the whole page doesn't scroll) */}
+        {/* Scrollable NAV */}
         <nav
-          className="flex-1 overflow-y-auto min-h-0 mt-2"
+          className={scrollAreaCls}
           role="navigation"
           tabIndex={0}
           aria-label="Main navigation"
@@ -153,39 +208,78 @@ export default function Sidebar({ appName = "ERP", logoUrl = null }) {
           {menu.map((item, i) => {
             if (item.type === "section") {
               return (
-                <div key={`sec-${item.name}`} className={`px-3 ${collapsed ? "mt-4" : "pt-3 pb-1 mt-2"}`}>
+                <div key={`sec-${item.name}-${i}`} className={`px-4 ${collapsed ? "mt-5" : "pt-4 pb-1 mt-3"}`}>
                   {!collapsed && (
-                    <div className="text-xs uppercase tracking-wider text-gray-400">{item.name}</div>
+                    <div className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">
+                      {item.name}
+                    </div>
                   )}
                 </div>
               );
             }
 
             const focusIdx = flatMenu.findIndex((fm) => fm.path === item.path);
-            const isFocused = focusedIndex === focusIdx;
+            const active = isActive(item.path);
 
             return (
               <Link
                 key={item.path}
                 to={item.path}
                 ref={(el) => (itemRefs.current[focusIdx] = el)}
-                className={`${linkClass(item.path)} ${
-                  isFocused && !isActive(item.path) ? "bg-gray-200" : ""
-                }`}
-                tabIndex={isFocused ? 0 : -1}
+                className={[
+                  itemBase,
+                  active ? itemActive : "hover:ring-1 hover:ring-gray-200/70",
+                ].join(" ")}
+                tabIndex={focusedIndex === focusIdx ? 0 : -1}
                 onFocus={() => setFocusedIndex(focusIdx)}
-                aria-current={isActive(item.path) ? "page" : undefined}
+                aria-current={active ? "page" : undefined}
                 title={collapsed ? item.name : undefined}
               >
-                {item.icon}
-                {!collapsed && <span className="ml-3">{item.name}</span>}
+                {/* active left rail */}
+                <span
+                  className={`${leftRail} ${active ? "bg-blue-500 w-1.5 opacity-100" : "bg-transparent w-0 opacity-0"}`}
+                />
+                <span
+                  className={[
+                    "shrink-0",
+                    active ? "text-blue-600" : "text-gray-700 group-hover:text-blue-600",
+                  ].join(" ")}
+                >
+                  {item.icon}
+                </span>
+
+                {/* Label with smart reveal:
+                   - Shown when expanded
+                   - In collapsed mode: hidden but slides in on hover to hint discoverability */}
+                <span
+                  className={[
+                    "whitespace-nowrap",
+                    collapsed
+                      ? "pointer-events-none select-none translate-x-2 opacity-0 group-hover:opacity-100 group-hover:translate-x-0 transition"
+                      : "",
+                    active ? "text-blue-700 font-medium" : "text-gray-900",
+                  ].join(" ")}
+                >
+                  {!collapsed && item.name}
+                  {collapsed && <span className="sr-only">{item.name}</span>}
+                </span>
               </Link>
             );
           })}
-
-          {/* extra bottom spacer so last item isn't hidden under screen edge */}
-          <div className="h-4" />
+          <div className="h-2" />
         </nav>
+
+        {/* Sticky footer (collapse/expand) */}
+        <div className="sticky bottom-0 z-10 bg-white/80 backdrop-blur-sm border-t border-gray-200/60 px-2 py-2">
+          <button
+            onClick={() => setCollapsed((v) => !v)}
+            className="w-full flex items-center justify-center gap-2 rounded-xl px-3 py-2 text-sm font-medium text-gray-700 hover:bg-white hover:shadow focus:outline-none focus:ring-2 focus:ring-blue-400/60"
+            aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+          >
+            {collapsed ? <ChevronRightIcon className="w-5 h-5" /> : <ChevronLeftIcon className="w-5 h-5" />}
+            {!collapsed && <span>Collapse</span>}
+          </button>
+        </div>
       </div>
     </aside>
   );

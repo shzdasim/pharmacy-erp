@@ -1,3 +1,4 @@
+// src/layouts/DashboardLayout.jsx
 import { useEffect, useState } from "react";
 import axios from "axios";
 import { useLocation } from "react-router-dom";
@@ -12,7 +13,6 @@ export default function DashboardLayout({ children }) {
   const [appName, setAppName] = useState("ERP");
   const [logoUrl, setLogoUrl] = useState(null);
 
-  // Fetch once
   useEffect(() => {
     (async () => {
       try {
@@ -27,31 +27,23 @@ export default function DashboardLayout({ children }) {
     })();
   }, []);
 
-  // Page titles
+  // Page titles (tip: fix '/Products' -> '/products')
   const titles = {
     "/dashboard": "Dashboard",
     "/profile": "Profile",
     "/suppliers": "Suppliers",
     "/customers": "Customers",
-    "/Products": "Products",
+    "/products": "Products",
     "/categories": "Categories",
     "/brands": "Brands",
     "/purchase-invoices": "Purchase Invoices",
     "/purchase-invoices/create": "Create Purchase Invoice",
-    "/purchase-invoices/:id": "View Purchase Invoice",
-    "/purchase-invoices/:id/edit": "Edit Purchase Invoice",
     "/purchase-returns": "Purchase Returns",
     "/purchase-returns/create": "Create Purchase Return",
-    "/purchase-returns/:id": "View Purchase Return",
-    "/purchase-returns/:id/edit": "Edit Purchase Return",
     "/sale-invoices": "Sale Invoices",
     "/sale-invoices/create": "Create Sale Invoice",
-    "/sale-invoices/:id": "View Sale Invoice",
-    "/sale-invoices/:id/edit": "Edit Sale Invoice",
     "/sale-returns": "Sale Returns",
     "/sale-returns/create": "Create Sale Return",
-    "/sale-returns/:id": "View Sale Return",
-    "/sale-returns/:id/edit": "Edit Sale Return",
     "/purchase-orders": "Purchase Orders",
     "/settings": "Settings",
   };
@@ -59,24 +51,37 @@ export default function DashboardLayout({ children }) {
   const currentPath = location.pathname;
   const pageTitle = titles[currentPath] || "Dashboard";
 
-  // Set browser tab title with app name
   useEffect(() => {
     document.title = `${pageTitle} - ${appName || "ERP"}`;
   }, [pageTitle, appName]);
 
   return (
-    <div className="flex h-screen bg-gray-100">
-      {/* Sidebar now shows logo + app name */}
-      <Sidebar appName={appName} logoUrl={logoUrl} />
-
-      <div className="flex-1 flex flex-col">
-        <Toaster position="top-right" reverseOrder={false} />
-
-        {/* Topbar now shows page title */}
-        <Topbar pageTitle={pageTitle} />
-
-        <main className="flex-1 overflow-y-auto">{children}</main>
+    <div
+      className="
+        h-screen bg-gray-100
+        grid grid-rows-[auto,1fr] grid-cols-[auto,1fr]
+        overflow-hidden
+      "
+    >
+      {/* Sidebar: left column, spans both rows; stays visible thanks to sticky */}
+      <div className="row-span-2 col-start-1 relative">
+        <div className="sticky top-0 h-screen min-h-0">
+          <Sidebar appName={appName} logoUrl={logoUrl} />
+        </div>
       </div>
+
+      {/* Topbar: top-right cell; sticky within its cell */}
+      <div className="row-start-1 col-start-2 relative z-30">
+        <Topbar pageTitle={pageTitle} />
+      </div>
+
+      {/* Main content: bottom-right cell; independent scroll */}
+      <main className="row-start-2 col-start-2 min-h-0 overflow-y-auto">
+        <div className="p-4">
+          <Toaster position="top-right" reverseOrder={false} />
+          {children}
+        </div>
+      </main>
     </div>
   );
 }
