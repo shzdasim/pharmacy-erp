@@ -43,6 +43,7 @@ class CustomerLedgerController extends Controller
      * ================================ */
     public function index(Request $request)
     {
+        $this->authorize('viewAny', CustomerLedger::class);
         $request->validate([
             'customer_id' => ['required','integer','exists:customers,id'],
             'from'        => ['nullable','date'],
@@ -188,6 +189,7 @@ class CustomerLedgerController extends Controller
      * ================================ */
     public function store(Request $request)
     {
+        $this->authorize('create', CustomerLedger::class);
         $data = $request->validate([
             'customer_id'     => ['required','integer','exists:customers,id'],
             'entry_date'      => ['required','date'],
@@ -229,6 +231,7 @@ class CustomerLedgerController extends Controller
      * ================================ */
     public function bulkUpdate(Request $request)
     {
+        $this->authorize('updateAny', CustomerLedger::class);
         $payload = $request->validate([
             'rows' => ['required','array','min:1'],
             'rows.*.id'              => ['required','integer','exists:customer_ledgers,id'],
@@ -277,6 +280,7 @@ class CustomerLedgerController extends Controller
      * ================================ */
     public function destroy(CustomerLedger $customerLedger)
     {
+        $this->authorize('delete', $customerLedger);
         if ($customerLedger->entry_type === 'invoice' && !$customerLedger->is_manual) {
             return response()->json(['message' => 'Cannot delete invoice row'], 422);
         }
@@ -290,6 +294,7 @@ class CustomerLedgerController extends Controller
      * ================================ */
     public function rebuild(Request $request)
     {
+        $this->authorize('updateAny', CustomerLedger::class);
         $request->validate([
             'customer_id' => ['required','integer','exists:customers,id'],
         ]);
@@ -361,6 +366,7 @@ class CustomerLedgerController extends Controller
 
     public function print(Request $request)
 {
+    $this->authorize('viewAny', CustomerLedger::class);
     // -------- Validate + fetch basics --------
     $customerId = (int) $request->query('customer_id');
     abort_if(!$customerId, 404, 'Customer is required');

@@ -2,6 +2,7 @@
 import React, { useEffect, useMemo, useState, useRef } from "react";
 import axios from "axios";
 import toast from "react-hot-toast";
+import { usePermissions, Guard } from "@/api/usePermissions.js";
 
 /* =========================
    Async Customer Search (tablet-friendly)
@@ -149,7 +150,7 @@ function CustomerSearchInput({ value, onChange, autoFocus }) {
 }
 
 /* =========================
-   Customer Ledger Page
+   Customer Ledger Page (permission-aware)
    ========================= */
 export default function CustomerLedgerPage() {
   const [customerId, setCustomerId] = useState("");
@@ -158,10 +159,20 @@ export default function CustomerLedgerPage() {
   const [rows, setRows] = useState([]);
   const [summary, setSummary] = useState({
     total_invoiced: 0,
-    received_on_invoice: 0, // sum of total_received on invoice rows
-    payments_credited: 0,   // sum of credited_amount on payment rows
-    net_balance: 0,         // (invoice_total - received_on_invoice) - payments_credited
+    received_on_invoice: 0,
+    payments_credited: 0,
+    net_balance: 0,
   });
+
+  // 🔒 permissions
+  const { loading: permsLoading, canFor } = usePermissions();
+  const can = useMemo(
+    () =>
+      (typeof canFor === "function" ? canFor("customer-ledger") : {
+        view:false, create:false, update:false, delete:false
+      }),
+    [canFor]
+  );
 
   // ---------- utils ----------
   const fmt = (v) => {
@@ -174,24 +185,26 @@ export default function CustomerLedgerPage() {
     }).format(n);
   };
 
-  // hotkeys
+  // hotkeys (guarded)
   useEffect(() => {
     const onKey = (e) => {
       if (e.altKey && (e.key || "").toLowerCase() === "s") {
         e.preventDefault();
+        if (!can.create && !can.update) return;
         openSaveModal();
       }
       if (e.altKey && (e.key || "").toLowerCase() === "p") {
         e.preventDefault();
+        if (!can.view) return;
         handlePrint();
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rows, customerId, from, to]);
+  }, [rows, customerId, from, to, can.create, can.update, can.view]);
 
   const fetchData = async () => {
+    if (!can.view) return toast.error("You don't have permission to view customer ledger.");
     if (!customerId) return toast.error("Select a customer first");
     try {
       const { data } = await axios.get("/api/customer-ledger", {
@@ -199,7 +212,6 @@ export default function CustomerLedgerPage() {
       });
       const clean = (data.data || []).map((r) => {
         const c = { ...r };
-        // remove any client-only *_input fields that might have slipped in
         Object.keys(c).forEach((k) => k.endsWith("_input") && delete c[k]);
         return c;
       });
@@ -218,6 +230,7 @@ export default function CustomerLedgerPage() {
   };
 
   const rebuild = async () => {
+    if (!can.update) return toast.error("You don't have permission to rebuild.");
     if (!customerId) return toast.error("Select a customer first");
     try {
       await axios.post("/api/customer-ledger/rebuild", { customer_id: customerId });
@@ -228,7 +241,7 @@ export default function CustomerLedgerPage() {
     }
   };
 
-  // ---------- number editing helpers (no forced .00 while typing) ----------
+  // ---------- number editing helpers ----------
   const getInput = (row, field) => {
     if (row[`${field}_input`] !== undefined) return row[`${field}_input`];
     const v = row[field];
@@ -256,7 +269,6 @@ export default function CustomerLedgerPage() {
       r[field] = Number.isFinite(parsed) ? Number(parsed) : 0;
       delete r[`${field}_input`];
 
-      // keep Balance Remaining in sync on invoice/manual rows
       if (["invoice", "manual"].includes(r.entry_type)) {
         const bal = Number(((r.invoice_total || 0) - (r.total_received || 0)).toFixed(2));
         r.balance_remaining = bal < 0 ? 0 : bal;
@@ -281,8 +293,9 @@ export default function CustomerLedgerPage() {
     });
   };
 
-  // ---------- add row (behind confirm modal) ----------
+  // ---------- add row ----------
   const addPaymentNow = () => {
+    if (!can.create) return toast.error("You don't have permission to add payments.");
     if (!customerId) return toast.error("Select a customer first");
     const today = new Date().toISOString().slice(0, 10);
     setRows((prev) => [
@@ -292,11 +305,9 @@ export default function CustomerLedgerPage() {
         customer_id: customerId,
         entry_type: "payment",
         entry_date: today,
-        // UI name: Received Payment -> credited_amount
         credited_amount: 0,
         payment_ref: "",
         description: "Payment received",
-        // not used for payment rows but keep explicit zeros
         invoice_total: 0,
         total_received: 0,
         balance_remaining: 0,
@@ -305,6 +316,7 @@ export default function CustomerLedgerPage() {
     ]);
   };
   const addManualNow = () => {
+    if (!can.create) return toast.error("You don't have permission to add manual rows.");
     if (!customerId) return toast.error("Select a customer first");
     const today = new Date().toISOString().slice(0, 10);
     setRows((prev) => [
@@ -315,7 +327,6 @@ export default function CustomerLedgerPage() {
         entry_type: "manual",
         entry_date: today,
         posted_number: "",
-        // invoice_number removed in UI
         invoice_total: 0,
         total_received: 0,
         balance_remaining: 0,
@@ -327,28 +338,32 @@ export default function CustomerLedgerPage() {
     ]);
   };
 
-  // ---------- bulk save (actual) ----------
+  // ---------- bulk save ----------
   const doBulkSave = async () => {
-    // new rows (no id) will be POSTed individually
     const news = rows.filter((r) => !r.id);
-    // only send editable rows to bulk update (avoid 422 on invoice rows)
     const updates = rows.filter(
       (r) => r.id && (r.entry_type === "payment" || r.entry_type === "manual" || r.is_manual)
     );
+
+    if (news.length && !can.create) {
+      return toast.error("You don't have permission to create ledger rows.");
+    }
+    if (updates.length && !can.update) {
+      return toast.error("You don't have permission to update ledger rows.");
+    }
 
     try {
       for (const n of news) {
         const payload = {
           customer_id: customerId,
-          entry_type: n.entry_type,          // REQUIRED
-          is_manual: !!n.is_manual,          // make intent explicit
+          entry_type: n.entry_type,
+          is_manual: !!n.is_manual,
           entry_date: n.entry_date,
           description: n.description,
           posted_number: n.posted_number,
-          // invoice_number removed from UI/payload
           invoice_total: n.invoice_total || 0,
           total_received: n.total_received || 0,
-          credited_amount: n.credited_amount || 0, // Received Payment
+          credited_amount: n.credited_amount || 0,
           payment_ref: n.payment_ref,
           sale_invoice_id: n.sale_invoice_id || null,
         };
@@ -362,7 +377,6 @@ export default function CustomerLedgerPage() {
             entry_date: u.entry_date,
             description: u.description,
             posted_number: u.posted_number,
-            // invoice_number intentionally omitted
             invoice_total: u.invoice_total || 0,
             total_received: u.total_received || 0,
             credited_amount: u.credited_amount || 0,
@@ -377,14 +391,15 @@ export default function CustomerLedgerPage() {
     }
   };
 
-  // ---------- delete (secure: confirm -> password) ----------
+  // ---------- delete (secure) ----------
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
-  const [deleteStep, setDeleteStep] = useState(1); // 1 confirm, 2 password
-  const [deletingIdx, setDeletingIdx] = useState(null); // original index in rows
+  const [deleteStep, setDeleteStep] = useState(1);
+  const [deletingIdx, setDeletingIdx] = useState(null);
   const [password, setPassword] = useState("");
   const [deleting, setDeleting] = useState(false);
 
   const openDeleteModal = (originalIdx) => {
+    if (!can.delete) return toast.error("You don't have permission to delete ledger rows.");
     setDeletingIdx(originalIdx);
     setPassword("");
     setDeleteStep(1);
@@ -401,10 +416,11 @@ export default function CustomerLedgerPage() {
 
   const confirmAndDelete = async () => {
     if (deletingIdx === null) return;
+    if (!can.delete) return toast.error("You don't have permission to delete ledger rows.");
     const r = rows[deletingIdx];
     try {
       setDeleting(true);
-      await axios.post("/api/auth/confirm-password", { password }); // verify user
+      await axios.post("/api/auth/confirm-password", { password });
 
       if (r.id && !r.is_manual && r.entry_type === "invoice") {
         toast.error("Cannot delete invoice row");
@@ -430,11 +446,11 @@ export default function CustomerLedgerPage() {
   // ---------- confirm add modals ----------
   const [addModal, setAddModal] = useState({ open: false, type: null }); // 'payment' | 'manual'
   const openAddPayment = () => setAddModal({ open: true, type: "payment" });
-  const openAddManual = () => setAddModal({ open: true, type: "manual" });
-  const closeAddModal = () => setAddModal({ open: false, type: null });
+  const openAddManual  = () => setAddModal({ open: true, type: "manual" });
+  const closeAddModal  = () => setAddModal({ open: false, type: null });
   const confirmAdd = () => {
     if (addModal.type === "payment") addPaymentNow();
-    if (addModal.type === "manual") addManualNow();
+    if (addModal.type === "manual")  addManualNow();
     closeAddModal();
   };
 
@@ -447,7 +463,7 @@ export default function CustomerLedgerPage() {
     await doBulkSave();
   };
 
-  // ---------- sort rows for display (keep original index as __i) ----------
+  // ---------- sort rows for display ----------
   const sortedRows = useMemo(() => {
     const indexed = rows.map((r, i) => ({ r, i }));
     indexed.sort((a, b) => {
@@ -468,18 +484,21 @@ export default function CustomerLedgerPage() {
     (r) => r.id && (r.entry_type === "payment" || r.entry_type === "manual" || r.is_manual)
   ).length;
 
-  // Print (Alt+P)
   const handlePrint = (type /* 'a4'|'thermal' optional */) => {
+    if (!can.view) return toast.error("You don't have permission to print.");
     if (!customerId) return toast.error("Select a customer first");
     const qs = new URLSearchParams();
     qs.set("customer_id", customerId);
     if (from) qs.set("from", from);
     if (to) qs.set("to", to);
-    if (type) qs.set("type", type); // if omitted, backend uses Setting->printer_type
+    if (type) qs.set("type", type);
     window.open(`/customer-ledger/print?${qs.toString()}`, "_blank", "noopener");
   };
 
   // ---------- UI ----------
+  if (permsLoading) return <div className="p-3 text-sm">Loading…</div>;
+  if (!can.view) return <div className="p-3 text-sm text-gray-700">You don’t have permission to view customer ledger.</div>;
+
   return (
     <div className="p-3 space-y-2 text-xs">
       <h2 className="text-base font-semibold">Customer Ledger</h2>
@@ -517,23 +536,27 @@ export default function CustomerLedgerPage() {
 
         <div className="flex-1" />
 
-        <button className="border rounded px-2 py-1 text-xs" onClick={openAddPayment} disabled={!customerId}>
-          + Payment
-        </button>
-        <button className="border rounded px-2 py-1 text-xs" onClick={openAddManual} disabled={!customerId}>
-          + Manual
-        </button>
-        <button className="border rounded px-2 py-1 text-xs" onClick={rebuild} disabled={!customerId}>
-          Rebuild
-        </button>
-        <button
-          className="bg-green-600 text-white rounded px-3 py-1 text-xs"
-          onClick={openSaveModal}
-          title="Alt+S"
-          disabled={!customerId}
-        >
-          Save (Alt+S)
-        </button>
+        <Guard when={can.create}>
+          <button className="border rounded px-2 py-1 text-xs" onClick={openAddPayment} disabled={!customerId}>
+            + Payment
+          </button>
+          <button className="border rounded px-2 py-1 text-xs" onClick={openAddManual} disabled={!customerId}>
+            + Manual
+          </button>
+        </Guard>
+        <Guard when={can.update}>
+          <button className="border rounded px-2 py-1 text-xs" onClick={rebuild} disabled={!customerId}>
+            Rebuild
+          </button>
+          <button
+            className="bg-green-600 text-white rounded px-3 py-1 text-xs"
+            onClick={openSaveModal}
+            title="Alt+S"
+            disabled={!customerId}
+          >
+            Save (Alt+S)
+          </button>
+        </Guard>
         <button
           className="border bg-orange-400 text-white rounded px-2 py-1 text-xs"
           onClick={() => handlePrint()}
@@ -596,7 +619,6 @@ export default function CustomerLedgerPage() {
                 const isPayment = r.entry_type === "payment";
                 return (
                   <tr key={r.id ?? `new-${r.__i}`} className="align-top">
-                    {/* Date */}
                     <td className="border px-1 py-1">
                       <input
                         type="date"
@@ -606,7 +628,6 @@ export default function CustomerLedgerPage() {
                       />
                     </td>
 
-                    {/* Type badge */}
                     <td className="border px-1 py-1">
                       <span
                         className={`px-1.5 py-0.5 rounded text-[10px] ${
@@ -621,7 +642,6 @@ export default function CustomerLedgerPage() {
                       </span>
                     </td>
 
-                    {/* Posted # (SaleInvoice posted_number) */}
                     <td className="border px-1 py-1">
                       <input
                         type="text"
@@ -633,7 +653,6 @@ export default function CustomerLedgerPage() {
                       />
                     </td>
 
-                    {/* Invoice Total */}
                     <td className="border px-1 py-1 text-right">
                       <input
                         type="text"
@@ -647,7 +666,6 @@ export default function CustomerLedgerPage() {
                       />
                     </td>
 
-                    {/* Received on Invoice (total_receive) */}
                     <td className="border px-1 py-1 text-right">
                       <input
                         type="text"
@@ -661,7 +679,6 @@ export default function CustomerLedgerPage() {
                       />
                     </td>
 
-                    {/* Received Payment (credited_amount) */}
                     <td className="border px-1 py-1 text-right">
                       <input
                         type="text"
@@ -675,7 +692,6 @@ export default function CustomerLedgerPage() {
                       />
                     </td>
 
-                    {/* Payment Ref */}
                     <td className="border px-1 py-1">
                       {isPayment || r.is_manual ? (
                         <input
@@ -689,7 +705,6 @@ export default function CustomerLedgerPage() {
                       )}
                     </td>
 
-                    {/* Balance Remaining (invoice_total - total_received) */}
                     <td className="border px-1 py-1 text-right">
                       {fmt(
                         ["invoice", "manual"].includes(r.entry_type)
@@ -698,7 +713,6 @@ export default function CustomerLedgerPage() {
                       )}
                     </td>
 
-                    {/* Description */}
                     <td className="border px-1 py-1">
                       <input
                         type="text"
@@ -708,11 +722,12 @@ export default function CustomerLedgerPage() {
                       />
                     </td>
 
-                    {/* Actions */}
                     <td className="border px-1 py-1">
-                      <button className="text-red-600 hover:underline" onClick={() => openDeleteModal(r.__i)}>
-                        Delete
-                      </button>
+                      <Guard when={can.delete}>
+                        <button className="text-red-600 hover:underline" onClick={() => openDeleteModal(r.__i)}>
+                          Delete
+                        </button>
+                      </Guard>
                     </td>
                   </tr>
                 );
@@ -729,9 +744,8 @@ export default function CustomerLedgerPage() {
         </table>
       </div>
 
-      {/* ========== MODALS ========== */}
+      {/* ========== MODALS (unchanged structure, guarded by can.* where invoked) ========== */}
 
-      {/* Add row (small confirm) */}
       {addModal.open && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
@@ -758,7 +772,6 @@ export default function CustomerLedgerPage() {
         </div>
       )}
 
-      {/* Save (confirm counts) */}
       {saveModalOpen && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
@@ -784,7 +797,6 @@ export default function CustomerLedgerPage() {
         </div>
       )}
 
-      {/* Delete (2-step confirm + password) */}
       {deleteModalOpen && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
