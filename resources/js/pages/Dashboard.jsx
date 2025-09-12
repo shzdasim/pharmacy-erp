@@ -13,6 +13,7 @@ import {
   LineChart,
   Line,
 } from "recharts";
+import { GlassCard, GlassSectionHeader, GlassToolbar, GlassInput, GlassBtn } from "@/components/Glass";
 
 /* ===================== Helpers ===================== */
 
@@ -40,8 +41,7 @@ const dateKey = (d) =>
   typeof d === "string" ? d.substring(0, 10) : new Date(d).toISOString().substring(0, 10);
 
 const inclusiveDaysUTC = (fromStr, toStr) => {
-  const a = new Date(fromStr),
-    b = new Date(toStr);
+  const a = new Date(fromStr), b = new Date(toStr);
   const ua = Date.UTC(a.getFullYear(), a.getMonth(), a.getDate());
   const ub = Date.UTC(b.getFullYear(), b.getMonth(), b.getDate());
   return Math.floor((ub - ua) / 86400000) + 1;
@@ -90,20 +90,22 @@ function buildNetSeries(series) {
   return Array.from(map.entries()).map(([date, value]) => ({ date, value }));
 }
 
-/* ===================== React-Select styles (compact) ===================== */
+/* ===================== React-Select styles (compact, glass-friendly) ===================== */
 const smallSelectStyles = {
   control: (base, state) => ({
     ...base,
-    minHeight: 34,
-    height: 34,
+    minHeight: 36,
+    height: 36,
     paddingLeft: 4,
-    borderColor: state.isFocused ? "#3b82f6" : base.borderColor,
-    boxShadow: state.isFocused ? "0 0 0 1px #3b82f6" : "none",
-    "&:hover": { borderColor: "#3b82f6" },
+    borderColor: state.isFocused ? "#3b82f6" : "rgba(229,231,235,0.7)",
+    boxShadow: state.isFocused ? "0 0 0 2px rgba(59,130,246,0.4)" : "none",
+    backgroundColor: "rgba(255,255,255,0.7)",
+    backdropFilter: "blur(4px)",
+    borderRadius: 12,
     fontSize: "0.875rem",
   }),
-  valueContainer: (base) => ({ ...base, padding: "0 6px" }),
-  indicatorsContainer: (base) => ({ ...base, height: 34 }),
+  valueContainer: (base) => ({ ...base, padding: "0 8px" }),
+  indicatorsContainer: (base) => ({ ...base, height: 36 }),
   dropdownIndicator: (base) => ({ ...base, padding: "0 6px" }),
   clearIndicator: (base) => ({ ...base, padding: "0 6px" }),
   input: (base) => ({ ...base, margin: 0, padding: 0 }),
@@ -113,7 +115,7 @@ const smallSelectStyles = {
     backgroundColor: state.isFocused ? "#eff6ff" : state.isSelected ? "#dbeafe" : "white",
     color: "#111827",
   }),
-  menu: (base) => ({ ...base, zIndex: 30 }),
+  menu: (base) => ({ ...base, zIndex: 30, borderRadius: 12 }),
 };
 
 /* ===================== Component ===================== */
@@ -314,96 +316,55 @@ export default function Dashboard() {
 
   /* ===================== UI ===================== */
   return (
-    <div className="p-4 space-y-4">
-      <h1 className="text-2xl font-semibold">Business Dashboard</h1>
+    <div className="p-4 space-y-4 bg-gradient-to-br from-slate-50 via-white to-blue-50/30">
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-semibold">Business Dashboard</h1>
+        <GlassBtn onClick={fetchAll} disabled={loading} variant="primary" title="Alt+R">
+          {loading ? "Loading…" : "Refresh"}
+        </GlassBtn>
+      </div>
 
       {/* Filters */}
-      <div className="grid grid-cols-1 md:grid-cols-6 gap-2 text-sm">
-        <div className="flex flex-col">
-          <label className="text-gray-700">From</label>
-          <input
-            type="date"
-            value={from}
-            onChange={(e) => setFrom(e.target.value)}
-            className="border rounded px-2 py-1 h-9"
-          />
-        </div>
-        <div className="flex flex-col">
-          <label className="text-gray-700">To</label>
-          <input
-            type="date"
-            value={to}
-            onChange={(e) => setTo(e.target.value)}
-            className="border rounded px-2 py-1 h-9"
-          />
-        </div>
+      <GlassCard>
+        <GlassToolbar className="grid grid-cols-1 md:grid-cols-6 gap-3">
+          <div className="flex flex-col">
+            <label className="text-gray-700 text-sm">From</label>
+            <GlassInput type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
+          </div>
+          <div className="flex flex-col">
+            <label className="text-gray-700 text-sm">To</label>
+            <GlassInput type="date" value={to} onChange={(e) => setTo(e.target.value)} />
+          </div>
 
-        {/* Preset buttons in a single row */}
-        <div
-          className="
-            md:col-span-3 col-span-1
-            flex items-end gap-2
-            flex-nowrap whitespace-nowrap overflow-x-auto
-            py-1
-          "
-        >
-          <button
-            onClick={() => {
-              setFrom(todayStr());
-              setTo(todayStr());
-            }}
-            className="bg-gray-100 border px-2 py-1 rounded hover:bg-gray-200 shrink-0"
-          >
-            Today
-          </button>
-          <button
-            onClick={() => {
-              setFrom(firstDayOfMonthStr());
-              setTo(todayStr());
-            }}
-            className="bg-gray-100 border px-2 py-1 rounded hover:bg-gray-200 shrink-0"
-          >
-            This Month
-          </button>
-          <button
-            onClick={() => {
+          {/* Presets */}
+          <div className="md:col-span-3 col-span-1 flex items-end gap-2 overflow-x-auto whitespace-nowrap">
+            <GlassBtn variant="ghost" onClick={() => { setFrom(todayStr()); setTo(todayStr()); }}>
+              Today
+            </GlassBtn>
+            <GlassBtn variant="ghost" onClick={() => { setFrom(firstDayOfMonthStr()); setTo(todayStr()); }}>
+              This Month
+            </GlassBtn>
+            <GlassBtn variant="ghost" onClick={() => {
               const d = new Date();
               const toStr = todayStr();
               const fromDate = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate() - 6));
-              const fromStr = fromDate.toISOString().substring(0, 10);
-              setFrom(fromStr);
+              setFrom(fromDate.toISOString().substring(0, 10));
               setTo(toStr);
-            }}
-            className="bg-gray-100 border px-2 py-1 rounded hover:bg-gray-200 shrink-0"
-          >
-            Last 7 Days
-          </button>
-          <button
-            onClick={() => {
+            }}>
+              Last 7 Days
+            </GlassBtn>
+            <GlassBtn variant="ghost" onClick={() => {
               const d = new Date();
               const toStr = todayStr();
               const fromDate = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate() - 29));
-              const fromStr = fromDate.toISOString().substring(0, 10);
-              setFrom(fromStr);
+              setFrom(fromDate.toISOString().substring(0, 10));
               setTo(toStr);
-            }}
-            className="bg-gray-100 border px-2 py-1 rounded hover:bg-gray-200 shrink-0"
-          >
-            Last 30 Days
-          </button>
-        </div>
-
-        <div className="flex items-end justify-end">
-          <button
-            onClick={fetchAll}
-            disabled={loading}
-            className="bg-blue-600 text-white px-3 py-2 rounded hover:bg-blue-700 disabled:opacity-60"
-            title="Alt+R"
-          >
-            {loading ? "Loading…" : "Refresh"}
-          </button>
-        </div>
-      </div>
+            }}>
+              Last 30 Days
+            </GlassBtn>
+          </div>
+        </GlassToolbar>
+      </GlassCard>
 
       {/* Stat Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
@@ -413,15 +374,13 @@ export default function Dashboard() {
         <StatCard title="Purchase Returns" value={`Rs ${fmtCurrency(cards.purchaseReturns)}`} series={series.purchaseReturns} color="#a855f7" />
       </div>
 
-      {/* ===== Near Expiry Table (compact, modern) ===== */}
-      <div className="rounded-lg border shadow-sm">
-        <div className="px-3 pt-3">
-          <div className="flex items-center justify-between gap-3">
-            <h2 className="font-semibold">Near Expiry</h2>
-
-            {/* Single-line compact header controls */}
-            <div className="flex items-center gap-2 flex-nowrap overflow-x-auto whitespace-nowrap py-1">
-              {/* Months range buttons */}
+      {/* ===== Near Expiry Table ===== */}
+      <GlassCard>
+        <GlassSectionHeader
+          title="Near Expiry"
+          right={
+            <div className="flex items-center gap-2">
+              {/* Months chips */}
               <div className="flex items-center gap-1">
                 {[
                   { m: 1, label: "1 mo" },
@@ -430,24 +389,21 @@ export default function Dashboard() {
                   { m: 12, label: "1 yr" },
                   { m: 18, label: "1.5 yr" },
                 ].map((opt) => (
-                  <button
+                  <GlassBtn
                     key={opt.m}
+                    variant="chip"
                     onClick={() => setExpiryMonths(opt.m)}
-                    className={`px-2 py-1 rounded border text-sm shrink-0 ${
-                      expiryMonths === opt.m
-                        ? "bg-blue-600 text-white border-blue-600"
-                        : "bg-gray-100 hover:bg-gray-200"
-                    }`}
+                    className={expiryMonths === opt.m ? "bg-blue-600 text-white border-blue-600" : ""}
                   >
                     {opt.label}
-                  </button>
+                  </GlassBtn>
                 ))}
               </div>
 
-              {/* Supplier select (react-select searchable) */}
-              <div className="flex items-center gap-1 shrink-0" style={{ minWidth: 210 }}>
+              {/* Supplier */}
+              <div className="flex items-center gap-2 shrink-0" style={{ minWidth: 220 }}>
                 <span className="text-gray-700 text-sm">Supplier</span>
-                <div className="w-40 relative z-50">
+                <div className="w-44 relative z-50">
                   <Select
                     classNamePrefix="rs"
                     isSearchable
@@ -469,10 +425,10 @@ export default function Dashboard() {
                 </div>
               </div>
 
-              {/* Brand select (react-select searchable) */}
-              <div className="flex items-center gap-1 shrink-0" style={{ minWidth: 190 }}>
+              {/* Brand */}
+              <div className="flex items-center gap-2 shrink-0" style={{ minWidth: 200 }}>
                 <span className="text-gray-700 text-sm">Brand</span>
-                <div className="w-40 relative z-50">
+                <div className="w-44 relative z-50">
                   <Select
                     classNamePrefix="rs"
                     isSearchable
@@ -494,8 +450,8 @@ export default function Dashboard() {
                 </div>
               </div>
 
-
-              <button
+              <GlassBtn
+                variant="ghost"
                 onClick={() => {
                   const sup = { value: "", label: "All Suppliers" };
                   const br = { value: "", label: "All Brands" };
@@ -504,27 +460,22 @@ export default function Dashboard() {
                   setSupplierId("");
                   setBrandId("");
                 }}
-                className="border px-2 py-1 rounded bg-gray-50 hover:bg-gray-100 text-sm shrink-0"
                 title="Clear supplier/brand filters"
               >
                 Clear
-              </button>
+              </GlassBtn>
 
-              <button
-                onClick={fetchNearExpiry}
-                disabled={loadingExpiry}
-                className="border px-3 py-1 rounded bg-white hover:bg-gray-50 disabled:opacity-60 text-sm shrink-0"
-              >
+              <GlassBtn onClick={fetchNearExpiry} disabled={loadingExpiry} variant="ghost">
                 {loadingExpiry ? "Loading…" : "Refresh"}
-              </button>
+              </GlassBtn>
             </div>
-          </div>
-        </div>
+          }
+        />
 
         <div className="p-0 overflow-auto">
           <table className="min-w-full text-sm">
-            <thead className="sticky top-0 bg-white/90 backdrop-blur z-10 border-b">
-              <tr className="text-left text-gray-600">
+            <thead className="sticky top-[56px] bg-white/80 backdrop-blur-sm z-10 border-b border-gray-200/70">
+              <tr className="text-left text-gray-700">
                 <th className="px-3 py-2 font-medium">Product</th>
                 <th className="px-3 py-2 font-medium">Supplier</th>
                 <th className="px-3 py-2 font-medium">Brand</th>
@@ -536,7 +487,7 @@ export default function Dashboard() {
             <tbody>
               {nearExpiryRows.length === 0 ? (
                 <tr>
-                  <td className="px-3 py-4 text-gray-500" colSpan={6}>
+                  <td className="px-3 py-6 text-gray-500" colSpan={6}>
                     {loadingExpiry ? "Loading…" : "No near-expiry items found for the selected filters."}
                   </td>
                 </tr>
@@ -544,7 +495,7 @@ export default function Dashboard() {
                 nearExpiryRows.map((r) => (
                   <tr
                     key={`b-${r.batch_id}`}
-                    className="odd:bg-white even:bg-gray-50 hover:bg-blue-50 transition-colors"
+                    className="odd:bg-white/60 even:bg-white/40 hover:bg-blue-50/60 transition-colors"
                   >
                     <td className="px-3 py-2">
                       <div className="max-w-[280px] truncate" title={r.product_name}>
@@ -572,25 +523,22 @@ export default function Dashboard() {
             </tbody>
           </table>
         </div>
-      </div>
+      </GlassCard>
 
       {/* Net Sales Trend */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <div className="lg:col-span-3 border rounded p-3">
-          <div className="flex items-center justify-between mb-2">
-            <h2 className="font-semibold">Net Sales Trend</h2>
-            <div className="text-sm text-gray-600">Net = Sales − Sale Returns</div>
-          </div>
+      <GlassCard>
+        <GlassSectionHeader title="Net Sales Trend" right={<div className="text-sm text-gray-600 px-2">Net = Sales − Sale Returns</div>} />
+        <div className="p-3">
           <div className="h-64">
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart data={buildNetSeries(series)} margin={{ top: 8, right: 12, left: 0, bottom: 0 }}>
                 <defs>
                   <linearGradient id="netColor" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#0ea5e9" stopOpacity={0.6} />
-                    <stop offset="95%" stopColor="#0ea5e9" stopOpacity={0.05} />
+                    <stop offset="5%" stopColor="#0ea5e9" stopOpacity={0.55} />
+                    <stop offset="95%" stopColor="#0ea5e9" stopOpacity={0.06} />
                   </linearGradient>
                 </defs>
-                <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
+                <CartesianGrid strokeDasharray="3 3" opacity={0.25} />
                 <XAxis dataKey="date" tick={{ fontSize: 12 }} />
                 <YAxis tick={{ fontSize: 12 }} />
                 <Tooltip formatter={(val) => `Rs ${fmtCurrency(val)}`} />
@@ -599,67 +547,74 @@ export default function Dashboard() {
             </ResponsiveContainer>
           </div>
         </div>
-      </div>
+      </GlassCard>
 
       {/* Purchases vs Purchase Returns & Sales vs Sale Returns */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <div className="border rounded p-3">
-          <h2 className="font-semibold mb-2">Purchases vs Returns</h2>
-          <div className="h-64">
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart
-                data={mergeTwo(series.purchases, series.purchaseReturns)}
-                margin={{ top: 8, right: 12, left: 0, bottom: 0 }}
-              >
-                <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
-                <XAxis dataKey="date" tick={{ fontSize: 12 }} />
-                <YAxis tick={{ fontSize: 12 }} />
-                <Tooltip formatter={(val) => `Rs ${fmtCurrency(val)}`} />
-                <Line type="monotone" dataKey="a" stroke="#16a34a" name="Purchases" strokeWidth={2} dot={false} />
-                <Line type="monotone" dataKey="b" stroke="#a855f7" name="Purchase Returns" strokeWidth={2} dot={false} />
-              </LineChart>
-            </ResponsiveContainer>
+        <GlassCard>
+          <GlassSectionHeader title="Purchases vs Returns" />
+          <div className="p-3">
+            <div className="h-64">
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart
+                  data={mergeTwo(series.purchases, series.purchaseReturns)}
+                  margin={{ top: 8, right: 12, left: 0, bottom: 0 }}
+                >
+                  <CartesianGrid strokeDasharray="3 3" opacity={0.25} />
+                  <XAxis dataKey="date" tick={{ fontSize: 12 }} />
+                  <YAxis tick={{ fontSize: 12 }} />
+                  <Tooltip formatter={(val) => `Rs ${fmtCurrency(val)}`} />
+                  <Line type="monotone" dataKey="a" stroke="#16a34a" name="Purchases" strokeWidth={2} dot={false} />
+                  <Line type="monotone" dataKey="b" stroke="#a855f7" name="Purchase Returns" strokeWidth={2} dot={false} />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
           </div>
-        </div>
-        <div className="border rounded p-3">
-          <h2 className="font-semibold mb-2">Sales vs Sale Returns</h2>
-          <div className="h-64">
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={mergeTwo(series.sales, series.saleReturns)} margin={{ top: 8, right: 12, left: 0, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
-                <XAxis dataKey="date" tick={{ fontSize: 12 }} />
-                <YAxis tick={{ fontSize: 12 }} />
-                <Tooltip formatter={(val) => `Rs ${fmtCurrency(val)}`} />
-                <Line type="monotone" dataKey="a" stroke="#2563eb" name="Sales" strokeWidth={2} dot={false} />
-                <Line type="monotone" dataKey="b" stroke="#dc2626" name="Sale Returns" strokeWidth={2} dot={false} />
-              </LineChart>
-            </ResponsiveContainer>
+        </GlassCard>
+
+        <GlassCard>
+          <GlassSectionHeader title="Sales vs Sale Returns" />
+          <div className="p-3">
+            <div className="h-64">
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={mergeTwo(series.sales, series.saleReturns)} margin={{ top: 8, right: 12, left: 0, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" opacity={0.25} />
+                  <XAxis dataKey="date" tick={{ fontSize: 12 }} />
+                  <YAxis tick={{ fontSize: 12 }} />
+                  <Tooltip formatter={(val) => `Rs ${fmtCurrency(val)}`} />
+                  <Line type="monotone" dataKey="a" stroke="#2563eb" name="Sales" strokeWidth={2} dot={false} />
+                  <Line type="monotone" dataKey="b" stroke="#dc2626" name="Sale Returns" strokeWidth={2} dot={false} />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
           </div>
-        </div>
+        </GlassCard>
       </div>
     </div>
   );
 }
 
-/* ===================== Stat Card ===================== */
+/* ===================== Stat Card (glassy) ===================== */
 function StatCard({ title, value, series, color = "#2563eb" }) {
   return (
-    <div className="border rounded p-3 flex flex-col gap-2">
-      <div className="text-sm text-gray-600">{title}</div>
-      <div className="text-2xl font-semibold">{value}</div>
-      <div className="h-16">
+    <GlassCard>
+      <div className="px-4 pt-4">
+        <div className="text-sm text-gray-600">{title}</div>
+        <div className="text-2xl font-semibold">{value}</div>
+      </div>
+      <div className="h-16 px-2 pb-3">
         <ResponsiveContainer width="100%" height="100%">
-          <AreaChart data={series || []} margin={{ top: 0, right: 0, left: 0, bottom: 0 }}>
+          <AreaChart data={series || []} margin={{ top: 6, right: 6, left: 6, bottom: 0 }}>
             <defs>
               <linearGradient id={`${title}-grad`} x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor={color} stopOpacity={0.5} />
-                <stop offset="95%" stopColor={color} stopOpacity={0.05} />
+                <stop offset="5%" stopColor={color} stopOpacity={0.45} />
+                <stop offset="95%" stopColor={color} stopOpacity={0.06} />
               </linearGradient>
             </defs>
             <Area type="monotone" dataKey="value" stroke={color} fill={`url(#${title}-grad)`} />
           </AreaChart>
         </ResponsiveContainer>
       </div>
-    </div>
+    </GlassCard>
   );
 }
