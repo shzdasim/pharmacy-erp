@@ -14,6 +14,8 @@ class SupplierLedgerController extends Controller
     // GET /api/supplier-ledger?supplier_id=..&from=..&to=..
     public function index(Request $request)
     {
+        $this->authorize('viewAny', SupplierLedger::class);
+
         $validated = $request->validate([
             'supplier_id' => ['required','integer','exists:suppliers,id'],
             'from'        => ['nullable','date'],
@@ -49,6 +51,8 @@ class SupplierLedgerController extends Controller
     // Recognize "payment" if debited_amount > 0 and no purchase_invoice_id.
     public function store(Request $request)
     {
+        $this->authorize('create', SupplierLedger::class);
+
         $validated = $request->validate([
             'supplier_id'        => ['required','integer','exists:suppliers,id'],
             'entry_date'         => ['required','date'],
@@ -100,6 +104,8 @@ class SupplierLedgerController extends Controller
     // rows: [{id, entry_date, description, posted_number, invoice_number, invoice_total, total_paid, debited_amount, payment_ref}]
     public function bulkUpdate(Request $request)
     {
+        $this->authorize('updateAny', SupplierLedger::class);
+
         $validated = $request->validate([
             'rows'                        => ['required','array','min:1'],
             'rows.*.id'                   => ['required','integer','exists:supplier_ledgers,id'],
@@ -139,6 +145,8 @@ class SupplierLedgerController extends Controller
     public function destroy($id)
     {
         $row = SupplierLedger::findOrFail($id);
+        $this->authorize('delete', $row);
+
         if (!$row->is_manual && $row->entry_type === 'invoice') {
             return response()->json(['message' => 'Cannot delete auto-synced invoice row.'], 422);
         }
@@ -149,6 +157,8 @@ class SupplierLedgerController extends Controller
     // POST /api/supplier-ledger/rebuild {supplier_id}
     public function rebuild(Request $request)
     {
+        $this->authorize('updateAny', SupplierLedger::class);
+
         $validated = $request->validate([
             'supplier_id' => ['required','integer','exists:suppliers,id'],
         ]);
@@ -186,8 +196,11 @@ class SupplierLedgerController extends Controller
 
         return response()->json(['status' => 'ok', 'count' => $invoices->count()]);
     }
+
     public function print(Request $request)
     {
+        $this->authorize('viewAny', SupplierLedger::class);
+
         $supplierId = (int) $request->query('supplier_id');
         abort_if(!$supplierId, 404, 'Supplier is required');
 
@@ -202,7 +215,6 @@ class SupplierLedgerController extends Controller
         $from = $request->query('from');
         $to   = $request->query('to');
 
-        // Fetch ledger rows for this supplier and range
         $rows = SupplierLedger::query()
             ->where('supplier_id', $supplier->id)
             ->when($from, fn($q) => $q->whereDate('entry_date', '>=', $from))
@@ -211,7 +223,6 @@ class SupplierLedgerController extends Controller
             ->orderBy('id')
             ->get();
 
-        // Calculate running balance & per-row credit_remaining
         $balance = 0;
         $mapped = $rows->map(function ($r) use (&$balance) {
             $invoiceTotal = (float) ($r->invoice_total ?? 0);
@@ -228,10 +239,8 @@ class SupplierLedgerController extends Controller
                 $balance -= $payment;
             }
 
-            // expose computed fields to blade
             $r->credit_remaining_calc = $creditRemaining;
             $r->running_balance = round($balance, 2);
-
             return $r;
         });
 

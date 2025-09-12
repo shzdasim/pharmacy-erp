@@ -26,6 +26,10 @@ class RolesAndPermissionsSeeder extends Seeder
             // Legacy product/invoice (kept for compatibility if used anywhere)
             'product.view','product.create','product.update','product.delete',
             'invoice.view','invoice.create','invoice.update','invoice.delete',
+
+            // Ledgers
+            'customer-ledger.view','customer-ledger.create','customer-ledger.update','customer-ledger.delete',
+            'supplier-ledger.view','supplier-ledger.create','supplier-ledger.update','supplier-ledger.delete',
         ];
 
         // ---- Domain modules & standard actions ----

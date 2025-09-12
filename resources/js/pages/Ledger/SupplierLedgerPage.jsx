@@ -3,6 +3,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import axios from "axios";
 import toast from "react-hot-toast";
 import SupplierSearchInput from "../../components/SupplierSearchInput.jsx";
+import { usePermissions, Guard } from "@/api/usePermissions.js";
 
 export default function SupplierLedgerPage() {
   const [suppliers, setSuppliers] = useState([]);   // [{id,name}, ...]
@@ -16,6 +17,16 @@ export default function SupplierLedgerPage() {
     payments_debited: 0,
     net_balance: 0,
   });
+
+  // 🔒 permissions
+  const { loading: permsLoading, canFor } = usePermissions();
+  const can = useMemo(
+    () =>
+      (typeof canFor === "function" ? canFor("supplier-ledger") : {
+        view:false, create:false, update:false, delete:false, import:false, export:false
+      }),
+    [canFor]
+  );
 
   // ---------- utils ----------
   const fmt = (v) => {
@@ -33,14 +44,29 @@ export default function SupplierLedgerPage() {
     const onKey = (e) => {
       if (e.altKey && (e.key || "").toLowerCase() === "s") {
         e.preventDefault();
+        if (!can.create && !can.update) return;
         openSaveModal();
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [rows, supplierId]);
+  }, [rows, supplierId, can.create, can.update]);
+
+  // Alt+P -> print (view perm)
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.altKey && (e.key || "").toLowerCase() === "p") {
+        e.preventDefault();
+        if (!can.view) return;
+        handlePrint(); // use default from Setting
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [supplierId, from, to, can.view]);
 
   useEffect(() => {
+    if (permsLoading || !can.view) return;
     (async () => {
       try {
         const { data } = await axios.get("/api/suppliers", { params: { limit: 500 } });
@@ -51,9 +77,10 @@ export default function SupplierLedgerPage() {
         setSuppliers([]);
       }
     })();
-  }, []);
+  }, [permsLoading, can.view]);
 
   const fetchData = async () => {
+    if (!can.view) return toast.error("You don't have permission to view supplier ledger.");
     if (!supplierId) return toast.error("Select a supplier first");
     try {
       const { data } = await axios.get("/api/supplier-ledger", {
@@ -79,6 +106,7 @@ export default function SupplierLedgerPage() {
   };
 
   const rebuild = async () => {
+    if (!can.update) return toast.error("You don't have permission to rebuild.");
     if (!supplierId) return toast.error("Select a supplier first");
     try {
       await axios.post("/api/supplier-ledger/rebuild", { supplier_id: supplierId });
@@ -138,8 +166,9 @@ export default function SupplierLedgerPage() {
     });
   };
 
-  // ---------- add row (behind confirm modal) ----------
+  // ---------- add row ----------
   const addPaymentNow = () => {
+    if (!can.create) return toast.error("You don't have permission to add payments.");
     if (!supplierId) return toast.error("Select a supplier first");
     const today = new Date().toISOString().slice(0, 10);
     setRows(prev => ([
@@ -160,6 +189,7 @@ export default function SupplierLedgerPage() {
     ]));
   };
   const addManualNow = () => {
+    if (!can.create) return toast.error("You don't have permission to add manual rows.");
     if (!supplierId) return toast.error("Select a supplier first");
     const today = new Date().toISOString().slice(0, 10);
     setRows(prev => ([
@@ -182,10 +212,18 @@ export default function SupplierLedgerPage() {
     ]));
   };
 
-  // ---------- bulk save (actual) ----------
+  // ---------- bulk save ----------
   const doBulkSave = async () => {
     const news = rows.filter(r => !r.id);
     const updates = rows.filter(r => r.id);
+
+    if (news.length && !can.create) {
+      return toast.error("You don't have permission to create ledger rows.");
+    }
+    if (updates.length && !can.update) {
+      return toast.error("You don't have permission to update ledger rows.");
+    }
+
     try {
       for (const n of news) {
         const payload = {
@@ -224,14 +262,15 @@ export default function SupplierLedgerPage() {
     }
   };
 
-  // ---------- delete (secure: confirm -> password) ----------
+  // ---------- delete (secure) ----------
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [deleteStep, setDeleteStep] = useState(1); // 1 confirm, 2 password
-  const [deletingIdx, setDeletingIdx] = useState(null); // original index in rows
+  const [deletingIdx, setDeletingIdx] = useState(null);
   const [password, setPassword] = useState("");
   const [deleting, setDeleting] = useState(false);
 
   const openDeleteModal = (originalIdx) => {
+    if (!can.delete) return toast.error("You don't have permission to delete ledger rows.");
     setDeletingIdx(originalIdx);
     setPassword("");
     setDeleteStep(1);
@@ -248,10 +287,11 @@ export default function SupplierLedgerPage() {
 
   const confirmAndDelete = async () => {
     if (deletingIdx === null) return;
+    if (!can.delete) return toast.error("You don't have permission to delete ledger rows.");
     const r = rows[deletingIdx];
     try {
       setDeleting(true);
-      await axios.post("/api/auth/confirm-password", { password }); // verify user
+      await axios.post("/api/auth/confirm-password", { password });
 
       if (r.id && !r.is_manual && r.entry_type === "invoice") {
         toast.error("Cannot delete invoice row");
@@ -294,7 +334,7 @@ export default function SupplierLedgerPage() {
     await doBulkSave();
   };
 
-  // ---------- derived running balance (keeps original index as __i) ----------
+  // ---------- derived running balance ----------
   const derivedRows = useMemo(() => {
     const indexed = rows.map((r, i) => ({ r, i }));
     indexed.sort((a, b) => {
@@ -321,30 +361,22 @@ export default function SupplierLedgerPage() {
 
   const newCount = rows.filter(r => !r.id).length;
   const updCount = rows.filter(r => r.id).length;
-// inside component
-const handlePrint = (type /* optional: 'a4'|'thermal' */) => {
-  if (!supplierId) return toast.error("Select a supplier first");
-  const qs = new URLSearchParams();
-  qs.set("supplier_id", supplierId);
-  if (from) qs.set("from", from);
-  if (to) qs.set("to", to);
-  if (type) qs.set("type", type); // if omitted, backend uses Setting->printer_type
-  window.open(`/supplier-ledger/print?${qs.toString()}`, "_blank", "noopener");
-};
 
-// Alt+P hotkey
-useEffect(() => {
-  const onKey = (e) => {
-    if (e.altKey && (e.key || "").toLowerCase() === "p") {
-      e.preventDefault();
-      handlePrint(); // use default from Setting
-    }
+  const handlePrint = (type /* 'a4'|'thermal' optional */) => {
+    if (!can.view) return toast.error("You don't have permission to print.");
+    if (!supplierId) return toast.error("Select a supplier first");
+    const qs = new URLSearchParams();
+    qs.set("supplier_id", supplierId);
+    if (from) qs.set("from", from);
+    if (to) qs.set("to", to);
+    if (type) qs.set("type", type);
+    window.open(`/supplier-ledger/print?${qs.toString()}`, "_blank", "noopener");
   };
-  window.addEventListener("keydown", onKey);
-  return () => window.removeEventListener("keydown", onKey);
-}, [supplierId, from, to]);
 
   // ---------- UI ----------
+  if (permsLoading) return <div className="p-3 text-sm">Loading…</div>;
+  if (!can.view) return <div className="p-3 text-sm text-gray-700">You don’t have permission to view supplier ledger.</div>;
+
   return (
     <div className="p-3 space-y-2 text-xs">
       <h2 className="text-base font-semibold">Supplier Ledger</h2>
@@ -367,19 +399,28 @@ useEffect(() => {
           <label className="text-[11px] text-gray-600">To</label>
           <input type="date" className="border rounded px-2 py-1 text-xs" value={to} onChange={e=>setTo(e.target.value)} />
         </div>
+
         <button className="bg-blue-600 text-white rounded px-3 py-1 text-xs" onClick={fetchData} disabled={!supplierId}>Load</button>
 
         <div className="flex-1" />
 
-        <button className="border rounded px-2 py-1 text-xs" onClick={openAddPayment} disabled={!supplierId}>+ Payment</button>
-        <button className="border rounded px-2 py-1 text-xs" onClick={openAddManual} disabled={!supplierId}>+ Manual</button>
-        <button className="border rounded px-2 py-1 text-xs" onClick={rebuild} disabled={!supplierId}>Rebuild</button>
-        <button className="bg-green-600 text-white rounded px-3 py-1 text-xs" onClick={openSaveModal} title="Alt+S" disabled={!supplierId}>Save (Alt+S)</button>
+        <Guard when={can.create}>
+          <button className="border rounded px-2 py-1 text-xs" onClick={openAddPayment} disabled={!supplierId}>+ Payment</button>
+          <button className="border rounded px-2 py-1 text-xs" onClick={openAddManual} disabled={!supplierId}>+ Manual</button>
+        </Guard>
+        <Guard when={can.update}>
+          <button className="border rounded px-2 py-1 text-xs" onClick={rebuild} disabled={!supplierId}>Rebuild</button>
+          <button className="bg-green-600 text-white rounded px-3 py-1 text-xs" onClick={openSaveModal} title="Alt+S" disabled={!supplierId}>Save (Alt+S)</button>
+        </Guard>
+
         <button
-    className="border bg-orange-400 text-white rounded px-2 py-1 text-xs" onClick={() => handlePrint()} disabled={!supplierId} title="Print (Alt+P)">
-    Print
-    <span className="ml-1 text-[10px] opacity-70">(Alt+P)</span>
-  </button>
+          className="border bg-orange-400 text-white rounded px-2 py-1 text-xs"
+          onClick={() => handlePrint()}
+          disabled={!supplierId}
+          title="Print (Alt+P)"
+        >
+          Print <span className="ml-1 text-[10px] opacity-70">(Alt+P)</span>
+        </button>
       </div>
 
       {supplierId && (
@@ -520,7 +561,9 @@ useEffect(() => {
                   </td>
 
                   <td className="border px-1 py-1">
-                    <button className="text-red-600 hover:underline" onClick={() => openDeleteModal(r.__i)}>Delete</button>
+                    <Guard when={can.delete}>
+                      <button className="text-red-600 hover:underline" onClick={() => openDeleteModal(r.__i)}>Delete</button>
+                    </Guard>
                   </td>
                 </tr>
               );
@@ -636,8 +679,6 @@ useEffect(() => {
           </div>
         </div>
       )}
-
-      {/* Add row confirm modal controller buttons live above (openAddPayment / openAddManual) */}
     </div>
   );
 }
