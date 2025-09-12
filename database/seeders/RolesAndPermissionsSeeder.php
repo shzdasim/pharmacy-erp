@@ -33,6 +33,10 @@ class RolesAndPermissionsSeeder extends Seeder
 
             // Purchase Order Forecast
             'purchase-order.view','purchase-order.generate',
+
+            // Reports
+            'report.cost-of-sale.view', 'report.purchase-detail.view', 'report.purchase-detail.export',
+            'report.sale-detail.view', 'report.sale-detail.export',
         ];
 
         // ---- Domain modules & standard actions ----

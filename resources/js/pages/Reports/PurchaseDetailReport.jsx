@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import axios from "axios";
 import Select from "react-select";
 import toast from "react-hot-toast";
+import { usePermissions } from "@/api/usePermissions";
 
 // ===== Helpers =====
 const todayStr = () => new Date().toISOString().split("T")[0];
@@ -55,6 +56,13 @@ export default function PurchaseDetailReport() {
   const productRef = useRef(null);
   const submitRef = useRef(null);
 
+  // --- Permissions (tri-state)
+  const perms = usePermissions();
+  const hasFn = perms?.has;
+  const permsReady = typeof hasFn === "function";
+  const canView = permsReady ? !!hasFn("report.purchase-detail.view") : null;
+  const canExport = permsReady ? !!hasFn("report.purchase-detail.export") : null;
+
   // ===== Load options =====
   useEffect(() => {
     (async () => {
@@ -90,7 +98,11 @@ export default function PurchaseDetailReport() {
   }, [productOptions, supplierId]);
 
   // ===== Fetch report =====
-  const fetchReport = async () => {
+  const fetchReport = async ({ silentDenied = false } = {}) => {
+    if (canView !== true) {
+      if (!silentDenied) toast.error("You don't have permission to view this report.");
+      return;
+    }
     setLoading(true);
     try {
       const res = await axios.get("/api/reports/purchase-detail", {
@@ -113,21 +125,22 @@ export default function PurchaseDetailReport() {
     }
   };
 
+  // Auto-load once permission is confirmed true
   useEffect(() => {
-    fetchReport();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    if (canView === true) fetchReport({ silentDenied: true });
+  }, [canView]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Submit handler
   const handleSubmit = (e) => {
     e.preventDefault();
     if (!fromDate || !toDate) return toast.error("Please select both dates.");
     if (fromDate > toDate) return toast.error("From Date cannot be after To Date.");
-    fetchReport();
+    fetchReport({ silentDenied: false });
   };
 
   // PDF export (popup-safe)
   const exportPdf = async () => {
+    if (canExport !== true) return toast.error("You don't have permission to export PDF.");
     const win = window.open("", "_blank");
     if (!win) {
       toast.error("Please allow pop-ups for this site to view the PDF.");
@@ -207,249 +220,297 @@ export default function PurchaseDetailReport() {
 
       <h1 className="text-[12px] font-semibold mb-1 tracking-tight">Purchase Detail Report</h1>
 
-      {/* Filter Form (compact) */}
-      <form
-        onSubmit={handleSubmit}
-        className="mb-2 bg-white rounded-md p-2 shadow-sm border border-gray-200 text-[11px]"
-      >
-        <div className="flex flex-wrap items-end gap-2">
-          {/* From */}
-          <div className="flex flex-col">
-            <label className="text-[10px] text-gray-600 mb-0.5">From</label>
-            <input
-              ref={fromRef}
-              type="date"
-              className="border rounded px-1 py-[2px] text-[11px] w-[130px] focus:outline-none focus:ring-2 focus:ring-indigo-500"
-              value={fromDate}
-              onChange={(e) => setFromDate(e.target.value)}
-              onKeyDown={(e) => onKeyDownEnter(e, toRef)}
-            />
-          </div>
-
-          {/* To */}
-          <div className="flex flex-col">
-            <label className="text-[10px] text-gray-600 mb-0.5">To</label>
-            <input
-              ref={toRef}
-              type="date"
-              className="border rounded px-1 py-[2px] text-[11px] w-[130px] focus:outline-none focus:ring-2 focus:ring-indigo-500"
-              value={toDate}
-              onChange={(e) => setToDate(e.target.value)}
-              onKeyDown={(e) => onKeyDownEnter(e, { current: supplierRef.current?.inputRef })}
-            />
-          </div>
-
-          {/* Supplier */}
-          <div className="flex flex-col" style={{ minWidth: 210 }}>
-            <label className="text-[10px] text-gray-600 mb-0.5">Supplier</label>
-            <Select
-              ref={supplierRef}
-              classNamePrefix="rs"
-              isSearchable
-              menuPlacement="auto"
-              options={supplierOptions}
-              value={supplierValue}
-              placeholder="All Suppliers"
-              styles={smallSelectStyles}
-              onChange={(opt) => {
-                setSupplierValue(opt);
-                const id = opt?.value || "";
-                setSupplierId(id);
-                setProductValue(null);
-                setProductId("");
-                setTimeout(() => {
-                  productRef.current?.focus?.();
-                  productRef.current?.inputRef?.focus?.();
-                }, 0);
-              }}
-            />
-          </div>
-
-          {/* Product */}
-          <div className="flex flex-col" style={{ minWidth: 220 }}>
-            <label className="text-[10px] text-gray-600 mb-0.5">Product</label>
-            <Select
-              ref={productRef}
-              classNamePrefix="rs"
-              isSearchable
-              menuPlacement="auto"
-              options={filteredProductOptions}
-              value={productValue}
-              placeholder="All Products"
-              styles={smallSelectStyles}
-              onChange={(opt) => {
-                setProductValue(opt);
-                setProductId(opt?.value || "");
-                setTimeout(() => submitRef.current?.focus?.(), 0);
-              }}
-            />
-          </div>
-
-          {/* Submit */}
-          <button
-            ref={submitRef}
-            type="submit"
-            className="h-7 px-2 rounded bg-indigo-600 text-white text-[11px] font-medium hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-            disabled={loading}
-            title="Submit"
-          >
-            {loading ? "Loading..." : "Submit"}
-          </button>
-
-          {/* Export PDF */}
-          <button
-            type="button"
-            onClick={exportPdf}
-            className="h-7 px-2 rounded bg-emerald-600 text-white text-[11px] font-medium hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-            disabled={pdfLoading}
-            title="Export PDF"
-          >
-            {pdfLoading ? "Generating…" : "Export PDF"}
-          </button>
+      {canView === null && (
+        <div className="p-2 text-[11px] text-gray-600 bg-white rounded border border-gray-200">
+          Checking permissions…
         </div>
-      </form>
-
-      {/* Results */}
-      {data.length === 0 && !loading && (
-        <div className="text-[11px] text-gray-600">No data found for the selected filters.</div>
       )}
 
-      <div className="flex flex-col gap-2">
-        {data.map((inv) => (
-          <div
-            key={inv.id || `${inv.posted_number}-${inv.invoice_number}-${inv.invoice_date}`}
-            className="bg-white rounded-md border border-gray-200 shadow-sm overflow-hidden tight-card"
+      {canView === false && (
+        <div className="p-2 text-[11px] text-gray-700 bg-yellow-50 border border-yellow-200 rounded">
+          Permission denied.
+        </div>
+      )}
+
+      {canView === true && (
+        <>
+          {/* Filter Form (compact) */}
+          <form
+            onSubmit={handleSubmit}
+            className="mb-2 bg-white rounded-md p-2 shadow-sm border border-gray-200 text-[11px]"
           >
-            {/* Header */}
-            <div className="px-2 py-1 border-b border-gray-200 bg-gray-50 text-[10px] grid grid-cols-2 md:grid-cols-4 gap-x-2 gap-y-0.5 tight-card-hd">
-              <div className="tight-hd-text">
-                <span className="text-gray-600">Supplier:</span>{" "}
-                <span className="font-medium text-gray-800">{inv.supplier_name || "-"}</span>
+            <div className="flex flex-wrap items-end gap-2">
+              {/* From */}
+              <div className="flex flex-col">
+                <label className="text-[10px] text-gray-600 mb-0.5">From</label>
+                <input
+                  ref={fromRef}
+                  type="date"
+                  className="border rounded px-1 py-[2px] text-[11px] w-[130px] focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  value={fromDate}
+                  onChange={(e) => setFromDate(e.target.value)}
+                  onKeyDown={(e) => onKeyDownEnter(e, toRef)}
+                />
               </div>
-              <div className="tight-hd-text">
-                <span className="text-gray-600">Posted #:</span>{" "}
-                <span className="font-medium text-gray-800">{inv.posted_number || "-"}</span>
+
+              {/* To */}
+              <div className="flex flex-col">
+                <label className="text-[10px] text-gray-600 mb-0.5">To</label>
+                <input
+                  ref={toRef}
+                  type="date"
+                  className="border rounded px-1 py-[2px] text-[11px] w-[130px] focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  value={toDate}
+                  onChange={(e) => setToDate(e.target.value)}
+                  onKeyDown={(e) =>
+                    onKeyDownEnter(e, { current: supplierRef.current?.inputRef })
+                  }
+                />
               </div>
-              <div className="tight-hd-text">
-                <span className="text-gray-600">Invoice #:</span>{" "}
-                <span className="font-medium text-gray-800">{inv.invoice_number || "-"}</span>
+
+              {/* Supplier */}
+              <div className="flex flex-col" style={{ minWidth: 210 }}>
+                <label className="text-[10px] text-gray-600 mb-0.5">Supplier</label>
+                <Select
+                  ref={supplierRef}
+                  classNamePrefix="rs"
+                  isSearchable
+                  menuPlacement="auto"
+                  options={supplierOptions}
+                  value={supplierValue}
+                  placeholder="All Suppliers"
+                  styles={smallSelectStyles}
+                  onChange={(opt) => {
+                    setSupplierValue(opt);
+                    const id = opt?.value || "";
+                    setSupplierId(id);
+                    setProductValue(null);
+                    setProductId("");
+                    setTimeout(() => {
+                      productRef.current?.focus?.();
+                      productRef.current?.inputRef?.focus?.();
+                    }, 0);
+                  }}
+                />
               </div>
-              <div className="tight-hd-text">
-                <span className="text-gray-600">Date:</span>{" "}
-                <span className="font-medium text-gray-800">{inv.invoice_date || "-"}</span>
+
+              {/* Product */}
+              <div className="flex flex-col" style={{ minWidth: 220 }}>
+                <label className="text-[10px] text-gray-600 mb-0.5">Product</label>
+                <Select
+                  ref={productRef}
+                  classNamePrefix="rs"
+                  isSearchable
+                  menuPlacement="auto"
+                  options={filteredProductOptions}
+                  value={productValue}
+                  placeholder="All Products"
+                  styles={smallSelectStyles}
+                  onChange={(opt) => {
+                    setProductValue(opt);
+                    setProductId(opt?.value || "");
+                    setTimeout(() => submitRef.current?.focus?.(), 0);
+                  }}
+                />
               </div>
+
+              {/* Submit */}
+              <button
+                ref={submitRef}
+                type="submit"
+                className="h-7 px-2 rounded bg-indigo-600 text-white text-[11px] font-medium hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                disabled={loading}
+                title="Submit"
+              >
+                {loading ? "Loading..." : "Submit"}
+              </button>
+
+              {/* Export PDF */}
+              <button
+                type="button"
+                onClick={exportPdf}
+                className="h-7 px-2 rounded bg-emerald-600 text-white text-[11px] font-medium hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                disabled={pdfLoading}
+                title="Export PDF"
+              >
+                {pdfLoading ? "Generating…" : "Export PDF"}
+              </button>
             </div>
+          </form>
 
-            {/* Table — compact, fixed layout, narrow widths */}
-            <div className="relative max-w-full overflow-x-auto">
-              <table className="tight-table w-full min-w-[1120px] border border-gray-200">
-                <colgroup>
-                  <col style={{ width: 140 }} />
-                  <col style={{ width: 50 }} />
-                  <col style={{ width: 50 }} />
-                  {/* 13 numeric columns @ 60px each */}
-                  {Array.from({ length: 13 }).map((_, i) => (
-                    <col key={i} style={{ width: 60 }} />
-                  ))}
-                </colgroup>
+          {/* Results */}
+          {data.length === 0 && !loading && (
+            <div className="text-[11px] text-gray-600">No data found for the selected filters.</div>
+          )}
 
-                <thead>
-                  <tr>
-                    <th className="border border-gray-200 text-left nowrap">Product Name</th>
-                    <th className="border border-gray-200 text-left nowrap">Batch</th>
-                    <th className="border border-gray-200 text-left nowrap">Expiry</th>
-                    <th className="border border-gray-200 num nowrap">Pack Qty</th>
-                    <th className="border border-gray-200 num nowrap">Pack Size</th>
-                    <th className="border border-gray-200 num nowrap">Unit Qty</th>
-                    <th className="border border-gray-200 num nowrap">Pack Purchase</th>
-                    <th className="border border-gray-200 num nowrap">Unit Purchase</th>
-                    <th className="border border-gray-200 num nowrap">Pack Sale</th>
-                    <th className="border border-gray-200 num nowrap">Unit Sale</th>
-                    <th className="border border-gray-200 num nowrap">Pack Bonus</th>
-                    <th className="border border-gray-200 num nowrap">Unit Bonus</th>
-                    <th className="border border-gray-200 num nowrap">Item Disc %</th>
-                    <th className="border border-gray-200 num nowrap">Margin</th>
-                    <th className="border border-gray-200 num nowrap">Sub Total</th>
-                    <th className="border border-gray-200 num nowrap">Quantity</th>
-                  </tr>
-                </thead>
+          <div className="flex flex-col gap-2">
+            {data.map((inv) => (
+              <div
+                key={inv.id || `${inv.posted_number}-${inv.invoice_number}-${inv.invoice_date}`}
+                className="bg-white rounded-md border border-gray-200 shadow-sm overflow-hidden tight-card"
+              >
+                {/* Header */}
+                <div className="px-2 py-1 border-b border-gray-200 bg-gray-50 text-[10px] grid grid-cols-2 md:grid-cols-4 gap-x-2 gap-y-0.5 tight-card-hd">
+                  <div className="tight-hd-text">
+                    <span className="text-gray-600">Supplier:</span>{" "}
+                    <span className="font-medium text-gray-800">{inv.supplier_name || "-"}</span>
+                  </div>
+                  <div className="tight-hd-text">
+                    <span className="text-gray-600">Posted #:</span>{" "}
+                    <span className="font-medium text-gray-800">{inv.posted_number || "-"}</span>
+                  </div>
+                  <div className="tight-hd-text">
+                    <span className="text-gray-600">Invoice #:</span>{" "}
+                    <span className="font-medium text-gray-800">{inv.invoice_number || "-"}</span>
+                  </div>
+                  <div className="tight-hd-text">
+                    <span className="text-gray-600">Date:</span>{" "}
+                    <span className="font-medium text-gray-800">{inv.invoice_date || "-"}</span>
+                  </div>
+                </div>
 
-                <tbody className="tabular-nums">
-                  {(inv.items || []).map((it, idx) => (
-                    <tr key={(it.id ?? idx) + "-" + (it.product_id ?? "p") + "-" + idx}>
-                      <td className="border border-gray-200 text-left nowrap">{it.product_name || "-"}</td>
-                      <td className="border border-gray-200 text-left nowrap">{it.batch || "-"}</td>
-                      <td className="border border-gray-200 text-left nowrap">{it.expiry || "-"}</td>
-                      <td className="border border-gray-200 num nowrap">{it.pack_quantity ?? 0}</td>
-                      <td className="border border-gray-200 num nowrap">{it.pack_size ?? 0}</td>
-                      <td className="border border-gray-200 num nowrap">{it.unit_quantity ?? 0}</td>
-                      <td className="border border-gray-200 num nowrap">{fmtCurrency(it.pack_purchase_price)}</td>
-                      <td className="border border-gray-200 num nowrap">{fmtCurrency(it.unit_purchase_price)}</td>
-                      <td className="border border-gray-200 num nowrap">{fmtCurrency(it.pack_sale_price)}</td>
-                      <td className="border border-gray-200 num nowrap">{fmtCurrency(it.unit_sale_price)}</td>
-                      <td className="border border-gray-200 num nowrap">{it.pack_bonus ?? 0}</td>
-                      <td className="border border-gray-200 num nowrap">{it.unit_bonus ?? 0}</td>
-                      <td className="border border-gray-200 num nowrap">
-                        {(it.item_discount_percentage ?? 0).toFixed(2)}
-                      </td>
-                      <td className="border border-gray-200 num nowrap">{(it.margin ?? 0).toFixed(2)}</td>
-                      <td className="border border-gray-200 num nowrap">{fmtCurrency(it.sub_total)}</td>
-                      <td className="border border-gray-200 num nowrap">{it.quantity ?? 0}</td>
-                    </tr>
-                  ))}
+                {/* Table — compact, fixed layout, narrow widths */}
+                <div className="relative max-w-full overflow-x-auto">
+                  <table className="tight-table w-full min-w-[1120px] border border-gray-200">
+                    <colgroup>
+                      <col style={{ width: 140 }} />
+                      <col style={{ width: 50 }} />
+                      <col style={{ width: 50 }} />
+                      {/* 13 numeric columns @ 60px each */}
+                      {Array.from({ length: 13 }).map((_, i) => (
+                        <col key={i} style={{ width: 60 }} />
+                      ))}
+                    </colgroup>
 
-                  {(!inv.items || !inv.items.length) && (
-                    <tr>
-                      <td colSpan={16} className="border border-gray-200 text-center text-gray-500">
-                        No items match this filter in this invoice.
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
+                    <thead>
+                      <tr>
+                        <th className="border border-gray-200 text-left nowrap">Product Name</th>
+                        <th className="border border-gray-200 text-left nowrap">Batch</th>
+                        <th className="border border-gray-200 text-left nowrap">Expiry</th>
+                        <th className="border border-gray-200 num nowrap">Pack Qty</th>
+                        <th className="border border-gray-200 num nowrap">Pack Size</th>
+                        <th className="border border-gray-200 num nowrap">Unit Qty</th>
+                        <th className="border border-gray-200 num nowrap">Pack Purchase</th>
+                        <th className="border border-gray-200 num nowrap">Unit Purchase</th>
+                        <th className="border border-gray-200 num nowrap">Pack Sale</th>
+                        <th className="border border-gray-200 num nowrap">Unit Sale</th>
+                        <th className="border border-gray-200 num nowrap">Pack Bonus</th>
+                        <th className="border border-gray-200 num nowrap">Unit Bonus</th>
+                        <th className="border border-gray-200 num nowrap">Item Disc %</th>
+                        <th className="border border-gray-200 num nowrap">Margin</th>
+                        <th className="border border-gray-200 num nowrap">Sub Total</th>
+                        <th className="border border-gray-200 num nowrap">Quantity</th>
+                      </tr>
+                    </thead>
 
-                <tfoot>
-                  <tr>
-                    <td className="border border-gray-200 text-right font-medium" colSpan={9}>
-                      Tax %
-                    </td>
-                    <td className="border border-gray-200 num" colSpan={2}>
-                      {(inv.tax_percentage ?? 0).toFixed(2)}
-                    </td>
-                    <td className="border border-gray-200 text-right font-medium" colSpan={3}>
-                      Tax Amount
-                    </td>
-                    <td className="border border-gray-200 num" colSpan={2}>
-                      {fmtCurrency(inv.tax_amount)}
-                    </td>
-                  </tr>
-                  <tr>
-                    <td className="border border-gray-200 text-right font-medium" colSpan={9}>
-                      Discount %
-                    </td>
-                    <td className="border border-gray-200 num" colSpan={2}>
-                      {(inv.discount_percentage ?? 0).toFixed(2)}
-                    </td>
-                    <td className="border border-gray-200 text-right font-medium" colSpan={3}>
-                      Discount Amount
-                    </td>
-                    <td className="border border-gray-200 num" colSpan={2}>
-                      {fmtCurrency(inv.discount_amount)}
-                    </td>
-                  </tr>
-                  <tr>
-                    <td className="border border-gray-200 text-right font-semibold" colSpan={14}>
-                      Total Amount
-                    </td>
-                    <td className="border border-gray-200 num font-semibold" colSpan={2}>
-                      {fmtCurrency(inv.total_amount)}
-                    </td>
-                  </tr>
-                </tfoot>
-              </table>
-            </div>
+                    <tbody className="tabular-nums">
+                      {(inv.items || []).map((it, idx) => (
+                        <tr key={(it.id ?? idx) + "-" + (it.product_id ?? "p") + "-" + idx}>
+                          <td className="border border-gray-200 text-left nowrap">
+                            {it.product_name || "-"}
+                          </td>
+                          <td className="border border-gray-200 text-left nowrap">
+                            {it.batch || "-"}
+                          </td>
+                          <td className="border border-gray-200 text-left nowrap">
+                            {it.expiry || "-"}
+                          </td>
+                          <td className="border border-gray-200 num nowrap">
+                            {it.pack_quantity ?? 0}
+                          </td>
+                          <td className="border border-gray-200 num nowrap">
+                            {it.pack_size ?? 0}
+                          </td>
+                          <td className="border border-gray-200 num nowrap">
+                            {it.unit_quantity ?? 0}
+                          </td>
+                          <td className="border border-gray-200 num nowrap">
+                            {fmtCurrency(it.pack_purchase_price)}
+                          </td>
+                          <td className="border border-gray-200 num nowrap">
+                            {fmtCurrency(it.unit_purchase_price)}
+                          </td>
+                          <td className="border border-gray-200 num nowrap">
+                            {fmtCurrency(it.pack_sale_price)}
+                          </td>
+                          <td className="border border-gray-200 num nowrap">
+                            {fmtCurrency(it.unit_sale_price)}
+                          </td>
+                          <td className="border border-gray-200 num nowrap">
+                            {it.pack_bonus ?? 0}
+                          </td>
+                          <td className="border border-gray-200 num nowrap">
+                            {it.unit_bonus ?? 0}
+                          </td>
+                          <td className="border border-gray-200 num nowrap">
+                            {(it.item_discount_percentage ?? 0).toFixed(2)}
+                          </td>
+                          <td className="border border-gray-200 num nowrap">
+                            {(it.margin ?? 0).toFixed(2)}
+                          </td>
+                          <td className="border border-gray-200 num nowrap">
+                            {fmtCurrency(it.sub_total)}
+                          </td>
+                          <td className="border border-gray-200 num nowrap">
+                            {it.quantity ?? 0}
+                          </td>
+                        </tr>
+                      ))}
+
+                      {(!inv.items || !inv.items.length) && (
+                        <tr>
+                          <td colSpan={16} className="border border-gray-200 text-center text-gray-500">
+                            No items match this filter in this invoice.
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+
+                    <tfoot>
+                      <tr>
+                        <td className="border border-gray-200 text-right font-medium" colSpan={9}>
+                          Tax %
+                        </td>
+                        <td className="border border-gray-200 num" colSpan={2}>
+                          {(inv.tax_percentage ?? 0).toFixed(2)}
+                        </td>
+                        <td className="border border-gray-200 text-right font-medium" colSpan={3}>
+                          Tax Amount
+                        </td>
+                        <td className="border border-gray-200 num" colSpan={2}>
+                          {fmtCurrency(inv.tax_amount)}
+                        </td>
+                      </tr>
+                      <tr>
+                        <td className="border border-gray-200 text-right font-medium" colSpan={9}>
+                          Discount %
+                        </td>
+                        <td className="border border-gray-200 num" colSpan={2}>
+                          {(inv.discount_percentage ?? 0).toFixed(2)}
+                        </td>
+                        <td className="border border-gray-200 text-right font-medium" colSpan={3}>
+                          Discount Amount
+                        </td>
+                        <td className="border border-gray-200 num" colSpan={2}>
+                          {fmtCurrency(inv.discount_amount)}
+                        </td>
+                      </tr>
+                      <tr>
+                        <td className="border border-gray-200 text-right font-semibold" colSpan={14}>
+                          Total Amount
+                        </td>
+                        <td className="border border-gray-200 num font-semibold" colSpan={2}>
+                          {fmtCurrency(inv.total_amount)}
+                        </td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+              </div>
+            ))}
           </div>
-        ))}
-      </div>
+        </>
+      )}
     </div>
   );
 }

@@ -2,6 +2,9 @@
 
 namespace App\Http\Controllers;
 
+use App\Authorizables\CostOfSaleReport;
+use App\Authorizables\PurchaseDetailReport;
+use App\Authorizables\SaleDetailReport;
 use App\Models\PurchaseInvoice;
 use App\Models\SaleInvoice;
 use Barryvdh\DomPDF\Facade\Pdf;
@@ -23,6 +26,7 @@ class ReportsController extends Controller
      */
     public function costOfSale(Request $req)
     {
+        $this->authorize('view', CostOfSaleReport::class);
         try {
             $from = $req->query('from');
             $to   = $req->query('to');
@@ -123,6 +127,7 @@ class ReportsController extends Controller
 
     public function purchaseDetail(Request $req)
     {
+        $this->authorize('view', PurchaseDetailReport::class);
         $from = $req->query('from');
         $to   = $req->query('to');
         $supplierId = $req->query('supplier_id');
@@ -282,6 +287,7 @@ class ReportsController extends Controller
     /** GET /api/reports/purchase-detail/pdf */
     public function purchaseDetailPdf(Request $req)
     {
+        $this->authorize('export', PurchaseDetailReport::class);
         $rows = $this->buildPurchaseDetailRows(
             $req->query('from'),
             $req->query('to'),
@@ -307,6 +313,7 @@ class ReportsController extends Controller
     /** GET /api/reports/sale-detail */
     public function saleDetail(Request $req)
     {
+        $this->authorize('view', SaleDetailReport::class); 
         $from = $req->query('from');
         $to   = $req->query('to');
         $customerId = $req->query('customer_id');
@@ -451,6 +458,7 @@ class ReportsController extends Controller
     /** GET /api/reports/sale-detail/pdf */
     public function saleDetailPdf(Request $req)
     {
+        $this->authorize('export', SaleDetailReport::class);
         $rows = $this->buildSaleDetailRows(
             $req->query('from'),
             $req->query('to'),
