@@ -41,7 +41,7 @@ export default function Login() {
         <div className="text-center space-y-2">
           {/* Logo */}
           <img
-            src="/storage/logos/logo.png"
+            src="/logo.png"
             alt="Karobar App Logo"
             className="mx-auto h-16 w-auto"
           />
