@@ -46,6 +46,14 @@ export default function RolesIndex() {
       if (page > lp) setPage(lp || 1);
     } catch (err) {
       if (axios.isCancel?.(err)) return;
+
+      const status = err?.response?.status;
+      if (status === 403 || status === 401) {
+        toast.error("You don’t have permission to view roles. Redirecting…");
+        navigate("/dashboard");
+        return;
+      }
+
       console.error(err);
       toast.error("Failed to load roles");
     } finally {
@@ -86,6 +94,12 @@ export default function RolesIndex() {
       controllerRef.current = ctrl;
       fetchRoles(ctrl.signal);
     } catch (e) {
+      const status = e?.response?.status;
+      if (status === 403 || status === 401) {
+        toast.error("You don’t have permission to manage roles. Redirecting…");
+        navigate("/dashboard");
+        return;
+      }
       const msg = e?.response?.data?.message || "Delete failed";
       toast.error(msg);
     }

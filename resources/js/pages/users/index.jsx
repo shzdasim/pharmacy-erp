@@ -70,6 +70,14 @@ export default function UsersIndex() {
       if (page > lp) setPage(lp || 1);
     } catch (err) {
       if (axios.isCancel?.(err)) return;
+
+      const status = err?.response?.status;
+      if (status === 403 || status === 401) {
+        toast.error("You don’t have permission to view users. Redirecting…");
+        navigate("/dashboard");
+        return;
+      }
+
       console.error("Error fetching users", err);
       toast.error("Failed to load users");
     } finally {
@@ -152,9 +160,15 @@ export default function UsersIndex() {
       controllerRef.current = ctrl;
       fetchUsers(ctrl.signal);
     } catch (err) {
+      const status = err?.response?.status;
+      if (status === 403 || status === 401) {
+        toast.error("You don’t have permission to manage users. Redirecting…");
+        navigate("/dashboard");
+        return;
+      }
       const apiMsg =
         err?.response?.data?.message ||
-        (err?.response?.status === 422 ? "Incorrect password" : "Delete failed");
+        (status === 422 ? "Incorrect password" : "Delete failed");
       toast.error(apiMsg);
     } finally {
       setDeleting(false);
