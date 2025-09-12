@@ -15,7 +15,7 @@ class AdminUserSeeder extends Seeder
 
         $user = User::firstOrCreate(
             ['email' => 'admin@example.com'],
-            ['name' => 'Admin User', 'password' => Hash::make('password123'), 'status' => 'active']
+            ['name' => 'Admin User', 'password' => Hash::make('password'), 'status' => 'active']
         );
 
         // IMPORTANT: matches the role created above and guard 'sanctum'
