@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Authorizables\PurchaseOrderForecast;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Carbon\Carbon;
@@ -11,6 +12,7 @@ class PurchaseOrderController extends Controller
 
     public function forecast(Request $request)
 {
+     $this->authorize('generate', PurchaseOrderForecast::class); // ⬅️ add
     $data = $request->validate([
         'date_from'      => 'required|date',
         'date_to'        => 'required|date|after_or_equal:date_from',

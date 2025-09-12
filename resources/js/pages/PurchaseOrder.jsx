@@ -2,16 +2,24 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import axios from "axios";
 import toast from "react-hot-toast";
 import Select from "react-select";
+import { usePermissions } from "@/api/usePermissions.js"; // ⬅️ ensure this exists
 
 export default function PurchaseOrder() {
   const today = new Date().toISOString().split("T")[0];
+
+  // 🔒 permissions
+  const { loading: permsLoading, has, canFor } = usePermissions?.() || {};
+  const canView = typeof has === "function" ? has("purchase-order.view")
+                 : (typeof canFor === "function" ? (canFor("purchase-order")?.view ?? false) : true);
+  const canGenerate = typeof has === "function" ? has("purchase-order.generate")
+                    : (typeof canFor === "function" ? (canFor("purchase-order")?.create ?? false) : true);
 
   const [dateFrom, setDateFrom] = useState(today);
   const [dateTo, setDateTo] = useState(today);
   const [projectedDays, setProjectedDays] = useState(7);
 
-  const [supplier, setSupplier] = useState(null); // optional
-  const [brand, setBrand] = useState(null);       // optional
+  const [supplier, setSupplier] = useState(null);
+  const [brand, setBrand] = useState(null);
   const [supplierOptions, setSupplierOptions] = useState([]);
   const [brandOptions, setBrandOptions] = useState([]);
 
@@ -21,19 +29,20 @@ export default function PurchaseOrder() {
   const printBtnRef = useRef(null);
 
   useEffect(() => {
+    if (permsLoading || !canView) return;
     (async () => {
       try {
         const [supRes, brRes] = await Promise.all([
           axios.get("/api/suppliers"),
           axios.get("/api/brands"),
         ]);
-        setSupplierOptions((supRes.data || []).map((s) => ({ value: s.id, label: s.name })));
-        setBrandOptions((brRes.data || []).map((b) => ({ value: b.id, label: b.name })));
+        setSupplierOptions((Array.isArray(supRes.data) ? supRes.data : (supRes.data?.data || [])).map(s => ({ value: s.id, label: s.name })));
+        setBrandOptions((Array.isArray(brRes.data) ? brRes.data : (brRes.data?.data || [])).map(b => ({ value: b.id, label: b.name })));
       } catch (e) {
         console.warn(e);
       }
     })();
-  }, []);
+  }, [permsLoading, canView]);
 
   useEffect(() => {
     const onKey = (e) => {
@@ -47,6 +56,7 @@ export default function PurchaseOrder() {
   }, []);
 
   const doPrint = () => {
+    if (!canView) return toast.error("You don't have permission to view/print.");
     if (!rows.length) return toast.error("Nothing to print.");
     window.print();
   };
@@ -54,6 +64,7 @@ export default function PurchaseOrder() {
   const fmt2 = (v) => Number(v ?? 0).toFixed(2);
 
   const handleFetch = async () => {
+    if (!canGenerate) return toast.error("You don't have permission to generate.");
     if (!dateFrom || !dateTo) return toast.error("Please select both dates.");
     if (!projectedDays || projectedDays <= 0) return toast.error("Projected Days must be at least 1.");
 
@@ -108,7 +119,6 @@ export default function PurchaseOrder() {
     );
   };
 
-  // compact react-select styles
   const selectStyles = {
     control: (base) => ({ ...base, minHeight: 30, height: 30, fontSize: 12 }),
     valueContainer: (base) => ({ ...base, height: 30, padding: '0 6px' }),
@@ -117,70 +127,40 @@ export default function PurchaseOrder() {
     menu: (base) => ({ ...base, fontSize: 12 }),
   };
 
+  if (permsLoading) return <div className="p-3 text-sm">Loading…</div>;
+  if (!canView) return <div className="p-3 text-sm text-gray-700">You don’t have permission to view Purchase Order (Forecast).</div>;
+
   return (
     <div className="p-3 print:p-0">
       <h1 className="text-xl font-semibold mb-3">Purchase Order (Forecast)</h1>
 
-      {/* Compact filters */}
       <div className="grid grid-cols-1 md:grid-cols-6 gap-2 mb-3 text-xs">
         <div className="flex flex-col">
           <label className="text-gray-700">From</label>
-          <input
-            type="date"
-            value={dateFrom}
-            onChange={(e) => setDateFrom(e.target.value)}
-            className="border rounded px-2 py-1 h-8 text-xs"
-          />
+          <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="border rounded px-2 py-1 h-8 text-xs" />
         </div>
         <div className="flex flex-col">
           <label className="text-gray-700">To</label>
-          <input
-            type="date"
-            value={dateTo}
-            onChange={(e) => setDateTo(e.target.value)}
-            className="border rounded px-2 py-1 h-8 text-xs"
-          />
+          <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="border rounded px-2 py-1 h-8 text-xs" />
         </div>
         <div className="flex flex-col">
           <label className="text-gray-700">Projected Days</label>
-          <input
-            type="number"
-            min={1}
-            value={projectedDays}
-            onChange={(e) => setProjectedDays(parseInt(e.target.value || 0, 10))}
-            className="border rounded px-2 py-1 h-8 text-xs"
-            placeholder="7"
-          />
+          <input type="number" min={1} value={projectedDays} onChange={(e) => setProjectedDays(parseInt(e.target.value || 0, 10))} className="border rounded px-2 py-1 h-8 text-xs" />
         </div>
         <div className="flex flex-col">
           <label className="text-gray-700">Supplier (optional)</label>
-          <Select
-            classNamePrefix="rs"
-            styles={selectStyles}
-            options={supplierOptions}
-            value={supplier}
-            onChange={setSupplier}
-            placeholder="Supplier"
-            isClearable
-          />
+          <Select classNamePrefix="rs" styles={selectStyles} options={supplierOptions} value={supplier} onChange={setSupplier} placeholder="Supplier" isClearable />
         </div>
         <div className="flex flex-col">
           <label className="text-gray-700">Brand (optional)</label>
-          <Select
-            classNamePrefix="rs"
-            styles={selectStyles}
-            options={brandOptions}
-            value={brand}
-            onChange={setBrand}
-            placeholder="Brand"
-            isClearable
-          />
+          <Select classNamePrefix="rs" styles={selectStyles} options={brandOptions} value={brand} onChange={setBrand} placeholder="Brand" isClearable />
         </div>
         <div className="flex items-end gap-2">
           <button
             onClick={handleFetch}
-            disabled={loading}
+            disabled={loading || !canGenerate}
             className="bg-blue-600 text-white px-2 py-1 h-8 text-xs rounded hover:bg-blue-700 disabled:opacity-60"
+            title={!canGenerate ? "Not permitted" : "Generate"}
           >
             {loading ? "Loading..." : "Generate"}
           </button>
@@ -195,7 +175,6 @@ export default function PurchaseOrder() {
         </div>
       </div>
 
-      {/* Results */}
       <div className="overflow-auto border rounded">
         <table className="min-w-[1200px] w-full text-xs">
           <thead className="bg-gray-100 border-b">
@@ -226,9 +205,7 @@ export default function PurchaseOrder() {
                   {r.product_code && <div className="text-[10px] text-gray-500">{r.product_code}</div>}
                 </td>
                 <td className="p-2">
-                  <div className="text-[11px] text-gray-700">
-                    {r.brand_name || "-"} / {r.supplier_name || "-"}
-                  </div>
+                  <div className="text-[11px] text-gray-700">{r.brand_name || "-"} / {r.supplier_name || "-"}</div>
                 </td>
                 <td className="p-2 text-right">{r.pack_size}</td>
                 <td className="p-2 text-right">{r.units_sold}</td>
@@ -240,13 +217,7 @@ export default function PurchaseOrder() {
                 <td className="p-2 text-right">{fmt2(r.pack_price)}</td>
                 <td className="p-2 text-right">{r.suggested_packs}</td>
                 <td className="p-2 text-right">
-                  <input
-                    type="number"
-                    min={0}
-                    className="border rounded px-2 py-1 w-20 text-right h-7"
-                    value={r.order_packs}
-                    onChange={(e) => updateOrderPacks(r._rowId, e.target.value)}
-                  />
+                  <input type="number" min={0} className="border rounded px-2 py-1 w-20 text-right h-7" value={r.order_packs} onChange={(e) => updateOrderPacks(r._rowId, e.target.value)} />
                 </td>
                 <td className="p-2 text-right">{r.order_units}</td>
                 <td className="p-2 text-right">{fmt2(r.order_amount)}</td>
@@ -254,9 +225,7 @@ export default function PurchaseOrder() {
             ))}
             {!rows.length && (
               <tr>
-                <td colSpan={15} className="p-6 text-center text-gray-500">
-                  No data. Choose filters and click “Generate”.
-                </td>
+                <td colSpan={15} className="p-6 text-center text-gray-500">No data. Choose filters and click “Generate”.</td>
               </tr>
             )}
           </tbody>
@@ -273,7 +242,6 @@ export default function PurchaseOrder() {
         </table>
       </div>
 
-      {/* Print styles */}
       <style>{`
         @media print {
           .print\\:p-0 { padding: 0 !important; }

@@ -30,6 +30,9 @@ class RolesAndPermissionsSeeder extends Seeder
             // Ledgers
             'customer-ledger.view','customer-ledger.create','customer-ledger.update','customer-ledger.delete',
             'supplier-ledger.view','supplier-ledger.create','supplier-ledger.update','supplier-ledger.delete',
+
+            // Purchase Order Forecast
+            'purchase-order.view','purchase-order.generate',
         ];
 
         // ---- Domain modules & standard actions ----
