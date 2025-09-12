@@ -1,5 +1,5 @@
 // src/pages/users/UserForm.jsx
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import axios from "axios";
 
 export default function UserForm({ onSubmit, initial, submitting }) {
@@ -21,7 +21,7 @@ export default function UserForm({ onSubmit, initial, submitting }) {
   const asArray = (x) =>
     Array.isArray(x) ? x : x && typeof x === "object" ? Object.values(x) : [];
 
-  // load available roles + permissions
+  // ---- Load roles + permissions
   useEffect(() => {
     (async () => {
       const [r, p] = await Promise.all([
@@ -29,22 +29,20 @@ export default function UserForm({ onSubmit, initial, submitting }) {
         axios.get("/api/permissions"),
       ]);
 
-      // roles: /api/roles returns {data:[{id,name},...], meta:{...}}
       const roleNames = (Array.isArray(r?.data?.data) ? r.data.data : asArray(r?.data))
         .map((x) => (typeof x === "string" ? x : x?.name))
         .filter(Boolean);
 
-      // permissions: /api/permissions returns ["perm.a","perm.b",...] or [{name:"perm"}]
       const permNames = (Array.isArray(p?.data?.data) ? p.data.data : asArray(p?.data))
         .map((x) => (typeof x === "string" ? x : x?.name))
         .filter(Boolean);
 
       setRoleOptions([...new Set(roleNames)].sort());
-      setPermissionOptions([...new Set(permNames)].sort());
+      setPermissionOptions([...new Set(permNames)]);
     })();
   }, []);
 
-  // apply initial user when editing
+  // ---- Apply initial (edit mode)
   useEffect(() => {
     if (initial) {
       setForm({
@@ -76,7 +74,7 @@ export default function UserForm({ onSubmit, initial, submitting }) {
     });
   };
 
-  // Alt+S shortcut
+  // Alt+S
   useEffect(() => {
     const onKeyDown = (e) => {
       if (e.altKey && (e.key || "").toLowerCase() === "s") {
@@ -96,6 +94,113 @@ export default function UserForm({ onSubmit, initial, submitting }) {
     });
   };
 
+  // ===== Permission grouping & ordering =====
+  const ACTION_ORDER = [
+    "view",
+    "create",
+    "update",
+    "delete",
+    "import",
+    "export",
+    "generate",
+    "sync.permissions",
+    "assign.roles",
+    "assign.permissions",
+    "manage",
+  ];
+
+  const titleizeModule = (m) => {
+    // friendly headings
+    const map = {
+      "sale-invoice": "Sale Invoice",
+      "purchase-invoice": "Purchase Invoice",
+      "sale-return": "Sale Return",
+      "purchase-return": "Purchase Return",
+      "stock-adjustment": "Stock Adjustment",
+      settings: "Settings",
+      category: "Category",
+      brand: "Brand",
+      supplier: "Supplier",
+      product: "Product",
+      customer: "Customer",
+      user: "Users",
+      role: "Roles",
+      permission: "Permissions Registry",
+      "customer-ledger": "Customer Ledger",
+      "supplier-ledger": "Supplier Ledger",
+      "purchase-order": "Purchase Order Forecast",
+      invoice: "Invoice (Legacy)",
+    };
+    if (map[m]) return map[m];
+    // Fallback: Title Case + hyphen to space
+    return m
+      .split("-")
+      .map((x) => x.charAt(0).toUpperCase() + x.slice(1))
+      .join(" ");
+  };
+
+  // Build: { moduleKey: { label, actions: [{action, perm}] } }
+  const groupedPerms = useMemo(() => {
+    const groups = {};
+    for (const full of permissionOptions) {
+      // expected "module.action" format, but keep custom singles too
+      if (typeof full !== "string" || !full) continue;
+      const parts = full.split(".");
+      const module = parts.length > 1 ? parts[0] : full; // "user.manage" => module "user"
+      const action = parts.length > 1 ? parts.slice(1).join(".") : ""; // manage / assign.roles etc.
+
+      const key = module;
+      if (!groups[key]) {
+        groups[key] = { label: titleizeModule(key), map: new Map() };
+      }
+      groups[key].map.set(action || full, full); // action->perm
+    }
+
+    // Convert map to ordered arrays
+    const out = [];
+    Object.keys(groups)
+      .sort((a, b) => groups[a].label.localeCompare(groups[b].label))
+      .forEach((k) => {
+        const availableActions = Array.from(groups[k].map.keys());
+        const ordered = [
+          // first those in ACTION_ORDER
+          ...ACTION_ORDER.filter((a) => availableActions.includes(a)),
+          // then any extra/custom actions
+          ...availableActions.filter((a) => !ACTION_ORDER.includes(a)),
+        ];
+        out.push({
+          module: k,
+          label: groups[k].label,
+          actions: ordered.map((a) => ({ action: a, perm: groups[k].map.get(a) })),
+        });
+      });
+    return out;
+  }, [permissionOptions]);
+
+  const moduleAllSelected = (moduleKey) => {
+    const gp = groupedPerms.find((g) => g.module === moduleKey);
+    if (!gp) return false;
+    return gp.actions.every((a) => form.permissions.includes(a.perm));
+  };
+
+  const toggleModuleAll = (moduleKey, checked) => {
+    setForm((s) => {
+      const gp = groupedPerms.find((g) => g.module === moduleKey);
+      if (!gp) return s;
+      const current = new Set(s.permissions);
+      if (checked) {
+        gp.actions.forEach((a) => current.add(a.perm));
+      } else {
+        gp.actions.forEach((a) => current.delete(a.perm));
+      }
+      return { ...s, permissions: Array.from(current) };
+    });
+  };
+
+  const selectAllPermissions = () =>
+    setForm((s) => ({ ...s, permissions: Array.from(new Set(permissionOptions)) }));
+  const clearAllPermissions = () => setForm((s) => ({ ...s, permissions: [] }));
+
   return (
     <div className="p-6">
       <div className="flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between mb-4">
@@ -106,47 +211,50 @@ export default function UserForm({ onSubmit, initial, submitting }) {
         </div>
       </div>
 
-      <form ref={formRef} onSubmit={submit} className="space-y-4 max-w-2xl">
-        {/* Name */}
-        <div>
-          <label className="block text-sm font-medium mb-1">Name</label>
-          <input
-            value={form.name}
-            onChange={(e) => set("name", e.target.value)}
-            required
-            className="w-full border rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-            placeholder="Full name"
-          />
-        </div>
+      <form ref={formRef} onSubmit={submit} className="space-y-6">
+        {/* Top row: Name, Email, Password */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          {/* Name */}
+          <div>
+            <label className="block text-sm font-medium mb-1">Name</label>
+            <input
+              value={form.name}
+              onChange={(e) => set("name", e.target.value)}
+              required
+              className="w-full border rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="Full name"
+            />
+          </div>
 
-        {/* Email */}
-        <div>
-          <label className="block text-sm font-medium mb-1">Email</label>
-          <input
-            type="email"
-            value={form.email}
-            onChange={(e) => set("email", e.target.value)}
-            required
-            className="w-full border rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-            placeholder="user@example.com"
-          />
-        </div>
+          {/* Email */}
+          <div>
+            <label className="block text-sm font-medium mb-1">Email</label>
+            <input
+              type="email"
+              value={form.email}
+              onChange={(e) => set("email", e.target.value)}
+              required
+              className="w-full border rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="user@example.com"
+            />
+          </div>
 
-        {/* Password */}
-        <div>
-          <label className="block text-sm font-medium mb-1">
-            Password{" "}
-            {initial ? (
-              <span className="text-xs text-gray-500">(leave blank to keep)</span>
-            ) : null}
-          </label>
-          <input
-            type="password"
-            value={form.password}
-            onChange={(e) => set("password", e.target.value)}
-            placeholder={initial ? "••••••" : "Set a password"}
-            className="w-full border rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
+          {/* Password */}
+          <div>
+            <label className="block text-sm font-medium mb-1">
+              Password{" "}
+              {initial ? (
+                <span className="text-xs text-gray-500">(leave blank to keep)</span>
+              ) : null}
+            </label>
+            <input
+              type="password"
+              value={form.password}
+              onChange={(e) => set("password", e.target.value)}
+              placeholder={initial ? "••••••" : "Set a password"}
+              className="w-full border rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
         </div>
 
         {/* Status */}
@@ -189,20 +297,75 @@ export default function UserForm({ onSubmit, initial, submitting }) {
           </div>
         </div>
 
-        {/* Direct Permissions */}
+        {/* Direct Permissions (Grouped) */}
         <div>
-          <label className="block text-sm font-medium mb-1">Direct Permissions</label>
-          <div className="flex flex-wrap gap-3 max-h-64 overflow-auto border rounded p-2">
-            {permissionOptions.map((p) => (
-              <label key={p} className="inline-flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  checked={form.permissions.includes(p)}
-                  onChange={() => toggleStrInArray("permissions", p)}
-                />
-                <span>{p}</span>
-              </label>
+          <div className="flex items-center justify-between mb-2">
+            <label className="block text-sm font-medium">Direct Permissions</label>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={selectAllPermissions}
+                className="text-xs border rounded px-2 py-1 hover:bg-gray-50"
+                title="Select all permissions"
+              >
+                Select All
+              </button>
+              <button
+                type="button"
+                onClick={clearAllPermissions}
+                className="text-xs border rounded px-2 py-1 hover:bg-gray-50"
+                title="Clear all permissions"
+              >
+                Clear
+              </button>
+            </div>
+          </div>
+
+          <div className="space-y-4 max-h-[32rem] overflow-auto pr-1">
+            {groupedPerms.map((group) => (
+              <div key={group.module} className="border rounded">
+                <div className="flex items-center justify-between px-3 py-2 bg-gray-50 border-b">
+                  <div className="font-medium">{group.label} Permissions</div>
+                  <label className="text-xs inline-flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={moduleAllSelected(group.module)}
+                      onChange={(e) => toggleModuleAll(group.module, e.target.checked)}
+                    />
+                    <span>{moduleAllSelected(group.module) ? "Clear All" : "Select All"}</span>
+                  </label>
+                </div>
+
+                {/* Actions row, consistently ordered */}
+                <div className="px-3 py-2">
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2">
+                    {group.actions.map(({ action, perm }) => (
+                      <label
+                        key={perm}
+                        className="inline-flex items-center gap-2 border rounded px-2 py-1"
+                        title={perm}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={form.permissions.includes(perm)}
+                          onChange={() => toggleStrInArray("permissions", perm)}
+                        />
+                        <span className="capitalize">
+                          {action
+                            ? action.replace(/\./g, " ") // e.g., sync.permissions
+                            : perm}
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              </div>
             ))}
+
+            {/* Fallback when there are no permissions (still loading or empty) */}
+            {groupedPerms.length === 0 && (
+              <div className="text-sm text-gray-500">No permissions found.</div>
+            )}
           </div>
         </div>
 
