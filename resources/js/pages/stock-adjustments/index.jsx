@@ -2,7 +2,14 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import axios from "axios";
 import toast from "react-hot-toast";
-import { MagnifyingGlassIcon, PlusCircleIcon, PencilSquareIcon, TrashIcon } from "@heroicons/react/24/solid";
+import {
+  MagnifyingGlassIcon,
+  PlusCircleIcon,
+  PencilSquareIcon,
+  EyeIcon,
+  TrashIcon,
+} from "@heroicons/react/24/solid";
+import { usePermissions, Guard } from "@/api/usePermissions.js";
 
 export default function StockAdjustmentsIndex() {
   const [rows, setRows] = useState([]);
@@ -20,8 +27,35 @@ export default function StockAdjustmentsIndex() {
 
   const navigate = useNavigate();
 
-  useEffect(() => { fetchRows(); }, []);
+  // 🔒 permissions
+  const { loading: permsLoading, canFor } = usePermissions();
+  const can = useMemo(
+    () =>
+      (typeof canFor === "function" ? canFor("stock-adjustment") : {
+        view:false, create:false, update:false, delete:false, import:false, export:false
+      }),
+    [canFor]
+  );
 
+  useEffect(() => {
+    (async () => {
+      if (permsLoading) return;
+      if (!can.view) { setRows([]); setLoading(false); return; }
+      try {
+        setLoading(true);
+        const { data } = await axios.get("/api/stock-adjustments", { params: { per_page: 1000 } });
+        setRows(Array.isArray(data?.data) ? data.data : data);
+      } catch (e) {
+        const status = e?.response?.status;
+        if (status === 403) toast.error("You don't have permission to view stock adjustments.");
+        else toast.error("Failed to fetch stock adjustments");
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, [permsLoading, can.view]);
+
+  // Alt+N -> create (respect perms, ignore when typing)
   useEffect(() => {
     const onKeyDown = (e) => {
       if (!e.altKey) return;
@@ -30,27 +64,17 @@ export default function StockAdjustmentsIndex() {
       const tag = (e.target?.tagName || "").toLowerCase();
       const isTyping = ["input","textarea","select"].includes(tag) || e.target?.isContentEditable;
       if (isTyping) return;
+      if (!can.create) return;
       e.preventDefault();
       navigate("/stock-adjustments/create");
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [navigate]);
-
-  const fetchRows = async () => {
-    try {
-      setLoading(true);
-      const { data } = await axios.get("/api/stock-adjustments", { params: { per_page: 1000 } });
-      setRows(Array.isArray(data?.data) ? data.data : data);
-    } catch {
-      toast.error("Failed to fetch stock adjustments");
-    } finally {
-      setLoading(false);
-    }
-  };
+  }, [navigate, can.create]);
 
   // ===== secure delete handlers =====
   const openDeleteModal = (id) => {
+    if (!can.delete) return toast.error("You don't have permission to delete stock adjustments.");
     setDeletingId(id);
     setPassword("");
     setDeleteStep(1);
@@ -67,11 +91,12 @@ export default function StockAdjustmentsIndex() {
 
   const confirmAndDelete = async () => {
     if (!deletingId) return;
+    if (!can.delete) return toast.error("You don't have permission to delete stock adjustments.");
     try {
       setDeleting(true);
-      // 1) confirm password (Sanctum-protected route—same as Sale Invoices)
+      // 1) confirm password
       await axios.post("/api/auth/confirm-password", { password });
-      // 2) delete stock adjustment
+      // 2) delete
       await axios.delete(`/api/stock-adjustments/${deletingId}`);
       toast.success("Stock adjustment deleted");
       setRows((prev) => prev.filter((r) => r.id !== deletingId));
@@ -97,16 +122,26 @@ export default function StockAdjustmentsIndex() {
   const paged = filtered.slice(start, start + pageSize);
   const pageCount = Math.max(1, Math.ceil(filtered.length / pageSize));
 
+  if (permsLoading) return <div className="p-6">Loading…</div>;
+  if (!can.view) return <div className="p-6 text-sm text-gray-700">You don’t have permission to view stock adjustments.</div>;
   if (loading) return <p className="p-6">Loading…</p>;
 
   return (
     <div className="p-6">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
         <h1 className="text-2xl font-bold">Stock Adjustments</h1>
-        <Link to="/stock-adjustments/create" className="bg-blue-600 text-white px-4 py-2 rounded flex items-center gap-2 hover:bg-blue-700" title="Add (Alt+N)">
-          <PlusCircleIcon className="w-5 h-5"/> Add Adjustment
-          <span className="ml-2 hidden sm:inline text-xs opacity-80 border rounded px-1 py-0.5">Alt+N</span>
-        </Link>
+
+        <Guard when={can.create}>
+          <Link
+            to="/stock-adjustments/create"
+            className="bg-blue-600 text-white px-4 py-2 rounded flex items-center gap-2 hover:bg-blue-700"
+            title="Add (Alt+N)"
+            aria-keyshortcuts="Alt+N"
+          >
+            <PlusCircleIcon className="w-5 h-5"/> Add Adjustment
+            <span className="ml-2 hidden sm:inline text-xs opacity-80 border rounded px-1 py-0.5">Alt+N</span>
+          </Link>
+        </Guard>
       </div>
 
       <div className="relative mb-3">
@@ -143,20 +178,34 @@ export default function StockAdjustmentsIndex() {
                 <td className="p-2 border text-right">{Number(r.total_worth || 0).toLocaleString()}</td>
                 <td className="p-2 border">
                   <div className="flex justify-center gap-2">
+                    <Guard when={can.update}>
+                      <Link
+                        to={`/stock-adjustments/${r.id}/edit`}
+                        className="bg-green-600 text-white px-3 py-1 rounded inline-flex items-center gap-1 hover:bg-green-700"
+                        title="Edit"
+                      >
+                        <PencilSquareIcon className="w-5 h-5"/> Edit
+                      </Link>
+                    </Guard>
+
+                    {/* View page is optional; if you have a show page, expose it here: */}
                     <Link
-                      to={`/stock-adjustments/${r.id}/edit`}
-                      className="bg-green-600 text-white px-3 py-1 rounded inline-flex items-center gap-1 hover:bg-green-700"
-                      title="Edit"
+                      to={`/stock-adjustments/${r.id}`}
+                      className="bg-blue-600 text-white px-3 py-1 rounded inline-flex items-center gap-1 hover:bg-blue-700"
+                      title="View"
                     >
-                      <PencilSquareIcon className="w-5 h-5"/> Edit
+                      <EyeIcon className="w-5 h-5" /> View
                     </Link>
-                    <button
-                      onClick={() => openDeleteModal(r.id)}
-                      className="bg-red-600 text-white px-3 py-1 rounded inline-flex items-center gap-1 hover:bg-red-700"
-                      title="Delete"
-                    >
-                      <TrashIcon className="w-5 h-5"/> Delete
-                    </button>
+
+                    <Guard when={can.delete}>
+                      <button
+                        onClick={() => openDeleteModal(r.id)}
+                        className="bg-red-600 text-white px-3 py-1 rounded inline-flex items-center gap-1 hover:bg-red-700"
+                        title="Delete"
+                      >
+                        <TrashIcon className="w-5 h-5"/> Delete
+                      </button>
+                    </Guard>
                   </div>
                 </td>
               </tr>
@@ -171,7 +220,9 @@ export default function StockAdjustmentsIndex() {
       </div>
 
       <div className="mt-4 flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between">
-        <div className="text-sm text-gray-600">Page {page} of {pageCount}</div>
+        <div className="text-sm text-gray-600">
+          Page {page} of {pageCount}
+        </div>
         <div className="flex items-center gap-2">
           <button onClick={()=>setPage(1)} disabled={page===1} className="px-3 py-1 border rounded disabled:opacity-50">⏮ First</button>
           <button onClick={()=>setPage(p=>Math.max(1,p-1))} disabled={page===1} className="px-3 py-1 border rounded disabled:opacity-50">◀ Prev</button>

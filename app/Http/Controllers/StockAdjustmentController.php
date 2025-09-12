@@ -1,10 +1,11 @@
 <?php
 
 namespace App\Http\Controllers;
+
 use App\Models\Product;
 use App\Models\StockAdjustment;
 use App\Models\StockAdjustmentItem;
-use App\Models\Batch; // assumes your Batch model exists
+use App\Models\Batch;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
@@ -33,33 +34,57 @@ class StockAdjustmentController extends Controller
         return (float) Batch::where('product_id', $p->id)->sum(DB::raw('COALESCE(available_units, 0)'));
     }
 
+    // ===== Endpoints =====
+
     public function index(Request $request)
     {
+        // 🔒 list
+        $this->authorize('viewAny', StockAdjustment::class);
+
         $q = trim((string)$request->get('q'));
         $per = (int)($request->get('per_page', 50));
+
         $query = StockAdjustment::query()
             ->withCount('items')
-            ->when($q !== '', fn($qq) => $qq->where('posted_number','like',"%{$q}%")->orWhere('note','like',"%{$q}%"))
+            ->when($q !== '', fn($qq) =>
+                $qq->where('posted_number','like',"%{$q}%")
+                   ->orWhere('note','like',"%{$q}%")
+            )
             ->orderByDesc('id');
+
         return $query->paginate($per);
     }
 
     public function show($id)
     {
-        return StockAdjustment::with(['items.product'])->findOrFail($id);
+        $adj = StockAdjustment::with(['items.product'])->findOrFail($id);
+        // 🔒 view instance
+        $this->authorize('view', $adj);
+        return $adj;
     }
 
     public function newCode()
     {
+        // 🔒 require create (same pattern as SaleInvoice::generateNewCode)
+        $this->authorize('create', StockAdjustment::class);
+
         $prefix = 'STADJ-';
-        $last = StockAdjustment::where('posted_number','like',$prefix.'%')->orderByDesc('id')->value('posted_number');
+        $last = StockAdjustment::where('posted_number','like',$prefix.'%')
+            ->orderByDesc('id')
+            ->value('posted_number');
+
         $next = 1;
-        if ($last && preg_match('/^'.preg_quote($prefix,'/').'([0-9]+)$/',$last,$m)) $next = ((int)$m[1]) + 1;
+        if ($last && preg_match('/^'.preg_quote($prefix,'/').'([0-9]+)$/',$last,$m)) {
+            $next = ((int)$m[1]) + 1;
+        }
         return response()->json(['posted_number' => sprintf($prefix.'%05d', $next)]);
     }
 
     public function store(Request $request)
     {
+        // 🔒 create
+        $this->authorize('create', StockAdjustment::class);
+
         $data = $this->validatePayload($request);
 
         return DB::transaction(function () use ($data, $request) {
@@ -105,15 +130,15 @@ class StockAdjustmentController extends Controller
 
                     StockAdjustmentItem::create([
                         'stock_adjustment_id' => $adj->id,
-                        'product_id'         => $product->id,
-                        'batch_number'       => $row['batch_number'],
-                        'expiry'             => $row['expiry'] ?? null,
-                        'pack_size'          => $row['pack_size'] ?? null,
-                        'previous_qty'       => $previous,
-                        'actual_qty'         => $actual,
-                        'diff_qty'           => $diff,
-                        'unit_purchase_price'=> $unitCost,
-                        'worth_adjusted'     => $worth,
+                        'product_id'          => $product->id,
+                        'batch_number'        => $row['batch_number'],
+                        'expiry'              => $row['expiry'] ?? null,
+                        'pack_size'           => $row['pack_size'] ?? null,
+                        'previous_qty'        => $previous,
+                        'actual_qty'          => $actual,
+                        'diff_qty'            => $diff,
+                        'unit_purchase_price' => $unitCost,
+                        'worth_adjusted'      => $worth,
                     ]);
 
                     $totalWorth += $worth;
@@ -132,12 +157,12 @@ class StockAdjustmentController extends Controller
 
                     StockAdjustmentItem::create([
                         'stock_adjustment_id' => $adj->id,
-                        'product_id'         => $product->id,
-                        'previous_qty'       => $previous,
-                        'actual_qty'         => $actual,
-                        'diff_qty'           => $diff,
-                        'unit_purchase_price'=> $unitCost,
-                        'worth_adjusted'     => $worth,
+                        'product_id'          => $product->id,
+                        'previous_qty'        => $previous,
+                        'actual_qty'          => $actual,
+                        'diff_qty'            => $diff,
+                        'unit_purchase_price' => $unitCost,
+                        'worth_adjusted'      => $worth,
                     ]);
 
                     $totalWorth += $worth;
@@ -160,6 +185,8 @@ class StockAdjustmentController extends Controller
             }
 
             $adj->update(['total_worth' => $totalWorth]);
+            // return created (and authorized view)
+            $this->authorize('view', $adj);
             return $this->show($adj->id);
         });
     }
@@ -167,6 +194,9 @@ class StockAdjustmentController extends Controller
     public function update(Request $request, $id)
     {
         $adj = StockAdjustment::with('items')->findOrFail($id);
+        // 🔒 update instance
+        $this->authorize('update', $adj);
+
         $data = $this->validatePayload($request, $id);
 
         return DB::transaction(function () use ($adj, $data) {
@@ -217,15 +247,15 @@ class StockAdjustmentController extends Controller
 
                     StockAdjustmentItem::create([
                         'stock_adjustment_id' => $adj->id,
-                        'product_id'         => $product->id,
-                        'batch_number'       => $row['batch_number'],
-                        'expiry'             => $row['expiry'] ?? null,
-                        'pack_size'          => $row['pack_size'] ?? null,
-                        'previous_qty'       => $previous,
-                        'actual_qty'         => $actual,
-                        'diff_qty'           => $diff,
-                        'unit_purchase_price'=> $unitCost,
-                        'worth_adjusted'     => $worth,
+                        'product_id'          => $product->id,
+                        'batch_number'        => $row['batch_number'],
+                        'expiry'              => $row['expiry'] ?? null,
+                        'pack_size'           => $row['pack_size'] ?? null,
+                        'previous_qty'        => $previous,
+                        'actual_qty'          => $actual,
+                        'diff_qty'            => $diff,
+                        'unit_purchase_price' => $unitCost,
+                        'worth_adjusted'      => $worth,
                     ]);
 
                     $totalWorth += $worth;
@@ -240,12 +270,12 @@ class StockAdjustmentController extends Controller
 
                     StockAdjustmentItem::create([
                         'stock_adjustment_id' => $adj->id,
-                        'product_id'         => $product->id,
-                        'previous_qty'       => $previous,
-                        'actual_qty'         => $actual,
-                        'diff_qty'           => $diff,
-                        'unit_purchase_price'=> $unitCost,
-                        'worth_adjusted'     => $worth,
+                        'product_id'          => $product->id,
+                        'previous_qty'        => $previous,
+                        'actual_qty'          => $actual,
+                        'diff_qty'            => $diff,
+                        'unit_purchase_price' => $unitCost,
+                        'worth_adjusted'      => $worth,
                     ]);
 
                     $totalWorth += $worth;
@@ -271,14 +301,19 @@ class StockAdjustmentController extends Controller
                 'total_worth'   => $totalWorth,
             ]);
 
+            // return updated (and authorized view)
+            $this->authorize('view', $adj);
             return $this->show($adj->id);
         });
     }
 
     public function destroy($id)
     {
-        return DB::transaction(function () use ($id) {
-            $adj = StockAdjustment::with('items')->findOrFail($id);
+        $adj = StockAdjustment::with('items')->findOrFail($id);
+        // 🔒 delete instance
+        $this->authorize('delete', $adj);
+
+        return DB::transaction(function () use ($adj) {
             $touchedProducts = [];
 
             foreach ($adj->items as $item) {
@@ -316,19 +351,22 @@ class StockAdjustmentController extends Controller
         });
     }
 
+    // ===== Validation =====
+
     protected function validatePayload(Request $request, $id = null): array
     {
         return $request->validate([
             'posted_number' => ['required', 'string', Rule::unique('stock_adjustments','posted_number')->ignore($id)],
             'posted_date'   => ['required', 'date'],
             'note'          => ['required', 'string', 'max:2000'],
-            'items'         => ['required', 'array', 'min:1'],
-            'items.*.product_id'         => ['required','integer','exists:products,id'],
-            'items.*.actual_qty'         => ['required','numeric','min:0'],
-            'items.*.unit_purchase_price'=> ['nullable','numeric','min:0'],
-            'items.*.batch_number'       => ['nullable','string','max:191'],
-            'items.*.expiry'             => ['nullable','date'],
-            'items.*.pack_size'          => ['nullable','numeric','min:0'],
+
+            'items'                          => ['required', 'array', 'min:1'],
+            'items.*.product_id'            => ['required','integer','exists:products,id'],
+            'items.*.actual_qty'            => ['required','numeric','min:0'],
+            'items.*.unit_purchase_price'   => ['nullable','numeric','min:0'],
+            'items.*.batch_number'          => ['nullable','string','max:191'],
+            'items.*.expiry'                => ['nullable','date'],
+            'items.*.pack_size'             => ['nullable','numeric','min:0'],
         ]);
     }
 }
