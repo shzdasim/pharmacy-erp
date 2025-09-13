@@ -1,3 +1,4 @@
+// resources/js/pages/Setting.jsx
 import { useEffect, useRef, useState, useMemo } from "react";
 import axios from "axios";
 import toast from "react-hot-toast";
@@ -9,7 +10,20 @@ import FilePondPluginFileValidateType from "filepond-plugin-file-validate-type";
 import "filepond/dist/filepond.min.css";
 import "filepond-plugin-image-preview/dist/filepond-plugin-image-preview.css";
 
-import { usePermissions, Guard } from "@/api/usePermissions.js"; // 🔒
+import { usePermissions } from "@/api/usePermissions.js"; // 🔒
+
+// 🧊 glass primitives
+import {
+  GlassCard,
+  GlassSectionHeader,
+  GlassToolbar,
+  GlassInput,
+  GlassBtn,
+} from "@/components/glass.jsx";
+
+import {
+  ArrowDownOnSquareIcon,
+} from "@heroicons/react/24/solid";
 
 registerPlugin(FilePondPluginImagePreview, FilePondPluginFileValidateType);
 
@@ -47,6 +61,12 @@ export default function Setting() {
       }),
     [canFor]
   );
+
+  // tints (same palette as ledgers)
+  const tintBlue   = "bg-blue-500/85 text-white ring-1 ring-white/20 shadow-[0_6px_20px_-6px_rgba(37,99,235,0.45)] hover:bg-blue-500/95";
+  const tintGreen  = "bg-emerald-500/85 text-white ring-1 ring-white/20 shadow-[0_6px_20px_-6px_rgba(16,185,129,0.45)] hover:bg-emerald-500/95";
+  const tintSlate  = "bg-slate-900/80 text-white ring-1 ring-white/15 shadow-[0_6px_20px_-6px_rgba(15,23,42,0.45)] hover:bg-slate-900/90";
+  const tintGlass  = "bg-white/60 text-slate-700 ring-1 ring-white/30 hover:bg-white/75";
 
   useEffect(() => {
     if (permsLoading) return;
@@ -158,168 +178,211 @@ export default function Setting() {
   };
 
   if (permsLoading) {
-    return <div className="p-4"><div className="animate-pulse text-gray-500">Loading…</div></div>;
+    return <div className="p-6"><div className="animate-pulse text-gray-500">Loading…</div></div>;
   }
   if (!can.view) {
-    return <div className="p-4 text-sm text-gray-700">You don’t have permission to view settings.</div>;
+    return <div className="p-6 text-sm text-gray-700">You don’t have permission to view settings.</div>;
   }
   if (loading) {
-    return <div className="p-4"><div className="animate-pulse text-gray-500">Loading settings…</div></div>;
+    return <div className="p-6"><div className="animate-pulse text-gray-500">Loading settings…</div></div>;
   }
 
   const disableInputs = !can.update || saving;
 
   return (
-    <div className="p-4 max-w-4xl mx-auto">
-      <div className="flex items-center justify-between mb-4">
-        <h1 className="text-xl font-semibold">Application Settings</h1>
-        <button
-          ref={saveBtnRef}
-          onClick={handleSave}
-          disabled={!can.update || saving}
-          className={`px-4 py-2 rounded-lg text-white ${
-            (!can.update || saving) ? "bg-gray-400 cursor-not-allowed" : "bg-blue-600 hover:bg-blue-700"
-          }`}
-          title={can.update ? "Alt+S" : "You lack update permission"}
-        >
-          {saving ? "Saving…" : (can.update ? "Save (Alt+S)" : "Save Disabled")}
-        </button>
-      </div>
+    <div className="p-4 md:p-6 space-y-4 max-w-5xl mx-auto">
+      {/* ===== Header / Save ===== */}
+      <GlassCard className="relative z-30">
+        <GlassSectionHeader
+          title={<span className="inline-flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-blue-600" />
+            <span>Application Settings</span>
+          </span>}
+          right={
+            <GlassBtn
+              ref={saveBtnRef}
+              onClick={handleSave}
+              disabled={!can.update || saving}
+              className={`h-9 px-4 ${(!can.update || saving) ? tintGlass + " opacity-60 cursor-not-allowed" : tintGreen}`}
+              title={can.update ? "Alt+S" : "You lack update permission"}
+            >
+              <span className="inline-flex items-center gap-2">
+                <ArrowDownOnSquareIcon className="w-5 h-5" />
+                {saving ? "Saving…" : (can.update ? "Save (Alt+S)" : "Save Disabled")}
+              </span>
+            </GlassBtn>
+          }
+        />
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-white rounded-xl shadow p-4">
-        {/* Store Name */}
-        <div className="flex flex-col">
-          <label className="text-sm text-gray-700">Store Name</label>
-          <input
-            ref={storeNameRef}
-            type="text"
-            name="store_name"
-            value={form.store_name}
-            onChange={handleChange}
-            disabled={disableInputs}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") { e.preventDefault(); phoneRef.current?.focus(); }
-            }}
-            className="border rounded-lg px-3 py-2 outline-none focus:ring w-full disabled:bg-gray-100"
-            placeholder="e.g., My Pharmacy"
-          />
-        </div>
-
-        {/* Phone */}
-        <div className="flex flex-col">
-          <label className="text-sm text-gray-700">Phone Number</label>
-          <input
-            ref={phoneRef}
-            type="text"
-            name="phone_number"
-            value={form.phone_number}
-            onChange={handleChange}
-            disabled={disableInputs}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") { e.preventDefault(); addressRef.current?.focus(); }
-            }}
-            className="border rounded-lg px-3 py-2 outline-none focus:ring w-full disabled:bg-gray-100"
-            placeholder="+92 xx xxxxxxx"
-          />
-        </div>
-
-        {/* Address */}
-        <div className="flex flex-col md:col-span-2">
-          <label className="text-sm text-gray-700">Address</label>
-          <input
-            ref={addressRef}
-            type="text"
-            name="address"
-            value={form.address}
-            onChange={handleChange}
-            disabled={disableInputs}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") { e.preventDefault(); licenseRef.current?.focus(); }
-            }}
-            className="border rounded-lg px-3 py-2 outline-none focus:ring w-full disabled:bg-gray-100"
-            placeholder="Street, City"
-          />
-        </div>
-
-        {/* Licence Number */}
-        <div className="flex flex-col">
-          <label className="text-sm text-gray-700">Licence Number</label>
-          <input
-            ref={licenseRef}
-            type="text"
-            name="license_number"
-            value={form.license_number}
-            onChange={handleChange}
-            disabled={disableInputs}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") { e.preventDefault(); noteRef.current?.focus(); }
-            }}
-            className="border rounded-lg px-3 py-2 outline-none focus:ring w-full disabled:bg-gray-100"
-            placeholder="e.g., ABC-12345"
-          />
-        </div>
-
-        {/* Printer Type */}
-        <div className="flex flex-col">
-          <label className="text-sm text-gray-700">Printer</label>
-          <div className="flex gap-4 mt-2">
-            <label className="inline-flex items-center gap-2 cursor-pointer">
-              <input
-                ref={thermalRef}
-                type="radio"
-                name="printer_type"
-                value="thermal"
-                checked={form.printer_type === "thermal"}
-                onChange={handleChange}
-                disabled={disableInputs}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") { e.preventDefault(); saveBtnRef.current?.focus(); }
-                }}
-              />
-              <span>Thermal</span>
-            </label>
-            <label className="inline-flex items-center gap-2 cursor-pointer">
-              <input
-                type="radio"
-                name="printer_type"
-                value="a4"
-                checked={form.printer_type === "a4"}
-                onChange={handleChange}
-                disabled={disableInputs}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") { e.preventDefault(); saveBtnRef.current?.focus(); }
-                }}
-              />
-              <span>A4</span>
-            </label>
+        {/* Top toolbar — optional quick info */}
+        <GlassToolbar className="justify-between pt-1">
+          <div className="text-xs text-gray-600">
+            Configure store identity, default printer, and invoice footer.
           </div>
-        </div>
+          <div className="text-[11px] text-gray-500">
+            Changes apply across invoices and print templates.
+          </div>
+        </GlassToolbar>
+      </GlassCard>
 
-        {/* Note */}
-        <div className="flex flex-col md:col-span-2">
-          <label className="text-sm text-gray-700">Invoice Footer Note</label>
-          <textarea
-            ref={noteRef}
-            name="note"
-            value={form.note}
-            onChange={handleChange}
-            disabled={disableInputs}
-            rows={3}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
-                e.preventDefault();
-                if (can.update) handleSave();
-              }
-            }}
-            className="border rounded-lg px-3 py-2 outline-none focus:ring w-full disabled:bg-gray-100"
-            placeholder="This note will be printed at the bottom of the invoice…"
-          />
-        </div>
+      {/* ===== Identity + Contact ===== */}
+      <GlassCard>
+        <GlassSectionHeader title="Store Identity & Contact" />
+        <GlassToolbar className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          {/* Store Name */}
+          <div className="w-full">
+            <label className="block text-sm text-gray-700 mb-1">Store Name</label>
+            <GlassInput
+              ref={storeNameRef}
+              type="text"
+              name="store_name"
+              value={form.store_name}
+              onChange={handleChange}
+              disabled={disableInputs}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") { e.preventDefault(); phoneRef.current?.focus(); }
+              }}
+              placeholder="e.g., My Pharmacy"
+              className="w-full"
+            />
+          </div>
 
-        {/* Logo via FilePond */}
-        <div className="md:col-span-2">
-          <label className="text-sm text-gray-700">Logo</label>
-          <div className="mt-2">
+          {/* Phone */}
+          <div className="w-full">
+            <label className="block text-sm text-gray-700 mb-1">Phone Number</label>
+            <GlassInput
+              ref={phoneRef}
+              type="text"
+              name="phone_number"
+              value={form.phone_number}
+              onChange={handleChange}
+              disabled={disableInputs}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") { e.preventDefault(); addressRef.current?.focus(); }
+              }}
+              placeholder="+92 xx xxxxxxx"
+              className="w-full"
+            />
+          </div>
+
+          {/* Address */}
+          <div className="md:col-span-2">
+            <label className="block text-sm text-gray-700 mb-1">Address</label>
+            <GlassInput
+              ref={addressRef}
+              type="text"
+              name="address"
+              value={form.address}
+              onChange={handleChange}
+              disabled={disableInputs}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") { e.preventDefault(); licenseRef.current?.focus(); }
+              }}
+              placeholder="Street, City"
+              className="w-full"
+            />
+          </div>
+
+          {/* Licence Number */}
+          <div className="w-full">
+            <label className="block text-sm text-gray-700 mb-1">Licence Number</label>
+            <GlassInput
+              ref={licenseRef}
+              type="text"
+              name="license_number"
+              value={form.license_number}
+              onChange={handleChange}
+              disabled={disableInputs}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") { e.preventDefault(); noteRef.current?.focus(); }
+              }}
+              placeholder="e.g., ABC-12345"
+              className="w-full"
+            />
+          </div>
+
+          {/* Note */}
+          <div className="md:col-span-2">
+            <label className="block text-sm text-gray-700 mb-1">Invoice Footer Note</label>
+            <textarea
+              ref={noteRef}
+              name="note"
+              value={form.note}
+              onChange={handleChange}
+              disabled={disableInputs}
+              rows={3}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+                  e.preventDefault();
+                  if (can.update) handleSave();
+                }
+              }}
+              className="w-full h-24 rounded-xl bg-white/70 backdrop-blur-sm border border-gray-200/70 ring-1 ring-transparent focus:ring-blue-400/40 shadow-sm focus:outline-none px-3 py-2"
+              placeholder="This note will be printed at the bottom of the invoice…"
+            />
+          </div>
+        </GlassToolbar>
+      </GlassCard>
+
+      {/* ===== Printer ===== */}
+      <GlassCard>
+        <GlassSectionHeader title="Printing Preference" />
+        <GlassToolbar className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <div className="col-span-2">
+            <div className="text-sm text-gray-700 mb-2">Default Printer</div>
+            <div className="flex flex-wrap gap-3">
+              <label className={`inline-flex items-center gap-2 px-3 py-2 rounded-xl ring-1 ring-gray-200/70 ${form.printer_type === "thermal" ? "bg-blue-50" : "bg-white/70"}`}>
+                <input
+                  ref={thermalRef}
+                  type="radio"
+                  name="printer_type"
+                  value="thermal"
+                  checked={form.printer_type === "thermal"}
+                  onChange={handleChange}
+                  disabled={disableInputs}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") { e.preventDefault(); saveBtnRef.current?.focus(); }
+                  }}
+                />
+                <span className="text-sm">Thermal</span>
+              </label>
+              <label className={`inline-flex items-center gap-2 px-3 py-2 rounded-xl ring-1 ring-gray-200/70 ${form.printer_type === "a4" ? "bg-blue-50" : "bg-white/70"}`}>
+                <input
+                  type="radio"
+                  name="printer_type"
+                  value="a4"
+                  checked={form.printer_type === "a4"}
+                  onChange={handleChange}
+                  disabled={disableInputs}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") { e.preventDefault(); saveBtnRef.current?.focus(); }
+                  }}
+                />
+                <span className="text-sm">A4</span>
+              </label>
+            </div>
+            <p className="mt-2 text-xs text-gray-500">
+              This controls the default template used by invoice printing (Alt+P).
+            </p>
+          </div>
+          <div className="flex md:justify-end items-center">
+            <GlassBtn
+              onClick={handleSave}
+              disabled={!can.update || saving}
+              className={`h-9 min-w-[140px] ${(!can.update || saving) ? tintGlass + " opacity-60 cursor-not-allowed" : tintSlate}`}
+              title={can.update ? "Alt+S" : "You lack update permission"}
+            >
+              {saving ? "Saving…" : "Save"}
+            </GlassBtn>
+          </div>
+        </GlassToolbar>
+      </GlassCard>
+
+      {/* ===== Logo (FilePond) ===== */}
+      <GlassCard className="relative z-10">
+        <GlassSectionHeader title="Brand Logo" />
+        <div className="px-4 pb-4">
+          <div className="rounded-2xl bg-white/60 backdrop-blur-sm ring-1 ring-gray-200/60 p-3 shadow-sm">
             <FilePond
               files={files}
               onupdatefiles={(fl) => {
@@ -332,24 +395,29 @@ export default function Setting() {
               labelIdle='Drag & Drop your logo or <span class="filepond--label-action">Browse</span>'
               credits={false}
             />
+            <p className="text-xs text-gray-500 mt-2">PNG/JPG/WEBP, up to 2 MB.</p>
           </div>
-          <p className="text-xs text-gray-500 mt-1">PNG/JPG/WEBP, up to 2 MB.</p>
         </div>
-      </div>
+      </GlassCard>
 
-      <div className="flex justify-end mt-4">
-        <button
+      {/* ===== Bottom Save ===== */}
+      <div className="flex justify-end">
+        <GlassBtn
           ref={saveBtnRef}
           onClick={handleSave}
           disabled={!can.update || saving}
-          className={`px-4 py-2 rounded-lg text-white ${
-            (!can.update || saving) ? "bg-gray-400 cursor-not-allowed" : "bg-blue-600 hover:bg-blue-700"
-          }`}
+          className={`h-10 px-5 ${(!can.update || saving) ? tintGlass + " opacity-60 cursor-not-allowed" : tintGreen}`}
           title={can.update ? "Alt+S" : "You lack update permission"}
         >
-          {saving ? "Saving…" : (can.update ? "Save (Alt+S)" : "Save Disabled")}
-        </button>
+          {saving ? "Saving…" : "Save (Alt+S)"}
+        </GlassBtn>
       </div>
+
+      {/* subtle helper styles (optional) */}
+      <style>{`
+        .filepond--panel-root { background: rgba(255,255,255,0.7); backdrop-filter: blur(6px); border: 1px solid rgba(226,232,240,0.7); }
+        .filepond--drop-label { color: #334155; }
+      `}</style>
     </div>
   );
 }
