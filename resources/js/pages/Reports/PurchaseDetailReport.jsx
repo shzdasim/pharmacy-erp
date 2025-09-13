@@ -1,11 +1,24 @@
-// PurchaseDetailReport.jsx
+// resources/js/pages/PurchaseDetailReport.jsx
 import { useEffect, useMemo, useRef, useState } from "react";
 import axios from "axios";
 import Select from "react-select";
 import toast from "react-hot-toast";
 import { usePermissions } from "@/api/usePermissions";
 
-// ===== Helpers =====
+// 🧊 glass primitives
+import {
+  GlassCard,
+  GlassSectionHeader,
+  GlassToolbar,
+  GlassInput,
+  GlassBtn,
+} from "@/components/glass.jsx";
+
+import { ArrowPathIcon, ArrowDownOnSquareIcon } from "@heroicons/react/24/solid";
+
+/* ======================
+   Helpers (unchanged)
+   ====================== */
 const todayStr = () => new Date().toISOString().split("T")[0];
 const firstDayOfMonthStr = () => {
   const d = new Date();
@@ -15,19 +28,32 @@ const n = (v) => (isFinite(Number(v)) ? Number(v) : 0);
 const fmtCurrency = (v) =>
   n(v).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
+/* react-select → glassy control (compact) */
 const smallSelectStyles = {
   control: (base) => ({
     ...base,
-    minHeight: 28,
-    height: 28,
-    borderColor: "#D1D5DB",
-    boxShadow: "none",
-    "&:hover": { borderColor: "#9CA3AF" },
+    minHeight: 32,
+    height: 32,
+    borderRadius: 12,
+    borderColor: "rgba(229,231,235,0.8)",
+    backgroundColor: "rgba(255,255,255,0.7)",
+    backdropFilter: "blur(6px)",
+    boxShadow: "0 1px 2px rgba(15,23,42,0.06)",
+    transition: "all .2s ease",
+    "&:hover": { borderColor: "rgba(148,163,184,0.9)", backgroundColor: "rgba(255,255,255,0.85)" },
   }),
-  valueContainer: (base) => ({ ...base, height: 28, padding: "0 6px" }),
-  indicatorsContainer: (base) => ({ ...base, height: 28 }),
+  valueContainer: (base) => ({ ...base, height: 32, padding: "0 8px" }),
+  indicatorsContainer: (base) => ({ ...base, height: 32 }),
   input: (base) => ({ ...base, margin: 0, padding: 0 }),
   menuPortal: (base) => ({ ...base, zIndex: 9999 }),
+  menu: (base) => ({
+    ...base,
+    borderRadius: 12,
+    overflow: "hidden",
+    backgroundColor: "rgba(255,255,255,0.9)",
+    backdropFilter: "blur(10px)",
+    boxShadow: "0 10px 30px -10px rgba(30,64,175,0.18)",
+  }),
 };
 
 export default function PurchaseDetailReport() {
@@ -45,7 +71,7 @@ export default function PurchaseDetailReport() {
   const [productId, setProductId] = useState("");
 
   // Data
-  const [data, setData] = useState([]); // array of invoices (each with items[])
+  const [data, setData] = useState([]); // invoices (each with items[])
   const [loading, setLoading] = useState(false);
   const [pdfLoading, setPdfLoading] = useState(false);
 
@@ -63,11 +89,10 @@ export default function PurchaseDetailReport() {
   const canView = permsReady ? !!hasFn("report.purchase-detail.view") : null;
   const canExport = permsReady ? !!hasFn("report.purchase-detail.export") : null;
 
-  // ===== Load options =====
+  // ===== Load options (unchanged) =====
   useEffect(() => {
     (async () => {
       try {
-        // Suppliers
         const s = await axios.get("/api/suppliers", { params: { simple: 1 } }).catch(() => null);
         const sRows = Array.isArray(s?.data) ? s.data : Array.isArray(s?.data?.data) ? s.data.data : [];
         const sOpts = sRows.map((r) => ({
@@ -76,7 +101,6 @@ export default function PurchaseDetailReport() {
         }));
         setSupplierOptions([{ value: "", label: "All Suppliers" }, ...sOpts]);
 
-        // Products
         const p = await axios.get("/api/products", { params: { simple: 1 } }).catch(() => null);
         const pRows = Array.isArray(p?.data) ? p.data : Array.isArray(p?.data?.data) ? p.data.data : [];
         const pOpts = pRows.map((r) => ({
@@ -97,7 +121,7 @@ export default function PurchaseDetailReport() {
     return productOptions.filter((o) => !o.supplier_id || o.supplier_id === supplierId || o.value === "");
   }, [productOptions, supplierId]);
 
-  // ===== Fetch report =====
+  // ===== Fetch report (unchanged) =====
   const fetchReport = async ({ silentDenied = false } = {}) => {
     if (canView !== true) {
       if (!silentDenied) toast.error("You don't have permission to view this report.");
@@ -185,16 +209,14 @@ export default function PurchaseDetailReport() {
       }, 3000);
     } catch (e) {
       console.error(e);
-      try {
-        win.close();
-      } catch {}
+      try { win.close(); } catch {}
       toast.error("Could not open PDF.");
     } finally {
       setPdfLoading(false);
     }
   };
 
-  // Keyboard flow for date inputs (don't override React-Select behavior)
+  // Keyboard flow for date inputs
   const nextFocus = (ref) => ref?.current?.focus?.();
   const onKeyDownEnter = (e, next) => {
     if (e.key === "Enter") {
@@ -203,314 +225,334 @@ export default function PurchaseDetailReport() {
     }
   };
 
+  // tints (match other glass pages)
+  const tintSlate = "bg-slate-900/80 text-white ring-1 ring-white/15 shadow-[0_6px_20px_-6px_rgba(15,23,42,0.45)] hover:bg-slate-900/90";
+  const tintGlass = "bg-white/60 text-slate-700 ring-1 ring-white/30 hover:bg-white/80";
+
   return (
-    <div className="p-2 w-full overflow-x-hidden">
-      {/* Ultra-compact style just for this component */}
-      <style>{`
-        .tight-table { border-collapse: collapse; table-layout: fixed; }
-        .tight-table th, .tight-table td { padding: 0 !important; line-height: 1.05; font-size: 12px; }
-        .tight-table th { background: #f8fafc; font-weight: 600; color: #374151; }
-        .tight-table .num { text-align: right; }
-        .tight-table .nowrap { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-        .tight-table tr:nth-child(even) { background: #f9fafb; }
-        .tight-card { margin-bottom: 6px; border-radius: 6px; }
-        .tight-card-hd { padding: 4px 6px; }
-        .tight-hd-text { font-size: 10px; }
-      `}</style>
+    <div className="p-4 md:p-6 space-y-4">
+      {/* ===== Header + Filters ===== */}
+      <GlassCard>
+        <GlassSectionHeader
+          title={<span className="font-semibold">Purchase Detail Report</span>}
+          right={
+            <div className="flex gap-2">
+              <GlassBtn
+                className={`h-9 ${tintGlass}`}
+                title="Reset to This Month"
+                onClick={() => {
+                  setFromDate(firstDayOfMonthStr());
+                  setToDate(todayStr());
+                  setSupplierValue(null); setSupplierId("");
+                  setProductValue(null); setProductId("");
+                }}
+              >
+                Reset
+              </GlassBtn>
+              <GlassBtn
+                className={`h-9 ${tintSlate}`}
+                title="Load / Refresh"
+                onClick={() => fetchReport()}
+                disabled={canView !== true || loading}
+              >
+                <span className="inline-flex items-center gap-2">
+                  <ArrowPathIcon className="w-5 h-5" />
+                  {loading ? "Loading…" : "Load"}
+                </span>
+              </GlassBtn>
+            </div>
+          }
+        />
 
-      <h1 className="text-[12px] font-semibold mb-1 tracking-tight">Purchase Detail Report</h1>
+        <form onSubmit={handleSubmit}>
+          <GlassToolbar className="grid grid-cols-1 md:grid-cols-12 gap-3">
+            {/* Dates */}
+            <div className="md:col-span-2">
+              <label className="text-sm text-gray-700 mb-1 block">From</label>
+              <GlassInput
+                ref={fromRef}
+                type="date"
+                value={fromDate}
+                onChange={(e) => setFromDate(e.target.value)}
+                onKeyDown={(e) => onKeyDownEnter(e, toRef)}
+                className="w-full"
+              />
+            </div>
 
-      {canView === null && (
-        <div className="p-2 text-[11px] text-gray-600 bg-white rounded border border-gray-200">
-          Checking permissions…
-        </div>
-      )}
+            <div className="md:col-span-2">
+              <label className="text-sm text-gray-700 mb-1 block">To</label>
+              <GlassInput
+                ref={toRef}
+                type="date"
+                value={toDate}
+                onChange={(e) => setToDate(e.target.value)}
+                onKeyDown={(e) => onKeyDownEnter(e, { current: supplierRef.current?.inputRef })}
+                className="w-full"
+              />
+            </div>
 
-      {canView === false && (
-        <div className="p-2 text-[11px] text-gray-700 bg-yellow-50 border border-yellow-200 rounded">
-          Permission denied.
-        </div>
-      )}
+            {/* Supplier */}
+            <div className="md:col-span-4">
+              <label className="text-sm text-gray-700 mb-1 block">Supplier</label>
+              <Select
+                ref={supplierRef}
+                classNamePrefix="rs"
+                isSearchable
+                menuPlacement="auto"
+                menuPortalTarget={typeof document !== "undefined" ? document.body : null}
+                options={supplierOptions}
+                value={supplierValue}
+                placeholder="All Suppliers"
+                styles={smallSelectStyles}
+                onChange={(opt) => {
+                  setSupplierValue(opt);
+                  const id = opt?.value || "";
+                  setSupplierId(id);
+                  setProductValue(null);
+                  setProductId("");
+                  setTimeout(() => {
+                    productRef.current?.focus?.();
+                    productRef.current?.inputRef?.focus?.();
+                  }, 0);
+                }}
+              />
+            </div>
 
-      {canView === true && (
-        <>
-          {/* Filter Form (compact) */}
-          <form
-            onSubmit={handleSubmit}
-            className="mb-2 bg-white rounded-md p-2 shadow-sm border border-gray-200 text-[11px]"
-          >
-            <div className="flex flex-wrap items-end gap-2">
-              {/* From */}
-              <div className="flex flex-col">
-                <label className="text-[10px] text-gray-600 mb-0.5">From</label>
-                <input
-                  ref={fromRef}
-                  type="date"
-                  className="border rounded px-1 py-[2px] text-[11px] w-[130px] focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                  value={fromDate}
-                  onChange={(e) => setFromDate(e.target.value)}
-                  onKeyDown={(e) => onKeyDownEnter(e, toRef)}
-                />
-              </div>
+            {/* Product (filtered by supplier) */}
+            <div className="md:col-span-4">
+              <label className="text-sm text-gray-700 mb-1 block">Product</label>
+              <Select
+                ref={productRef}
+                classNamePrefix="rs"
+                isSearchable
+                menuPlacement="auto"
+                menuPortalTarget={typeof document !== "undefined" ? document.body : null}
+                options={filteredProductOptions}
+                value={productValue}
+                placeholder="All Products"
+                styles={smallSelectStyles}
+                onChange={(opt) => {
+                  setProductValue(opt);
+                  setProductId(opt?.value || "");
+                  setTimeout(() => submitRef.current?.focus?.(), 0);
+                }}
+              />
+            </div>
 
-              {/* To */}
-              <div className="flex flex-col">
-                <label className="text-[10px] text-gray-600 mb-0.5">To</label>
-                <input
-                  ref={toRef}
-                  type="date"
-                  className="border rounded px-1 py-[2px] text-[11px] w-[130px] focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                  value={toDate}
-                  onChange={(e) => setToDate(e.target.value)}
-                  onKeyDown={(e) =>
-                    onKeyDownEnter(e, { current: supplierRef.current?.inputRef })
-                  }
-                />
-              </div>
-
-              {/* Supplier */}
-              <div className="flex flex-col" style={{ minWidth: 210 }}>
-                <label className="text-[10px] text-gray-600 mb-0.5">Supplier</label>
-                <Select
-                  ref={supplierRef}
-                  classNamePrefix="rs"
-                  isSearchable
-                  menuPlacement="auto"
-                  options={supplierOptions}
-                  value={supplierValue}
-                  placeholder="All Suppliers"
-                  styles={smallSelectStyles}
-                  onChange={(opt) => {
-                    setSupplierValue(opt);
-                    const id = opt?.value || "";
-                    setSupplierId(id);
-                    setProductValue(null);
-                    setProductId("");
-                    setTimeout(() => {
-                      productRef.current?.focus?.();
-                      productRef.current?.inputRef?.focus?.();
-                    }, 0);
-                  }}
-                />
-              </div>
-
-              {/* Product */}
-              <div className="flex flex-col" style={{ minWidth: 220 }}>
-                <label className="text-[10px] text-gray-600 mb-0.5">Product</label>
-                <Select
-                  ref={productRef}
-                  classNamePrefix="rs"
-                  isSearchable
-                  menuPlacement="auto"
-                  options={filteredProductOptions}
-                  value={productValue}
-                  placeholder="All Products"
-                  styles={smallSelectStyles}
-                  onChange={(opt) => {
-                    setProductValue(opt);
-                    setProductId(opt?.value || "");
-                    setTimeout(() => submitRef.current?.focus?.(), 0);
-                  }}
-                />
-              </div>
-
-              {/* Submit */}
-              <button
+            {/* Actions */}
+            <div className="md:col-span-12 flex flex-wrap gap-2">
+              <GlassBtn
                 ref={submitRef}
                 type="submit"
-                className="h-7 px-2 rounded bg-indigo-600 text-white text-[11px] font-medium hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                className={`h-9 min-w-[110px] ${tintSlate}`}
                 disabled={loading}
-                title="Submit"
+                title="Apply"
               >
-                {loading ? "Loading..." : "Submit"}
-              </button>
+                Apply
+              </GlassBtn>
 
-              {/* Export PDF */}
-              <button
+              <GlassBtn
+                type="button"
+                className={`h-9 ${tintGlass}`}
+                title="Last 7 Days"
+                onClick={() => {
+                  const end = new Date();
+                  const start = new Date();
+                  start.setDate(end.getDate() - 6);
+                  setFromDate(start.toISOString().slice(0, 10));
+                  setToDate(end.toISOString().slice(0, 10));
+                }}
+              >
+                Last 7 Days
+              </GlassBtn>
+
+              <GlassBtn
                 type="button"
                 onClick={exportPdf}
-                className="h-7 px-2 rounded bg-emerald-600 text-white text-[11px] font-medium hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                disabled={pdfLoading}
+                className={`h-9 ${canExport ? tintGlass : tintGlass + " opacity-60 cursor-not-allowed"}`}
+                disabled={pdfLoading || !canExport}
                 title="Export PDF"
               >
-                {pdfLoading ? "Generating…" : "Export PDF"}
-              </button>
+                <span className="inline-flex items-center gap-2">
+                  <ArrowDownOnSquareIcon className="w-5 h-5" />
+                  {pdfLoading ? "Generating…" : "Export PDF"}
+                </span>
+              </GlassBtn>
             </div>
-          </form>
+          </GlassToolbar>
+        </form>
+      </GlassCard>
 
-          {/* Results */}
+      {/* ===== Permission states ===== */}
+      {canView === null && (
+        <GlassCard>
+          <div className="px-4 py-3 text-sm text-gray-700">Checking permissions…</div>
+        </GlassCard>
+      )}
+      {canView === false && (
+        <GlassCard>
+          <div className="px-4 py-3 text-sm text-gray-700">You don’t have permission to view this report.</div>
+        </GlassCard>
+      )}
+
+      {/* ===== Results ===== */}
+      {canView === true && (
+        <>
           {data.length === 0 && !loading && (
-            <div className="text-[11px] text-gray-600">No data found for the selected filters.</div>
+            <GlassCard>
+              <div className="px-4 py-4 text-sm text-gray-600">No data found for the selected filters.</div>
+            </GlassCard>
           )}
 
-          <div className="flex flex-col gap-2">
+          <div className="flex flex-col gap-4">
             {data.map((inv) => (
-              <div
+              <GlassCard
                 key={inv.id || `${inv.posted_number}-${inv.invoice_number}-${inv.invoice_date}`}
-                className="bg-white rounded-md border border-gray-200 shadow-sm overflow-hidden tight-card"
+                className="overflow-hidden transition-all duration-200 hover:bg-white/70 hover:backdrop-blur-md hover:shadow-[0_12px_30px_-12px_rgba(37,99,235,0.25)]"
               >
-                {/* Header */}
-                <div className="px-2 py-1 border-b border-gray-200 bg-gray-50 text-[10px] grid grid-cols-2 md:grid-cols-4 gap-x-2 gap-y-0.5 tight-card-hd">
-                  <div className="tight-hd-text">
-                    <span className="text-gray-600">Supplier:</span>{" "}
-                    <span className="font-medium text-gray-800">{inv.supplier_name || "-"}</span>
-                  </div>
-                  <div className="tight-hd-text">
-                    <span className="text-gray-600">Posted #:</span>{" "}
-                    <span className="font-medium text-gray-800">{inv.posted_number || "-"}</span>
-                  </div>
-                  <div className="tight-hd-text">
-                    <span className="text-gray-600">Invoice #:</span>{" "}
-                    <span className="font-medium text-gray-800">{inv.invoice_number || "-"}</span>
-                  </div>
-                  <div className="tight-hd-text">
-                    <span className="text-gray-600">Date:</span>{" "}
-                    <span className="font-medium text-gray-800">{inv.invoice_date || "-"}</span>
-                  </div>
-                </div>
+                {/* Header (glassy band) */}
+                <GlassSectionHeader
+                  className="rounded-t-2xl"
+                  title={
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-x-3 gap-y-1 text-sm">
+                      <KV label="Supplier:" value={inv.supplier_name || "-"} />
+                      <KV label="Posted #:" value={inv.posted_number || "-"} />
+                      <KV label="Invoice #:" value={inv.invoice_number || "-"} />
+                      <KV label="Date:" value={inv.invoice_date || "-"} />
+                    </div>
+                  }
+                />
 
-                {/* Table — compact, fixed layout, narrow widths */}
-                <div className="relative max-w-full overflow-x-auto">
-                  <table className="tight-table w-full min-w-[1120px] border border-gray-200">
-                    <colgroup>
-                      <col style={{ width: 140 }} />
-                      <col style={{ width: 50 }} />
-                      <col style={{ width: 50 }} />
-                      {/* 13 numeric columns @ 60px each */}
-                      {Array.from({ length: 13 }).map((_, i) => (
-                        <col key={i} style={{ width: 60 }} />
-                      ))}
-                    </colgroup>
+                {/* Items table */}
+<div className="relative max-w-full overflow-x-auto">
+  <table className="w-full min-w-[900px] text-sm text-gray-900">
+    <colgroup>
+      <col style={{ width: 180 }} />
+      <col style={{ width: 100 }} />
+      <col style={{ width: 100 }} />
+      {/* numeric cols */}
+      {Array.from({ length: 9 }).map((_, i) => (
+        <col key={i} style={{ width: 90 }} />
+      ))}
+    </colgroup>
 
-                    <thead>
-                      <tr>
-                        <th className="border border-gray-200 text-left nowrap">Product Name</th>
-                        <th className="border border-gray-200 text-left nowrap">Batch</th>
-                        <th className="border border-gray-200 text-left nowrap">Expiry</th>
-                        <th className="border border-gray-200 num nowrap">Pack Qty</th>
-                        <th className="border border-gray-200 num nowrap">Pack Size</th>
-                        <th className="border border-gray-200 num nowrap">Unit Qty</th>
-                        <th className="border border-gray-200 num nowrap">Pack Purchase</th>
-                        <th className="border border-gray-200 num nowrap">Unit Purchase</th>
-                        <th className="border border-gray-200 num nowrap">Pack Sale</th>
-                        <th className="border border-gray-200 num nowrap">Unit Sale</th>
-                        <th className="border border-gray-200 num nowrap">Pack Bonus</th>
-                        <th className="border border-gray-200 num nowrap">Unit Bonus</th>
-                        <th className="border border-gray-200 num nowrap">Item Disc %</th>
-                        <th className="border border-gray-200 num nowrap">Margin</th>
-                        <th className="border border-gray-200 num nowrap">Sub Total</th>
-                        <th className="border border-gray-200 num nowrap">Quantity</th>
-                      </tr>
-                    </thead>
+    <thead className="sticky top-0 bg-white/85 backdrop-blur-sm border-b border-gray-200/70">
+      <tr className="text-left">
+        <Th>Product Name</Th>
+        <Th>Batch</Th>
+        <Th>Expiry</Th>
+        <Th align="right">Pack Qty</Th>
+        <Th align="right">Pack Size</Th>
+        <Th align="right">Pack Purchase</Th>
+        <Th align="right">Pack Sale</Th>
+        <Th align="right">Pack Bonus</Th>
+        <Th align="right">Item Disc %</Th>
+        <Th align="right">Margin</Th>
+        <Th align="right">Sub Total</Th>
+        <Th align="right">Quantity</Th>
+      </tr>
+    </thead>
 
-                    <tbody className="tabular-nums">
-                      {(inv.items || []).map((it, idx) => (
-                        <tr key={(it.id ?? idx) + "-" + (it.product_id ?? "p") + "-" + idx}>
-                          <td className="border border-gray-200 text-left nowrap">
-                            {it.product_name || "-"}
-                          </td>
-                          <td className="border border-gray-200 text-left nowrap">
-                            {it.batch || "-"}
-                          </td>
-                          <td className="border border-gray-200 text-left nowrap">
-                            {it.expiry || "-"}
-                          </td>
-                          <td className="border border-gray-200 num nowrap">
-                            {it.pack_quantity ?? 0}
-                          </td>
-                          <td className="border border-gray-200 num nowrap">
-                            {it.pack_size ?? 0}
-                          </td>
-                          <td className="border border-gray-200 num nowrap">
-                            {it.unit_quantity ?? 0}
-                          </td>
-                          <td className="border border-gray-200 num nowrap">
-                            {fmtCurrency(it.pack_purchase_price)}
-                          </td>
-                          <td className="border border-gray-200 num nowrap">
-                            {fmtCurrency(it.unit_purchase_price)}
-                          </td>
-                          <td className="border border-gray-200 num nowrap">
-                            {fmtCurrency(it.pack_sale_price)}
-                          </td>
-                          <td className="border border-gray-200 num nowrap">
-                            {fmtCurrency(it.unit_sale_price)}
-                          </td>
-                          <td className="border border-gray-200 num nowrap">
-                            {it.pack_bonus ?? 0}
-                          </td>
-                          <td className="border border-gray-200 num nowrap">
-                            {it.unit_bonus ?? 0}
-                          </td>
-                          <td className="border border-gray-200 num nowrap">
-                            {(it.item_discount_percentage ?? 0).toFixed(2)}
-                          </td>
-                          <td className="border border-gray-200 num nowrap">
-                            {(it.margin ?? 0).toFixed(2)}
-                          </td>
-                          <td className="border border-gray-200 num nowrap">
-                            {fmtCurrency(it.sub_total)}
-                          </td>
-                          <td className="border border-gray-200 num nowrap">
-                            {it.quantity ?? 0}
-                          </td>
-                        </tr>
-                      ))}
+    <tbody className="tabular-nums">
+      {(inv.items || []).map((it, idx) => (
+        <tr
+          key={(it.id ?? idx) + "-" + (it.product_id ?? "p") + "-" + idx}
+          className="transition-all duration-150 odd:bg-white/90 even:bg-white/70 hover:bg-white/80 hover:backdrop-blur-[2px]"
+        >
+          <Td>{it.product_name || "-"}</Td>
+          <Td>{it.batch || "-"}</Td>
+          <Td>{it.expiry || "-"}</Td>
+          <Td align="right">{it.pack_quantity ?? 0}</Td>
+          <Td align="right">{it.pack_size ?? 0}</Td>
+          <Td align="right">{fmtCurrency(it.pack_purchase_price)}</Td>
+          <Td align="right">{fmtCurrency(it.pack_sale_price)}</Td>
+          <Td align="right">{it.pack_bonus ?? 0}</Td>
+          <Td align="right">{(it.item_discount_percentage ?? 0).toFixed(2)}</Td>
+          <Td align="right">{(it.margin ?? 0).toFixed(2)}</Td>
+          <Td align="right">{fmtCurrency(it.sub_total)}</Td>
+          <Td align="right">{it.quantity ?? 0}</Td>
+        </tr>
+      ))}
 
-                      {(!inv.items || !inv.items.length) && (
-                        <tr>
-                          <td colSpan={16} className="border border-gray-200 text-center text-gray-500">
-                            No items match this filter in this invoice.
-                          </td>
-                        </tr>
-                      )}
-                    </tbody>
+      {(!inv.items || !inv.items.length) && (
+        <tr>
+          <td colSpan={12} className="px-3 py-6 text-center text-gray-500">
+            No items match this filter in this invoice.
+          </td>
+        </tr>
+      )}
+    </tbody>
 
-                    <tfoot>
-                      <tr>
-                        <td className="border border-gray-200 text-right font-medium" colSpan={9}>
-                          Tax %
-                        </td>
-                        <td className="border border-gray-200 num" colSpan={2}>
-                          {(inv.tax_percentage ?? 0).toFixed(2)}
-                        </td>
-                        <td className="border border-gray-200 text-right font-medium" colSpan={3}>
-                          Tax Amount
-                        </td>
-                        <td className="border border-gray-200 num" colSpan={2}>
-                          {fmtCurrency(inv.tax_amount)}
-                        </td>
-                      </tr>
-                      <tr>
-                        <td className="border border-gray-200 text-right font-medium" colSpan={9}>
-                          Discount %
-                        </td>
-                        <td className="border border-gray-200 num" colSpan={2}>
-                          {(inv.discount_percentage ?? 0).toFixed(2)}
-                        </td>
-                        <td className="border border-gray-200 text-right font-medium" colSpan={3}>
-                          Discount Amount
-                        </td>
-                        <td className="border border-gray-200 num" colSpan={2}>
-                          {fmtCurrency(inv.discount_amount)}
-                        </td>
-                      </tr>
-                      <tr>
-                        <td className="border border-gray-200 text-right font-semibold" colSpan={14}>
-                          Total Amount
-                        </td>
-                        <td className="border border-gray-200 num font-semibold" colSpan={2}>
-                          {fmtCurrency(inv.total_amount)}
-                        </td>
-                      </tr>
-                    </tfoot>
-                  </table>
-                </div>
-              </div>
+    <tfoot className="bg-white/70 backdrop-blur-[2px]">
+      <tr>
+        <Td colSpan={6} align="right" strong>Tax %</Td>
+        <Td colSpan={2} align="right">{(inv.tax_percentage ?? 0).toFixed(2)}</Td>
+        <Td colSpan={2} align="right" strong>Tax Amount</Td>
+        <Td colSpan={2} align="right">{fmtCurrency(inv.tax_amount)}</Td>
+      </tr>
+      <tr>
+        <Td colSpan={6} align="right" strong>Discount %</Td>
+        <Td colSpan={2} align="right">{(inv.discount_percentage ?? 0).toFixed(2)}</Td>
+        <Td colSpan={2} align="right" strong>Discount Amount</Td>
+        <Td colSpan={2} align="right">{fmtCurrency(inv.discount_amount)}</Td>
+      </tr>
+      <tr>
+        <Td colSpan={10} align="right" strong className="!font-semibold">Total Amount</Td>
+        <Td colSpan={2} align="right" className="!font-semibold">{fmtCurrency(inv.total_amount)}</Td>
+      </tr>
+    </tfoot>
+  </table>
+</div>
+
+              </GlassCard>
             ))}
           </div>
         </>
       )}
+
+      {/* Print & typographic niceties */}
+      <style>{`
+        .tabular-nums { font-variant-numeric: tabular-nums; }
+        @media print {
+          input, button, select, [role="button"], .rs__control { display: none !important; }
+          table { font-size: 11px; }
+          thead { position: sticky; top: 0; }
+        }
+      `}</style>
     </div>
+  );
+}
+
+/* ===== Small helpers to keep JSX tidy ===== */
+function KV({ label, value }) {
+  return (
+    <div className="text-sm">
+      <span className="text-gray-600">{label}</span>{" "}
+      <span className="font-semibold text-gray-900">{value}</span>
+    </div>
+  );
+}
+
+function Th({ children, align = "left" }) {
+  return (
+    <th className={`px-3 py-2 font-medium ${align === "right" ? "text-right" : "text-left"}`}>
+      {children}
+    </th>
+  );
+}
+
+function Td({ children, align = "left", colSpan, strong = false, className = "" }) {
+  return (
+    <td
+      colSpan={colSpan}
+      className={[
+        "px-3 py-2 border-t border-gray-200/70",
+        align === "right" ? "text-right" : "text-left",
+        strong ? "font-medium text-gray-800" : "",
+        className,
+      ].join(" ")}
+    >
+      {children}
+    </td>
   );
 }
