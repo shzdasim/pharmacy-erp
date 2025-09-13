@@ -3,9 +3,10 @@ import React, { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext.jsx";
 import {
-  ClipboardDocumentListIcon, // Purchase Invoice
-  ShoppingCartIcon,          // Sale Invoice
+  ClipboardDocumentListIcon,
+  ShoppingCartIcon,
 } from "@heroicons/react/24/solid";
+import ProductSearch from "@/components/ProductSearch.jsx"; // 👈 add this
 
 export default function Topbar() {
   const [open, setOpen] = useState(false);
@@ -17,12 +18,10 @@ export default function Topbar() {
 
   const openInNewTab = (path) => window.open(path, "_blank", "noopener,noreferrer");
 
-  // Global keyboard shortcuts: Alt+1 (purchase), Alt+2 (sale)
   useEffect(() => {
     const onKeyDown = (e) => {
       if (!e.altKey) return;
 
-      // avoid triggering while typing
       const tag = (e.target?.tagName || "").toLowerCase();
       const isTyping =
         ["input", "textarea", "select"].includes(tag) || e.target?.isContentEditable;
@@ -40,7 +39,6 @@ export default function Topbar() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
 
-  // Close dropdown on click outside / Escape
   useEffect(() => {
     function onClick(e) {
       if (!open) return;
@@ -65,68 +63,85 @@ export default function Topbar() {
   }, [open]);
 
   return (
-    // Sticky + floating shell with bottom fade shadow
-    <div className="sticky top-0 z-40 px-3 pt-3 bg-transparent
-      after:content-[''] after:pointer-events-none after:absolute after:left-0 after:right-0 after:top-[72px]
-      after:h-4 after:bg-gradient-to-b after:from-white/70 after:to-transparent">
+    <div
+      className="sticky top-0 z-40 px-3 pt-3 bg-transparent
+      after:content-[''] after:pointer-events-none after:absolute after:left-0 after:right-0 after:top-[78px]
+      after:h-6 after:bg-gradient-to-b after:from-white/70 after:to-transparent"
+    >
       <header
-        className="mx-auto rounded-2xl bg-white/70 backdrop-blur-sm ring-1 ring-gray-200/60 shadow-xl
-        px-4 py-3"
         role="banner"
+        className={[
+          "mx-auto rounded-2xl bg-gradient-to-br from-white/55 via-white/45 to-white/55",
+          "backdrop-blur-md ring-1 ring-white/55 shadow-[0_10px_30px_-12px_rgba(15,23,42,0.25)]",
+          "relative px-4 py-3",
+          "before:absolute before:inset-0 before:rounded-2xl before:ring-1 before:ring-white/30",
+        ].join(" ")}
       >
-        <div className="flex flex-wrap items-center gap-3 justify-between">
-          {/* Left: Title (auto falls back to Dashboard) */}
-          <h1 className="text-lg font-semibold text-gray-900">
-            Dashboard
-          </h1>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          {/* Left: Search */}
+          <div className="flex-1 min-w-[260px] max-w-[720px]">
+            <ProductSearch />
+          </div>
 
-          {/* Right: Actions */}
+          {/* Right: Quick actions + User */}
           <div className="flex items-center gap-2">
-            
             <button
               onClick={() => openInNewTab("/purchase-invoices/create")}
               aria-keyshortcuts="Alt+1"
               title="Open Purchase Invoice (Alt+1) in a new tab"
-              className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 text-white px-3 py-2
-              hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-500/70"
+              className={[
+                "inline-flex items-center gap-2 rounded-xl px-3 py-2 text-white",
+                "bg-emerald-600 shadow-sm ring-1 ring-white/15",
+                "transition-all hover:bg-emerald-500 hover:shadow-[0_10px_30px_-10px_rgba(16,185,129,0.45)] focus:outline-none focus:ring-2 focus:ring-emerald-400/70",
+              ].join(" ")}
             >
               <ClipboardDocumentListIcon className="w-5 h-5" />
-              <span className="hidden sm:inline">Purchase Invoice</span>
-              <span className="ml-1 text-[11px] opacity-90 border border-white/40 rounded px-1 py-0.5">
+              <span className="hidden sm:inline">Purchase</span>
+              <kbd className="ml-1 text-[11px] opacity-95 border border-white/40 rounded px-1 py-0.5 bg-white/10">
                 Alt+1
-              </span>
+              </kbd>
             </button>
 
             <button
               onClick={() => openInNewTab("/sale-invoices/create")}
               aria-keyshortcuts="Alt+2"
               title="Open Sale Invoice (Alt+2) in a new tab"
-              className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 text-white px-3 py-2
-              hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/70"
+              className={[
+                "inline-flex items-center gap-2 rounded-xl px-3 py-2 text-white",
+                "bg-indigo-600 shadow-sm ring-1 ring-white/15",
+                "transition-all hover:bg-indigo-500 hover:shadow-[0_10px_30px_-10px_rgba(79,70,229,0.45)] focus:outline-none focus:ring-2 focus:ring-indigo-400/70",
+              ].join(" ")}
             >
               <ShoppingCartIcon className="w-5 h-5" />
-              <span className="hidden sm:inline">Sale Invoice</span>
-              <span className="ml-1 text-[11px] opacity-90 border border-white/40 rounded px-1 py-0.5">
+              <span className="hidden sm:inline">Sale</span>
+              <kbd className="ml-1 text-[11px] opacity-95 border border-white/40 rounded px-1 py-0.5 bg-white/10">
                 Alt+2
-              </span>
+              </kbd>
             </button>
 
-            {/* User menu */}
+            <div className="mx-1 h-6 w-px bg-gradient-to-b from-transparent via-slate-300/60 to-transparent" />
+
+            {/* User menu (unchanged) */}
             <div className="relative">
               <button
                 ref={btnRef}
                 onClick={() => setOpen((v) => !v)}
-                className="flex items-center gap-2 rounded-xl px-3 py-2
-                hover:bg-white/80 hover:shadow focus:outline-none focus:ring-2 focus:ring-blue-400/60"
+                className={[
+                  "flex items-center gap-2 rounded-xl px-2.5 py-1.5",
+                  "bg-white/55 ring-1 ring-white/40 shadow-sm",
+                  "transition-all hover:bg-white/80 hover:backdrop-blur-md hover:shadow-md focus:outline-none focus:ring-2 focus:ring-blue-400/60",
+                ].join(" ")}
                 aria-haspopup="menu"
                 aria-expanded={open}
                 aria-controls="topbar-user-menu"
               >
-                <span className="inline-block h-8 w-8 rounded-full bg-gradient-to-br from-blue-500 to-indigo-500 text-white place-items-center font-semibold">
-                  {(user?.name || "U").slice(0,1).toUpperCase()}
+                <span className="inline-grid h-8 w-8 place-items-center rounded-full bg-gradient-to-br from-blue-500 to-indigo-500 text-white font-semibold shadow">
+                  {(user?.name || "U").slice(0, 1).toUpperCase()}
                 </span>
-                <span className="hidden sm:inline text-sm">{user?.name || "User"}</span>
-                <svg className="w-4 h-4 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <span className="hidden sm:inline text-sm font-medium text-slate-800">
+                  {user?.name || "User"}
+                </span>
+                <svg className="w-4 h-4 text-slate-700 transition-transform group-aria-expanded:rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
                 </svg>
               </button>
@@ -136,7 +151,10 @@ export default function Topbar() {
                   id="topbar-user-menu"
                   ref={menuRef}
                   role="menu"
-                  className="absolute right-0 mt-2 w-48 rounded-xl bg-white/95 backdrop-blur border border-gray-200/70 shadow-xl overflow-hidden"
+                  className={[
+                    "absolute right-0 mt-2 w-48 rounded-xl overflow-hidden",
+                    "bg-white/95 backdrop-blur ring-1 ring-gray-200/70 shadow-xl",
+                  ].join(" ")}
                 >
                   <button
                     role="menuitem"
@@ -144,7 +162,7 @@ export default function Topbar() {
                       setOpen(false);
                       navigate("/profile");
                     }}
-                    className="block w-full px-4 py-2 text-left text-sm hover:bg-gray-50 focus:bg-gray-50 focus:outline-none"
+                    className="block w-full px-4 py-2 text-left text-sm hover:bg-white/80 focus:bg-white/80 focus:outline-none"
                   >
                     Profile
                   </button>
@@ -162,7 +180,7 @@ export default function Topbar() {
                         navigate("/");
                       });
                     }}
-                    className="block w-full px-4 py-2 text-left text-sm hover:bg-gray-50 focus:bg-gray-50 focus:outline-none"
+                    className="block w-full px-4 py-2 text-left text-sm hover:bg-white/80 focus:bg-white/80 focus:outline-none"
                   >
                     Logout
                   </button>
