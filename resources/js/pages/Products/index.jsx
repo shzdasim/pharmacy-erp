@@ -1,4 +1,5 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+// src/pages/products/index.jsx
+import React, { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import axios from "axios";
 import { Link, useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
@@ -10,11 +11,25 @@ import {
   XMarkIcon,
   ArrowUpTrayIcon,
   ArrowDownTrayIcon,
+  ShieldExclamationIcon,
+  TagIcon,
+  BuildingStorefrontIcon,
+  Squares2X2Icon,
+  ArrowPathIcon,
 } from "@heroicons/react/24/solid";
 import Select from "react-select";
 import AsyncSelect from "react-select/async";
 import ProductImportModal from "../../components/ProductImportModal.jsx";
 import { usePermissions, Guard } from "@/api/usePermissions.js";
+
+// 🧊 glass primitives
+import {
+  GlassCard,
+  GlassSectionHeader,
+  GlassToolbar,
+  GlassInput,
+  GlassBtn,
+} from "@/components/glass.jsx";
 
 /** ---- helpers ---- */
 const normalizeList = (payload) => {
@@ -24,7 +39,6 @@ const normalizeList = (payload) => {
   return [];
 };
 
-// small debounce that returns a promise (for AsyncSelect loadOptions)
 const debouncePromise = (fn, wait = 300) => {
   let timeout;
   let pendingReject;
@@ -79,11 +93,19 @@ export default function ProductsIndex() {
   const { loading: permsLoading, canFor } = usePermissions();
   const can = useMemo(
     () =>
-      (typeof canFor === "function" ? canFor("product") : {
-        view: false, create: false, update: false, delete: false, import: false, export: false,
-      }),
+      (typeof canFor === "function"
+        ? canFor("product")
+        : { view: false, create: false, update: false, delete: false, import: false, export: false }),
     [canFor]
   );
+
+  // 🧊 iOS-style tinted glass palette (consistent across pages)
+  const tintBlue   = "bg-blue-500/85 text-white shadow-[0_6px_20px_-6px_rgba(37,99,235,0.45)] ring-1 ring-white/20 hover:bg-blue-500/95";
+  const tintIndigo = "bg-indigo-500/85 text-white shadow-[0_6px_20px_-6px_rgba(99,102,241,0.45)] ring-1 ring-white/20 hover:bg-indigo-500/95";
+  const tintSlate  = "bg-slate-900/80 text-white shadow-[0_6px_20px_-6px_rgba(15,23,42,0.45)] ring-1 ring-white/15 hover:bg-slate-900/90";
+  const tintAmber  = "bg-amber-500/85 text-white shadow-[0_6px_20px_-6px_rgba(245,158,11,0.45)] ring-1 ring-white/20 hover:bg-amber-500/95";
+  const tintRed    = "bg-rose-500/85 text-white shadow-[0_6px_20px_-6px_rgba(244,63,94,0.45)] ring-1 ring-white/20 hover:bg-rose-500/95";
+  const tintGlass  = "bg-white/60 text-slate-700 ring-1 ring-white/30 hover:bg-white/75";
 
   // === Alt+N => /products/create (only when can.create) ===
   useEffect(() => {
@@ -94,7 +116,7 @@ export default function ProductsIndex() {
       const tag = (e.target?.tagName || "").toLowerCase();
       const isTyping = ["input", "textarea", "select"].includes(tag) || e.target?.isContentEditable;
       if (isTyping) return;
-      if (!can.create) return; // guard
+      if (!can.create) return;
       e.preventDefault();
       navigate("/products/create");
     };
@@ -112,11 +134,7 @@ export default function ProductsIndex() {
       const blob = new Blob([res.data], { type: "text/csv;charset=utf-8" });
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement("a");
-      a.href = url;
-      a.download = filename;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
+      a.href = url; a.download = filename; document.body.appendChild(a); a.click(); a.remove();
       window.URL.revokeObjectURL(url);
     } catch (e) {
       const status = e?.response?.status;
@@ -127,7 +145,7 @@ export default function ProductsIndex() {
     }
   };
 
-  const fetchProducts = async (signal) => {
+  const fetchProducts = useCallback(async (signal) => {
     try {
       setLoading(true);
       const { data } = await axios.get("/api/products", {
@@ -155,19 +173,18 @@ export default function ProductsIndex() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [page, pageSize, qName, qBrand, qSupplier]);
 
-  // Initial + pager change (non-debounced) — only when can.view
+  // Initial + pager change (non-debounced)
   useEffect(() => {
     if (permsLoading || !can.view) return;
     if (controllerRef.current) controllerRef.current.abort();
     const ctrl = new AbortController();
     controllerRef.current = ctrl;
     fetchProducts(ctrl.signal);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [permsLoading, can.view, page, pageSize]);
+  }, [permsLoading, can.view, page, pageSize, fetchProducts]);
 
-  // Debounce filter changes — only when can.view
+  // Debounce filters
   useEffect(() => {
     if (permsLoading || !can.view) return;
     if (debounceRef.current) clearTimeout(debounceRef.current);
@@ -179,8 +196,7 @@ export default function ProductsIndex() {
       fetchProducts(ctrl.signal);
     }, 300);
     return () => clearTimeout(debounceRef.current);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [permsLoading, can.view, qName, qBrand, qSupplier]);
+  }, [permsLoading, can.view, qName, qBrand, qSupplier, fetchProducts]);
 
   const start = rows.length ? (page - 1) * pageSize + 1 : 0;
   const end = rows.length ? start + rows.length - 1 : 0;
@@ -198,11 +214,7 @@ export default function ProductsIndex() {
     const hasBatches = Number(product.batches_count || 0) > 0;
 
     if (qty > 0 || hasBatches) {
-      toast.error(
-        qty > 0
-          ? "Cannot delete: product has on-hand quantity."
-          : "Cannot delete: product has batch records."
-      );
+      toast.error(qty > 0 ? "Cannot delete: product has on-hand quantity." : "Cannot delete: product has batch records.");
       return;
     }
 
@@ -229,7 +241,6 @@ export default function ProductsIndex() {
       setDeleting(true);
       await axios.post("/api/auth/confirm-password", { password });
       await axios.delete(`/api/products/${deletingProduct.id}`);
-
       toast.success("Product deleted");
 
       setSelectedIds((prev) => {
@@ -290,260 +301,263 @@ export default function ProductsIndex() {
   if (!can.view) return <div className="p-6 text-sm text-gray-700">You don’t have permission to view products.</div>;
 
   return (
-    <div className="p-6">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between mb-4">
-        <h1 className="text-2xl font-bold">Products</h1>
-        <div className="flex gap-2">
-          <Guard when={can.update}>
-            <button
-              disabled={selectedIds.size === 0}
-              onClick={openBulkModal}
-              className={`px-4 py-2 rounded flex items-center gap-2 ${
-                selectedIds.size === 0
-                  ? "bg-gray-300 text-gray-600 cursor-not-allowed"
-                  : "bg-emerald-600 text-white"
-              }`}
-              title="Edit selected products (bulk)"
-            >
-              <PencilSquareIcon className="w-5 h-5" />
-              Edit Selected ({selectedIds.size})
-            </button>
-          </Guard>
+    <div className="p-4 md:p-6 space-y-4">
+      {/* ===== Header (single-column page layout) ===== */}
+      <GlassCard>
+        <GlassSectionHeader
+          title={<span className="inline-flex items-center gap-2">
+            <Squares2X2Icon className="w-5 h-5 text-blue-600" />
+            <span>Products</span>
+          </span>}
+          right={
+            <div className="flex items-center gap-2">
+              <GlassBtn
+                className={`h-10 min-w-[120px] ${tintSlate}`}
+                onClick={() => {
+                  if (controllerRef.current) controllerRef.current.abort();
+                  const ctrl = new AbortController();
+                  controllerRef.current = ctrl;
+                  fetchProducts(ctrl.signal);
+                }}
+                title="Refresh"
+                aria-label="Refresh products"
+              >
+                <span className="inline-flex items-center gap-2">
+                  <ArrowPathIcon className="w-5 h-5" />
+                  Refresh
+                </span>
+              </GlassBtn>
 
-          <Guard when={can.create}>
-            <Link
-              to="/products/create"
-              title="Add Product (Alt+N)"
-              aria-keyshortcuts="Alt+N"
-              className="bg-blue-600 text-white px-4 py-2 rounded flex items-center gap-2"
-            >
-              <PlusCircleIcon className="w-5 h-5" />
-              Add Product
-              <span className="ml-2 hidden sm:inline text-xs opacity-80 border rounded px-1 py-0.5">
-                Alt+N
-              </span>
-            </Link>
-          </Guard>
-        </div>
-      </div>
-
-      {/* Search toolbar */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
-        <TextSearch value={qName} onChange={setQName} placeholder="Search by Product Name…" />
-        <TextSearch value={qBrand} onChange={setQBrand} placeholder="Search by Brand…" />
-        <TextSearch value={qSupplier} onChange={setQSupplier} placeholder="Search by Supplier…" />
-      </div>
-
-      {/* Meta */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-3">
-        <div className="text-sm text-gray-600">
-          {loading ? (
-            <span>Loading…</span>
-          ) : (
-            <span>
-              Showing <strong>{rows.length === 0 ? 0 : start}-{end}</strong> of{" "}
-              <strong>{total}</strong>
-            </span>
-          )}
-        </div>
-        <div className="flex items-center gap-2">
-          <label className="text-sm text-gray-600">Rows per page</label>
-          <select
-            value={pageSize}
-            onChange={(e) => setPageSize(Number(e.target.value))}
-            className="border rounded px-2 py-1"
-          >
-            <option value={10}>10</option>
-            <option value={25}>25</option>
-            <option value={50}>50</option>
-            <option value={100}>100</option>
-          </select>
-        </div>
-      </div>
-
-      {/* Table */}
-      <div className="w-full overflow-x-auto rounded border">
-        <table className="w-full">
-          <thead className="bg-gray-50 sticky top-0">
-            {(can.import || can.export) && (
-              <tr>
-                <th colSpan={visibleColumns} className="border p-2">
-                  <div className="flex items-center justify-start gap-2">
-                    <Guard when={can.import}>
-                      <button
-                        onClick={() => setImportOpen(true)}
-                        className="inline-flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-3 h-9 rounded text-sm"
-                        title="Import Products (CSV)"
-                        aria-label="Import products from CSV"
-                      >
-                        <ArrowUpTrayIcon className="w-5 h-5" />
-                        Import CSV
-                      </button>
-                    </Guard>
-                    <Guard when={can.export}>
-                      <button
-                        onClick={handleExport}
-                        disabled={exporting}
-                        className={`inline-flex items-center gap-2 px-3 h-9 rounded text-sm border ${
-                          exporting
-                            ? "bg-gray-200 text-gray-600 cursor-not-allowed"
-                            : "bg-white hover:bg-gray-50 text-gray-800 border-gray-300"
-                        }`}
-                        title="Export all products to CSV"
-                        aria-label="Export all products to CSV"
-                      >
-                        <ArrowDownTrayIcon className="w-5 h-5" />
-                        {exporting ? "Exporting…" : "Export CSV"}
-                      </button>
-                    </Guard>
-                  </div>
-                </th>
-              </tr>
-            )}
-
-            <tr>
-              <th className="border px-2 py-2 text-left">
-                <input
-                  type="checkbox"
-                  aria-label="Select all on this page"
-                  checked={pageAllChecked}
-                  ref={(el) => {
-                    if (el) el.indeterminate = pageIndeterminate;
-                  }}
-                  onChange={(e) => togglePageAll(e.target.checked)}
-                />
-              </th>
-              <th className="border px-2 py-2 text-left">Code</th>
-              <th className="border px-2 py-2 text-left">Name</th>
-              <th className="border px-2 py-2 text-left">Image</th>
-              <th className="border px-2 py-2 text-left">Category</th>
-              <th className="border px-2 py-2 text-left">Brand</th>
-              <th className="border px-2 py-2 text-left">Supplier</th>
-              {hasActions && <th className="border px-2 py-2 text-center">Actions</th>}
-            </tr>
-          </thead>
-          <tbody>
-            {rows.length === 0 && !loading && (
-              <tr>
-                <td className="border px-3 py-6 text-center text-gray-500" colSpan={visibleColumns}>
-                  No products found.
-                </td>
-              </tr>
-            )}
-            {rows.map((p) => {
-              const qty = Number(p.quantity || 0);
-              const hasBatches = Number(p.batches_count || 0) > 0;
-              const deleteDisabled = qty > 0 || hasBatches;
-              const deleteTitle = deleteDisabled
-                ? qty > 0
-                  ? "Cannot delete: product has on-hand quantity."
-                  : "Cannot delete: product has batch records."
-                : "Delete";
-              return (
-                <tr
-                  key={p.id}
-                  className={`transition-colors ${
-                    selectedIds.has(p.id) ? "bg-blue-50" : "odd:bg-white even:bg-gray-50"
-                  } hover:bg-blue-100`}
+              <Guard when={can.update}>
+                <GlassBtn
+                  className={`h-10 min-w-[170px] ${selectedIds.size ? tintAmber : tintGlass} ${selectedIds.size ? "" : "opacity-60 cursor-not-allowed"}`}
+                  disabled={selectedIds.size === 0}
+                  onClick={openBulkModal}
+                  title="Edit selected products (bulk)"
                 >
-                  <td className="border px-2 py-2">
-                    <input
-                      type="checkbox"
-                      checked={selectedIds.has(p.id)}
-                      onChange={(e) => toggleOne(p.id, e.target.checked)}
-                      aria-label={`Select product ${p.name}`}
-                    />
-                  </td>
-                  <td className="border px-2 py-2">{p.product_code}</td>
-                  <td className="border px-2 py-2">{p.name}</td>
-                  <td className="border px-2 py-2">
-                    {p.image ? (
-                      <img
-                        src={`/storage/${p.image}`}
-                        alt={p.name}
-                        className="w-12 h-12 object-cover rounded"
-                      />
-                    ) : (
-                      <span className="text-gray-500">No image</span>
-                    )}
-                  </td>
-                  <td className="border px-2 py-2">{p.category?.name}</td>
-                  <td className="border px-2 py-2">{p.brand?.name}</td>
-                  <td className="border px-2 py-2">{p.supplier?.name}</td>
-                  {hasActions && (
-                    <td className="border px-2 py-2">
-                      <div className="flex gap-2 justify-center">
-                        <Guard when={can.update}>
-                          <Link
-                            to={`/products/${p.id}/edit`}
-                            className="bg-yellow-500 text-white px-3 py-1 rounded flex items-center gap-1"
-                          >
-                            <PencilSquareIcon className="w-5 h-5" />
-                            Edit
-                          </Link>
-                        </Guard>
-                        <Guard when={can.delete}>
-                          <button
-                            onClick={() => openDeleteModal(p)}
-                            disabled={deleteDisabled}
-                            title={deleteTitle}
-                            className={`px-3 py-1 rounded flex items-center gap-1 ${
-                              deleteDisabled
-                                ? "bg-gray-300 text-gray-600 cursor-not-allowed"
-                                : "bg-red-600 text-white"
-                            }`}
-                          >
-                            <TrashIcon className="w-5 h-5" />
-                            Delete
-                          </button>
-                        </Guard>
-                      </div>
-                    </td>
-                  )}
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
+                  <span className="inline-flex items-center gap-2">
+                    <PencilSquareIcon className="w-5 h-5" />
+                    Edit Selected ({selectedIds.size})
+                  </span>
+                </GlassBtn>
+              </Guard>
 
-      {/* Pagination (server) */}
-      <div className="mt-4 flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between">
-        <div className="text-sm text-gray-600">
-          Page {page} of {lastPage}
+              <Guard when={can.create}>
+                <Link
+                  to="/products/create"
+                  title="Add Product (Alt+N)"
+                  aria-keyshortcuts="Alt+N"
+                  className={`h-10 min-w-[150px] inline-flex items-center justify-center gap-2 rounded-xl px-3 ${tintBlue}`}
+                >
+                  <PlusCircleIcon className="w-5 h-5" />
+                  Add Product
+                </Link>
+              </Guard>
+            </div>
+          }
+        />
+
+        {/* Search toolbar */}
+        <GlassToolbar className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <TextSearch value={qName} onChange={setQName} placeholder="Search by Product Name…" />
+          <TextSearch value={qBrand} onChange={setQBrand} placeholder="Search by Brand…" icon={<TagIcon className="w-5 h-5 text-gray-400" />} />
+          <TextSearch value={qSupplier} onChange={setQSupplier} placeholder="Search by Supplier…" icon={<BuildingStorefrontIcon className="w-5 h-5 text-gray-400" />} />
+
+          <div className="md:col-span-3 flex items-center justify-between gap-3">
+            <div className="text-sm text-gray-700">
+              {loading ? "Loading…" : (
+                <>Showing <strong>{rows.length === 0 ? 0 : start}-{end}</strong> of <strong>{total}</strong></>
+              )}
+            </div>
+
+            <div className="flex items-center gap-2">
+              <Guard when={can.import}>
+                <GlassBtn
+                  className={`h-9 min-w-[140px] ${tintIndigo}`}
+                  onClick={() => setImportOpen(true)}
+                  title="Import Products (CSV)"
+                  aria-label="Import products from CSV"
+                >
+                  <span className="inline-flex items-center gap-2">
+                    <ArrowUpTrayIcon className="w-5 h-5" />
+                    Import CSV
+                  </span>
+                </GlassBtn>
+              </Guard>
+
+              <Guard when={can.export}>
+                <GlassBtn
+                  className={`h-9 min-w-[140px] ${tintGlass}`}
+                  onClick={handleExport}
+                  disabled={exporting}
+                  title="Export all products to CSV"
+                  aria-label="Export all products to CSV"
+                >
+                  <span className="inline-flex items-center gap-2">
+                    <ArrowDownTrayIcon className="w-5 h-5" />
+                    {exporting ? "Exporting…" : "Export CSV"}
+                  </span>
+                </GlassBtn>
+              </Guard>
+
+              <div className="ml-2 flex items-center gap-2">
+                <label className="text-sm text-gray-700">Rows per page</label>
+                <select
+                  value={pageSize}
+                  onChange={(e) => setPageSize(Number(e.target.value))}
+                  className="h-9 px-2 rounded-xl bg-white/70 backdrop-blur-sm border border-gray-200/70 ring-1 ring-transparent focus:ring-blue-400/40 shadow-sm text-sm"
+                >
+                  <option value={10}>10</option>
+                  <option value={25}>25</option>
+                  <option value={50}>50</option>
+                  <option value={100}>100</option>
+                </select>
+              </div>
+            </div>
+          </div>
+        </GlassToolbar>
+      </GlassCard>
+
+      {/* ===== Table card (single column layout) ===== */}
+      <GlassCard>
+        <div className="max-h-[70vh] overflow-auto rounded-b-2xl">
+          <table className="w-full text-sm text-gray-900">
+            <thead className="sticky top-0 bg-white/90 backdrop-blur-sm z-10 border-b border-gray-200/70">
+              {(can.import || can.export) && (
+                <tr>
+                  <th colSpan={visibleColumns} className="px-3 py-2">
+                    {/* (We already show Import/Export above; keeping header minimal for stickiness) */}
+                  </th>
+                </tr>
+              )}
+              <tr className="text-left">
+                <th className="px-3 py-2">
+                  <input
+                    type="checkbox"
+                    aria-label="Select all on this page"
+                    checked={pageAllChecked}
+                    ref={(el) => {
+                      if (el) el.indeterminate = pageIndeterminate;
+                    }}
+                    onChange={(e) => togglePageAll(e.target.checked)}
+                  />
+                </th>
+                <th className="px-3 py-2 font-medium">Code</th>
+                <th className="px-3 py-2 font-medium">Name</th>
+                <th className="px-3 py-2 font-medium">Image</th>
+                <th className="px-3 py-2 font-medium">Category</th>
+                <th className="px-3 py-2 font-medium">Brand</th>
+                <th className="px-3 py-2 font-medium">Supplier</th>
+                {hasActions && <th className="px-3 py-2 font-medium text-center">Actions</th>}
+              </tr>
+            </thead>
+
+            <tbody>
+              {rows.length === 0 && !loading && (
+                <tr>
+                  <td className="px-3 py-10 text-center text-gray-600" colSpan={visibleColumns}>
+                    No products found.
+                  </td>
+                </tr>
+              )}
+
+              {rows.map((p) => {
+                const qty = Number(p.quantity || 0);
+                const hasBatches = Number(p.batches_count || 0) > 0;
+                const deleteDisabled = qty > 0 || hasBatches;
+                const deleteTitle = deleteDisabled
+                  ? qty > 0
+                    ? "Cannot delete: product has on-hand quantity."
+                    : "Cannot delete: product has batch records."
+                  : "Delete";
+                return (
+                  <tr
+                    key={p.id}
+                    className={`transition-colors ${
+                      selectedIds.has(p.id) ? "bg-blue-50" : "odd:bg-white/90 even:bg-white/70"
+                    } hover:bg-blue-50`}
+                  >
+                    <td className="px-3 py-2">
+                      <input
+                        type="checkbox"
+                        checked={selectedIds.has(p.id)}
+                        onChange={(e) => toggleOne(p.id, e.target.checked)}
+                        aria-label={`Select product ${p.name}`}
+                      />
+                    </td>
+                    <td className="px-3 py-2">{p.product_code}</td>
+                    <td className="px-3 py-2">{p.name}</td>
+                    <td className="px-3 py-2">
+                      {p.image ? (
+                        <img
+                          src={`/storage/${p.image}`}
+                          alt={p.name}
+                          className="w-12 h-12 object-cover rounded-xl ring-1 ring-gray-200/60 bg-white/70"
+                        />
+                      ) : (
+                        <span className="text-gray-500">No image</span>
+                      )}
+                    </td>
+                    <td className="px-3 py-2">{p.category?.name}</td>
+                    <td className="px-3 py-2">{p.brand?.name}</td>
+                    <td className="px-3 py-2">{p.supplier?.name}</td>
+
+                    {hasActions && (
+                      <td className="px-3 py-2">
+                        <div className="flex flex-wrap gap-2 justify-center">
+                          <Guard when={can.update}>
+                            <Link
+                              to={`/products/${p.id}/edit`}
+                              className={`h-9 min-w-[100px] inline-flex items-center justify-center gap-1 rounded-xl px-3 ${tintAmber}`}
+                              title={`Edit ${p.name}`}
+                            >
+                              <PencilSquareIcon className="w-5 h-5" />
+                              Edit
+                            </Link>
+                          </Guard>
+
+                          <Guard when={can.delete}>
+                            <GlassBtn
+                              onClick={() => openDeleteModal(p)}
+                              disabled={deleteDisabled}
+                              title={deleteTitle}
+                              className={`h-9 min-w-[100px] ${deleteDisabled ? tintGlass + " opacity-60 cursor-not-allowed" : tintRed}`}
+                            >
+                              <span className="inline-flex items-center gap-1">
+                                <TrashIcon className="w-5 h-5" />
+                                Delete
+                              </span>
+                            </GlassBtn>
+                          </Guard>
+                        </div>
+                      </td>
+                    )}
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
         </div>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => setPage(1)}
-            disabled={page === 1}
-            className="px-3 py-1 border rounded disabled:opacity-50"
-          >
-            ⏮ First
-          </button>
-          <button
-            onClick={() => setPage((p) => Math.max(1, p - 1))}
-            disabled={page === 1}
-            className="px-3 py-1 border rounded disabled:opacity-50"
-          >
-            ◀ Prev
-          </button>
-          <button
-            onClick={() => setPage((p) => Math.min(lastPage, p + 1))}
-            disabled={page === lastPage}
-            className="px-3 py-1 border rounded disabled:opacity-50"
-          >
-            Next ▶
-          </button>
-          <button
-            onClick={() => setPage(lastPage)}
-            disabled={page === lastPage}
-            className="px-3 py-1 border rounded disabled:opacity-50"
-          >
-            Last ⏭
-          </button>
+
+        {/* Pagination */}
+        <div className="px-3 py-3 flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between">
+          <div className="text-sm text-gray-700">Page {page} of {lastPage}</div>
+          <div className="flex items-center gap-2">
+            <GlassBtn onClick={() => setPage(1)} disabled={page === 1} className={`h-9 px-3 ${tintGlass}`}>
+              ⏮ First
+            </GlassBtn>
+            <GlassBtn onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page === 1} className={`h-9 px-3 ${tintGlass}`}>
+              ◀ Prev
+            </GlassBtn>
+            <GlassBtn onClick={() => setPage((p) => Math.min(lastPage, p + 1))} disabled={page === lastPage} className={`h-9 px-3 ${tintGlass}`}>
+              Next ▶
+            </GlassBtn>
+            <GlassBtn onClick={() => setPage(lastPage)} disabled={page === lastPage} className={`h-9 px-3 ${tintGlass}`}>
+              Last ⏭
+            </GlassBtn>
+          </div>
         </div>
-      </div>
+      </GlassCard>
 
       {/* Bulk Edit Modal */}
       {showBulkModal && (
@@ -559,81 +573,92 @@ export default function ProductsIndex() {
             setShowBulkModal(false);
             setSelectedIds(new Set());
           }}
+          tintBlue={tintBlue}
+          tintGlass={tintGlass}
         />
       )}
 
-      {/* Import modal (button is permission-guarded above) */}
+      {/* Import modal */}
       <ProductImportModal open={importOpen} onClose={() => setImportOpen(false)} onImported={fetchProducts} />
 
-      {/* Delete confirmation modal */}
+      {/* Delete confirmation modal (glassy) */}
       {deleteModalOpen && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
+          className="fixed inset-0 z-50 flex items-center justify-center"
           onClick={(e) => {
             if (e.target === e.currentTarget) closeDeleteModal();
           }}
         >
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-5">
-            {deleteStep === 1 && (
-              <div>
-                <h2 className="text-lg font-semibold mb-2">Delete product?</h2>
-                <p className="text-sm text-gray-600">
-                  {deletingProduct?.name ? (
-                    <>Are you sure you want to delete <strong>{deletingProduct.name}</strong>? </>
-                  ) : (
-                    "Are you sure you want to delete this product? "
-                  )}
-                  This action cannot be undone.
-                </p>
-                <div className="mt-4 flex justify-end gap-2">
-                  <button className="px-3 py-1 rounded border" onClick={closeDeleteModal}>
-                    Cancel
-                  </button>
-                  <button
-                    className="px-3 py-1 rounded bg-red-600 text-white hover:bg-red-700"
-                    onClick={proceedToPassword}
-                  >
-                    Yes, continue
-                  </button>
-                </div>
-              </div>
-            )}
+          <div className="absolute inset-0 bg-black/40" />
+          <div className="relative w-full max-w-md">
+            <GlassCard>
+              <GlassSectionHeader
+                title={<span className="inline-flex items-center gap-2">
+                  <ShieldExclamationIcon className="w-5 h-5 text-rose-600" />
+                  <span>Delete product</span>
+                </span>}
+                right={
+                  <GlassBtn className={`h-8 px-3 ${tintGlass}`} onClick={closeDeleteModal} title="Close">
+                    <XMarkIcon className="w-5 h-5" />
+                  </GlassBtn>
+                }
+              />
+              <div className="px-4 py-4 space-y-4">
+                {deleteStep === 1 && (
+                  <>
+                    <p className="text-sm text-gray-700">
+                      {deletingProduct?.name ? (
+                        <>Are you sure you want to delete <strong>{deletingProduct.name}</strong>? </>
+                      ) : "Are you sure you want to delete this product? "}
+                      This action cannot be undone.
+                    </p>
+                    <div className="flex justify-end gap-2">
+                      <GlassBtn className={`min-w-[100px] ${tintGlass}`} onClick={closeDeleteModal}>
+                        Cancel
+                      </GlassBtn>
+                      <GlassBtn className={`min-w-[140px] ${tintRed}`} onClick={proceedToPassword}>
+                        Yes, continue
+                      </GlassBtn>
+                    </div>
+                  </>
+                )}
 
-            {deleteStep === 2 && (
-              <div>
-                <h2 className="text-lg font-semibold mb-2">Confirm with password</h2>
-                <p className="text-sm text-gray-600">For security, please re-enter your password to delete this product.</p>
-                <input
-                  type="password"
-                  autoFocus
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="Your password"
-                  className="mt-3 w-full border rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") confirmAndDelete();
-                    if (e.key === "Escape") closeDeleteModal();
-                  }}
-                />
-                <div className="mt-4 flex justify-between">
-                  <button className="px-3 py-1 rounded border" onClick={() => setDeleteStep(1)} disabled={deleting}>
-                    ← Back
-                  </button>
-                  <div className="flex gap-2">
-                    <button className="px-3 py-1 rounded border" onClick={closeDeleteModal} disabled={deleting}>
-                      Cancel
-                    </button>
-                    <button
-                      className="px-3 py-1 rounded bg-red-600 text-white hover:bg-red-700 disabled:opacity-60"
-                      onClick={confirmAndDelete}
-                      disabled={deleting || password.trim() === ""}
-                    >
-                      {deleting ? "Deleting…" : "Confirm & Delete"}
-                    </button>
-                  </div>
-                </div>
+                {deleteStep === 2 && (
+                  <>
+                    <p className="text-sm text-gray-700">For security, please re-enter your password to delete this product.</p>
+                    <GlassInput
+                      type="password"
+                      autoFocus
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      placeholder="Your password"
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") confirmAndDelete();
+                        if (e.key === "Escape") closeDeleteModal();
+                      }}
+                      className="w-full"
+                    />
+                    <div className="flex justify-between">
+                      <GlassBtn className={`min-w-[90px] ${tintGlass}`} onClick={() => setDeleteStep(1)} disabled={deleting}>
+                        ← Back
+                      </GlassBtn>
+                      <div className="flex gap-2">
+                        <GlassBtn className={`min-w-[100px] ${tintGlass}`} onClick={closeDeleteModal} disabled={deleting}>
+                          Cancel
+                        </GlassBtn>
+                        <GlassBtn
+                          className={`min-w-[170px] ${tintRed} disabled:opacity-60`}
+                          onClick={confirmAndDelete}
+                          disabled={deleting || password.trim() === ""}
+                        >
+                          {deleting ? "Deleting…" : "Confirm & Delete"}
+                        </GlassBtn>
+                      </div>
+                    </div>
+                  </>
+                )}
               </div>
-            )}
+            </GlassCard>
           </div>
         </div>
       )}
@@ -641,32 +666,34 @@ export default function ProductsIndex() {
   );
 }
 
-function TextSearch({ value, onChange, placeholder }) {
+function TextSearch({ value, onChange, placeholder, icon }) {
   return (
     <div className="relative">
-      <MagnifyingGlassIcon className="w-5 h-5 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-      <input
+      {icon ? (
+        <span className="absolute left-3 top-1/2 -translate-y-1/2">{icon}</span>
+      ) : (
+        <MagnifyingGlassIcon className="w-5 h-5 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+      )}
+      <GlassInput
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
-        className="w-full pl-10 pr-3 py-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+        className="pl-10 w-full"
       />
     </div>
   );
 }
 
-/** Bulk edit modal with react-select/async (remote search) */
-function BulkEditModal({ onClose, selectedCount, selectedIds, onSaved }) {
+/** Bulk edit modal */
+function BulkEditModal({ onClose, selectedCount, selectedIds, onSaved, tintBlue, tintGlass }) {
   const [saving, setSaving] = useState(false);
 
-  // selected values
   const [catOpt, setCatOpt] = useState(null);
   const [brandOpt, setBrandOpt] = useState(null);
   const [suppOpt, setSuppOpt] = useState(null);
 
   const selectStyles = { menuPortal: (base) => ({ ...base, zIndex: 9999 }) };
 
-  // remote fetchers
   const fetchOptions = async (endpoint, inputValue) => {
     const { data } = await axios.get(endpoint, { params: { q: inputValue || "", limit: 20 } });
     const list = normalizeList(data);
@@ -710,83 +737,82 @@ function BulkEditModal({ onClose, selectedCount, selectedIds, onSaved }) {
     <div className="fixed inset-0 z-50">
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
       <div className="absolute inset-0 flex items-center justify-center p-4">
-        <div className="bg-white rounded-xl shadow-xl w-full max-w-xl">
-          <div className="flex items-center justify-between p-4 border-b">
-            <h2 className="text-lg font-semibold">Bulk Edit ({selectedCount} selected)</h2>
-            <button className="p-2 rounded hover:bg-gray-100" onClick={onClose} title="Close">
-              <XMarkIcon className="w-6 h-6" />
-            </button>
-          </div>
+        <div className="w-full max-w-xl">
+          <GlassCard>
+            <GlassSectionHeader
+              title={<span className="font-semibold">Bulk Edit ({selectedCount} selected)</span>}
+              right={
+                <GlassBtn className={`h-8 px-3 ${tintGlass}`} onClick={onClose} title="Close">
+                  <XMarkIcon className="w-5 h-5" />
+                </GlassBtn>
+              }
+            />
+            <div className="px-4 pt-3 pb-4 space-y-4">
+              <p className="text-sm text-gray-600">Leave any field blank to keep current values for that field.</p>
 
-          <div className="p-4 space-y-4">
-            <p className="text-sm text-gray-600">Leave any field blank to keep current values for that field.</p>
+              <div className="grid grid-cols-1 gap-4">
+                <div>
+                  <label className="block text-sm font-medium mb-1">Category</label>
+                  <AsyncSelect
+                    classNamePrefix="rs"
+                    cacheOptions
+                    defaultOptions
+                    loadOptions={loadCategories}
+                    isSearchable
+                    isClearable
+                    value={catOpt}
+                    onChange={setCatOpt}
+                    menuPortalTarget={typeof document !== "undefined" ? document.body : null}
+                    styles={selectStyles}
+                    placeholder="(No change)"
+                  />
+                </div>
 
-            <div className="grid grid-cols-1 gap-4">
-              <div>
-                <label className="block text-sm font-medium mb-1">Category</label>
-                <AsyncSelect
-                  classNamePrefix="rs"
-                  cacheOptions
-                  defaultOptions
-                  loadOptions={loadCategories}
-                  isSearchable
-                  isClearable
-                  value={catOpt}
-                  onChange={setCatOpt}
-                  menuPortalTarget={typeof document !== "undefined" ? document.body : null}
-                  styles={selectStyles}
-                  placeholder="(No change)"
-                />
-              </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">Brand</label>
+                  <AsyncSelect
+                    classNamePrefix="rs"
+                    cacheOptions
+                    defaultOptions
+                    loadOptions={loadBrands}
+                    isSearchable
+                    isClearable
+                    value={brandOpt}
+                    onChange={setBrandOpt}
+                    menuPortalTarget={typeof document !== "undefined" ? document.body : null}
+                    styles={selectStyles}
+                    placeholder="(No change)"
+                  />
+                </div>
 
-              <div>
-                <label className="block text-sm font-medium mb-1">Brand</label>
-                <AsyncSelect
-                  classNamePrefix="rs"
-                  cacheOptions
-                  defaultOptions
-                  loadOptions={loadBrands}
-                  isSearchable
-                  isClearable
-                  value={brandOpt}
-                  onChange={setBrandOpt}
-                  menuPortalTarget={typeof document !== "undefined" ? document.body : null}
-                  styles={selectStyles}
-                  placeholder="(No change)"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium mb-1">Supplier</label>
-                <AsyncSelect
-                  classNamePrefix="rs"
-                  cacheOptions
-                  defaultOptions
-                  loadOptions={loadSuppliers}
-                  isSearchable
-                  isClearable
-                  value={suppOpt}
-                  onChange={setSuppOpt}
-                  menuPortalTarget={typeof document !== "undefined" ? document.body : null}
-                  styles={selectStyles}
-                  placeholder="(No change)"
-                />
+                <div>
+                  <label className="block text-sm font-medium mb-1">Supplier</label>
+                  <AsyncSelect
+                    classNamePrefix="rs"
+                    cacheOptions
+                    defaultOptions
+                    loadOptions={loadSuppliers}
+                    isSearchable
+                    isClearable
+                    value={suppOpt}
+                    onChange={setSuppOpt}
+                    menuPortalTarget={typeof document !== "undefined" ? document.body : null}
+                    styles={selectStyles}
+                    placeholder="(No change)"
+                  />
+                </div>
               </div>
             </div>
-          </div>
 
-          <div className="p-4 border-t flex items-center justify-end gap-2">
-            <button className="px-4 py-2 rounded border" onClick={onClose} disabled={saving}>
-              Cancel
-            </button>
-            <button
-              className={`px-4 py-2 rounded text-white ${saving ? "bg-emerald-400" : "bg-emerald-600 hover:bg-emerald-700"}`}
-              onClick={submit}
-              disabled={saving}
-            >
-              {saving ? "Saving…" : "Save Changes"}
-            </button>
-          </div>
+            <div className="px-4 pb-4 flex items-center justify-end gap-2">
+              <GlassBtn className={`min-w-[110px] ${tintGlass}`} onClick={onClose} disabled={saving}>
+                Cancel
+              </GlassBtn>
+              <GlassBtn className={`min-w-[150px] ${tintBlue}`} onClick={submit} disabled={saving}>
+                {saving ? "Saving…" : "Save Changes"}
+              </GlassBtn>
+            </div>
+          </GlassCard>
         </div>
       </div>
     </div>
