@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+// src/pages/Categories.jsx
+import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import axios from "axios";
 import toast from "react-hot-toast";
 import {
@@ -8,9 +9,20 @@ import {
   TrashIcon,
   ArrowUpTrayIcon,
   ArrowDownTrayIcon,
+  XMarkIcon,
+  ArrowPathIcon,
+  PlusIcon,
+  Squares2X2Icon,
 } from "@heroicons/react/24/solid";
 import CategoryImportModal from "../components/CategoryImportModel.jsx";
 import { usePermissions, Guard } from "@/api/usePermissions.js"; // 🔒
+import {
+  GlassCard,
+  GlassSectionHeader,
+  GlassToolbar,
+  GlassInput,
+  GlassBtn,
+} from "@/components/glass.jsx"; // ⬅️ as requested
 
 export default function Categories() {
   const [categories, setCategories] = useState([]);
@@ -48,14 +60,7 @@ export default function Categories() {
     document.title = "Categories - Pharmacy ERP";
   }, []);
 
-  // Fetch only when user can view
-  useEffect(() => {
-    if (permsLoading || !can.view) return;
-    fetchCategories();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [permsLoading, can.view]);
-
-  const fetchCategories = async () => {
+  const fetchCategories = useCallback(async () => {
     try {
       setLoading(true);
       const res = await axios.get("/api/categories");
@@ -67,11 +72,16 @@ export default function Categories() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    if (permsLoading || !can.view) return;
+    fetchCategories();
+  }, [permsLoading, can.view, fetchCategories]);
 
   useEffect(() => { nameRef.current?.focus(); }, [editingId]);
 
-  // 🔒 disable Alt+S if cannot create/update
+  // 🔒 Alt+S save
   useEffect(() => {
     const onKeyDown = (e) => {
       if (e.altKey && (e.key || "").toLowerCase() === "s") {
@@ -89,12 +99,12 @@ export default function Categories() {
   };
 
   const resetForm = () => {
-    setForm({ name: "" }); setEditingId(null);
+    setForm({ name: "" });
+    setEditingId(null);
     setTimeout(() => nameRef.current?.focus(), 0);
   };
 
   const handleSave = async () => {
-    // 🔒 guard
     if (editingId ? !can.update : !can.create) {
       toast.error("You don't have permission to save categories.");
       return;
@@ -112,12 +122,12 @@ export default function Categories() {
         await axios.post("/api/categories", { name });
         toast.success("Category saved");
       }
-      resetForm(); fetchCategories();
+      resetForm();
+      fetchCategories();
     } catch (err) {
       const status = err?.response?.status;
-      if (status === 403) {
-        toast.error("You don't have permission to save categories.");
-      } else {
+      if (status === 403) toast.error("You don't have permission to save categories.");
+      else {
         const msg = err?.response?.data?.message || err?.response?.data?.errors?.name?.[0] || "Save failed";
         toast.error(msg);
       }
@@ -133,6 +143,8 @@ export default function Categories() {
   const handleDelete = async (c) => {
     if (!can.delete) return toast.error("You don't have permission to delete categories.");
     try {
+      const used = Number(c.products_count || 0) > 0;
+      if (used) return toast.error("Cannot delete: category is used by products.");
       await axios.delete(`/api/categories/${c.id}`);
       setCategories((prev) => prev.filter((x) => x.id !== c.id));
       if (editingId === c.id) resetForm();
@@ -144,11 +156,6 @@ export default function Categories() {
     }
   };
 
-  const handleButtonKeyDown = (e, action) => {
-    if (e.key === "Enter" || e.key === " ") { e.preventDefault(); action(); }
-  };
-
-  // 🔒 Export
   const handleExport = async () => {
     if (!can.export) return toast.error("You don't have permission to export categories.");
     try {
@@ -190,193 +197,276 @@ export default function Categories() {
   const hasActions = can.update || can.delete;
   const colSpan = 1 + (hasActions ? 1 : 0);
 
-  return (
-    <div className="p-6">
-      {/* header + search */}
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-4">
-        <h1 className="text-2xl font-bold">Categories</h1>
-        <div className="relative w-full md:w-80">
-          <MagnifyingGlassIcon className="w-5 h-5 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-          <input
-            value={qName}
-            onChange={(e) => setQName(e.target.value)}
-            placeholder="Search category by name…"
-            className="w-full pl-10 pr-3 h-9 text-sm border rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
-        </div>
-      </div>
+  // 🧊 iOS-style “tinted glass” helpers (color + subtle ring + blur already in GlassBtn base)
+  const tintBlue   = "bg-blue-500/85 text-white shadow-[0_6px_20px_-6px_rgba(37,99,235,0.45)] ring-1 ring-white/20 hover:bg-blue-500/95";
+  const tintIndigo = "bg-indigo-500/85 text-white shadow-[0_6px_20px_-6px_rgba(99,102,241,0.45)] ring-1 ring-white/20 hover:bg-indigo-500/95";
+  const tintSlate  = "bg-slate-900/80 text-white shadow-[0_6px_20px_-6px_rgba(15,23,42,0.45)] ring-1 ring-white/15 hover:bg-slate-900/90";
+  const tintAmber  = "bg-amber-500/85 text-white shadow-[0_6px_20px_-6px_rgba(245,158,11,0.45)] ring-1 ring-white/20 hover:bg-amber-500/95";
+  const tintRed    = "bg-rose-500/85 text-white shadow-[0_6px_20px_-6px_rgba(244,63,94,0.45)] ring-1 ring-white/20 hover:bg-rose-500/95";
+  const tintGlass  = "bg-white/60 text-slate-700 ring-1 ring-white/30 hover:bg-white/75"; // neutral glass
 
-      {/* 🔒 show form only if can create/update */}
-      <Guard when={can.create || can.update}>
-        <form onSubmit={(e)=>e.preventDefault()} className="mb-4">
-          <div className="flex flex-col gap-2">
-            <div className="flex flex-col md:flex-row md:items-end md:gap-2">
-              <div className="w-full md:w-80">
-                <label className="block text-xs text-gray-700 mb-1">Name</label>
-                <input
-                  type="text" placeholder="Category Name"
-                  className="border rounded px-2 h-9 text-sm w-full"
-                  value={form.name}
-                  onChange={(e)=>setForm({ name: e.target.value })}
-                  onKeyDown={onEnterFocusNext}
-                  ref={nameRef} required
-                  disabled={!can.create && !editingId}
-                />
+  return (
+    <div className="p-4 md:p-6 space-y-4">
+      {/* Header card */}
+      <GlassCard>
+        <GlassSectionHeader
+          title={
+            <span className="inline-flex items-center gap-2">
+              <Squares2X2Icon className="w-5 h-5 text-blue-600" />
+              <span>Categories</span>
+            </span>
+          }
+          right={
+            <div className="flex items-center gap-2">
+              <GlassBtn
+                className={`h-10 min-w-[128px] ${tintSlate}`}
+                onClick={fetchCategories}
+                title="Refresh"
+                aria-label="Refresh list"
+              >
+                <span className="inline-flex items-center gap-2">
+                  <ArrowPathIcon className="w-5 h-5" />
+                  Refresh
+                </span>
+              </GlassBtn>
+            </div>
+          }
+        />
+        <GlassToolbar className="gap-3">
+          <div className="relative w-full md:w-96">
+            <MagnifyingGlassIcon className="w-5 h-5 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+            <GlassInput
+              value={qName}
+              onChange={(e) => setQName(e.target.value)}
+              placeholder="Search category by name…"
+              className="pl-10 w-full"
+              aria-label="Search categories"
+            />
+          </div>
+
+          <div className="ml-auto flex items-center gap-2">
+            <Guard when={can.import}>
+              <GlassBtn
+                className={`h-10 min-w-[150px] ${tintIndigo}`}
+                onClick={() => setImportOpen(true)}
+                title="Import Categories (CSV)"
+                aria-label="Import categories from CSV"
+              >
+                <span className="inline-flex items-center gap-2">
+                  <ArrowUpTrayIcon className="w-5 h-5" />
+                  Import CSV
+                </span>
+              </GlassBtn>
+            </Guard>
+
+            <Guard when={can.export}>
+              <GlassBtn
+                className={`h-10 min-w-[150px] ${tintGlass}`}
+                onClick={handleExport}
+                disabled={exporting}
+                title="Export all categories to CSV"
+                aria-label="Export all categories to CSV"
+              >
+                <span className="inline-flex items-center gap-2">
+                  <ArrowDownTrayIcon className="w-5 h-5" />
+                  {exporting ? "Exporting…" : "Export CSV"}
+                </span>
+              </GlassBtn>
+            </Guard>
+          </div>
+        </GlassToolbar>
+      </GlassCard>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        {/* Left: Form card */}
+        <Guard when={can.create || (can.update && (editingId !== null))}>
+          <GlassCard className="lg:col-span-1">
+            <GlassSectionHeader
+              title={
+                <span className="inline-flex items-center gap-2">
+                  {editingId ? (
+                    <>
+                      <PencilSquareIcon className="w-5 h-5 text-amber-600" />
+                      <span>Edit Category</span>
+                    </>
+                  ) : (
+                    <>
+                      <PlusIcon className="w-5 h-5 text-blue-600" />
+                      <span>Add Category</span>
+                    </>
+                  )}
+                </span>
+              }
+              right={
+                editingId ? (
+                  <GlassBtn
+                    className={`h-9 px-3 ${tintGlass}`}
+                    onClick={resetForm}
+                    title="Cancel editing"
+                  >
+                    <span className="inline-flex items-center gap-2">
+                      <XMarkIcon className="w-5 h-5" />
+                      Cancel
+                    </span>
+                  </GlassBtn>
+                ) : null
+              }
+            />
+            <div className="px-4 pb-4 pt-2">
+              <form onSubmit={(e) => e.preventDefault()} className="space-y-3">
+                <div>
+                  <label className="block text-xs text-gray-700 mb-1">Name</label>
+                  <GlassInput
+                    type="text"
+                    placeholder="Category name"
+                    className="w-full"
+                    value={form.name}
+                    onChange={(e) => setForm({ name: e.target.value })}
+                    onKeyDown={onEnterFocusNext}
+                    ref={nameRef}
+                    required
+                    disabled={!can.create && !editingId}
+                  />
+                </div>
+
+                <div className="flex items-center justify-end gap-2">
+                  <GlassBtn
+                    onClick={handleSave}
+                    ref={saveBtnRef}
+                    title={(editingId ? "Update" : "Save") + " (Alt+S)"}
+                    aria-keyshortcuts="Alt+S"
+                    className={`h-10 min-w-[168px] ${editingId ? tintAmber : tintBlue} disabled:opacity-60`}
+                    disabled={saving || (!can.create && !can.update)}
+                  >
+                    <span className="inline-flex items-center gap-2">
+                      <CheckCircleIcon className="w-5 h-5" />
+                      {editingId ? (saving ? "Updating…" : "Update") : (saving ? "Saving…" : "Save")}
+                    </span>
+                  </GlassBtn>
+                </div>
+
+                <div className="text-[11px] text-gray-500 text-right">Shortcut: Alt+S</div>
+              </form>
+            </div>
+          </GlassCard>
+        </Guard>
+
+        {/* Right: List Card */}
+        <GlassCard className={`lg:col-span-${(can.create || can.update) ? "2" : "3"}`}>
+          <GlassSectionHeader
+            title={
+              <span className="inline-flex items-center gap-2">
+                <Squares2X2Icon className="w-5 h-5 text-blue-600" />
+                <span>Category List</span>
+              </span>
+            }
+            right={
+              <div className="text-sm text-gray-700">
+                {loading ? "Loading…" : (
+                  <>
+                    Showing <strong>{filtered.length===0?0:start+1}-{Math.min(filtered.length, start+pageSize)}</strong> of <strong>{categories.length}</strong>
+                    {filtered.length!==categories.length && <> (filtered: <strong>{filtered.length}</strong>)</>}
+                  </>
+                )}
+              </div>
+            }
+          />
+
+          <div className="px-3 pb-3">
+            <div className="w-full overflow-x-auto rounded-2xl ring-1 ring-gray-200/60 bg-white/60 backdrop-blur-sm">
+              <table className="w-full text-sm">
+                <thead className="bg-white/80 sticky top-0 z-10">
+                  <tr className="border-b border-gray-200/70">
+                    <th className="text-left font-medium px-4 py-3">Name</th>
+                    {hasActions && <th className="text-center font-medium px-4 py-3">Actions</th>}
+                  </tr>
+                </thead>
+                <tbody>
+                  {paged.length === 0 && !loading && (
+                    <tr>
+                      <td className="px-4 py-10 text-center text-gray-500" colSpan={colSpan}>
+                        No categories found.
+                      </td>
+                    </tr>
+                  )}
+
+                  {paged.map((c) => {
+                    const used = Number(c.products_count || 0) > 0;
+                    return (
+                      <tr key={c.id} className="odd:bg-white/60 even:bg-white/40 hover:bg-blue-50/70 transition-colors">
+                        <td className="px-4 py-3">{c.name}</td>
+                        {hasActions && (
+                          <td className="px-4 py-3">
+                            <div className="flex flex-wrap gap-2 justify-center">
+                              <Guard when={can.update}>
+                                <GlassBtn
+                                  className={`h-9 min-w-[128px] ${tintAmber}`}
+                                  onClick={() => handleEdit(c)}
+                                  title={`Edit ${c.name}`}
+                                  aria-label={`Edit category ${c.name}`}
+                                >
+                                  <span className="inline-flex items-center gap-2">
+                                    <PencilSquareIcon className="w-5 h-5" />
+                                    Edit
+                                  </span>
+                                </GlassBtn>
+                              </Guard>
+
+                              <Guard when={can.delete}>
+                                <GlassBtn
+                                  className={`h-9 min-w-[128px] ${used ? "opacity-50 cursor-not-allowed " + tintGlass : tintRed}`}
+                                  onClick={() =>
+                                    used
+                                      ? toast.error("Cannot delete: category is used by products.")
+                                      : handleDelete(c)
+                                  }
+                                  title={used ? "Cannot delete: category is used by products." : `Delete ${c.name}`}
+                                  aria-label={`Delete category ${c.name}`}
+                                  disabled={used}
+                                >
+                                  <span className="inline-flex items-center gap-2">
+                                    <TrashIcon className="w-5 h-5" />
+                                    Delete
+                                  </span>
+                                </GlassBtn>
+                              </Guard>
+                            </div>
+                          </td>
+                        )}
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Footer toolbar */}
+            <div className="mt-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <span className="text-sm text-gray-700">Page {page} of {pageCount}</span>
+                <div className="flex items-center gap-2">
+                  <GlassBtn className={`h-9 px-3 ${tintGlass}`} onClick={() => setPage(1)} disabled={page === 1}>⏮ First</GlassBtn>
+                  <GlassBtn className={`h-9 px-3 ${tintGlass}`} onClick={() => setPage((p)=>Math.max(1,p-1))} disabled={page===1}>◀ Prev</GlassBtn>
+                  <GlassBtn className={`h-9 px-3 ${tintGlass}`} onClick={() => setPage((p)=>Math.min(pageCount,p+1))} disabled={page===pageCount}>Next ▶</GlassBtn>
+                  <GlassBtn className={`h-9 px-3 ${tintGlass}`} onClick={() => setPage(pageCount)} disabled={page===pageCount}>Last ⏭</GlassBtn>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <label className="text-sm text-gray-600">Rows per page</label>
+                <select
+                  value={pageSize}
+                  onChange={(e)=>setPageSize(Number(e.target.value))}
+                  className="h-9 px-2 rounded-xl bg-white/70 backdrop-blur-sm border border-gray-200/70 ring-1 ring-transparent focus:ring-blue-400/40 shadow-sm focus:outline-none"
+                >
+                  <option value={10}>10</option>
+                  <option value={25}>25</option>
+                  <option value={50}>50</option>
+                </select>
               </div>
             </div>
-
-            <div className="flex items-center justify-end">
-              <button
-                type="button" onClick={handleSave} ref={saveBtnRef}
-                title={(editingId ? "Update" : "Save") + " (Alt+S)"} aria-keyshortcuts="Alt+S"
-                className={`inline-flex items-center justify-center gap-2 px-4 h-10 rounded text-white text-sm min-w-[140px] md:w-44 ${
-                  saving ? "bg-blue-400" : "bg-blue-600 hover:bg-blue-700"
-                }`}
-                disabled={saving || (!can.create && !can.update)}
-              >
-                <CheckCircleIcon className="w-5 h-5" />
-                {editingId ? (saving ? "Updating…" : "Update") : (saving ? "Saving…" : "Save")}
-              </button>
-            </div>
-            <div className="text-[11px] text-gray-500 md:text-right">Shortcut: Alt+S</div>
           </div>
-        </form>
-      </Guard>
-
-      {/* meta */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-2">
-        <div className="text-sm text-gray-600">
-          {loading ? "Loading…" : (
-            <>Showing <strong>{filtered.length===0?0:start+1}-{Math.min(filtered.length, start+pageSize)}</strong> of <strong>{categories.length}</strong>
-              {filtered.length!==categories.length && <> (filtered: <strong>{filtered.length}</strong>)</>}
-            </>
-          )}
-        </div>
-        <div className="flex items-center gap-2">
-          <label className="text-sm text-gray-600">Rows per page</label>
-          <select value={pageSize} onChange={(e)=>setPageSize(Number(e.target.value))}
-                  className="border rounded px-2 h-9 text-sm">
-            <option value={10}>10</option><option value={25}>25</option><option value={50}>50</option>
-          </select>
-        </div>
-      </div>
-
-      {/* table + toolbar */}
-      <div className="w-full overflow-x-auto rounded border">
-        <table className="w-full">
-          <thead className="bg-gray-50 sticky top-0 z-10">
-            {/* Toolbar row (colSpan matches visible columns) */}
-            {(can.import || can.export) && (
-              <tr>
-                <th colSpan={colSpan} className="border p-2">
-                  <div className="flex items-center justify-start gap-2">
-                    <Guard when={can.import}>
-                      <button
-                        onClick={() => setImportOpen(true)}
-                        onKeyDown={(e)=> (e.key==="Enter"||e.key===" ") && (e.preventDefault(), setImportOpen(true))}
-                        className="inline-flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-3 h-9 rounded text-sm"
-                        title="Import Categories (CSV)" aria-label="Import categories from CSV"
-                      >
-                        <ArrowUpTrayIcon className="w-5 h-5" />
-                        Import CSV
-                      </button>
-                    </Guard>
-                    <Guard when={can.export}>
-                      <button
-                        onClick={handleExport} disabled={exporting}
-                        onKeyDown={(e)=> (e.key==="Enter"||e.key===" ") && (e.preventDefault(), handleExport())}
-                        className={`inline-flex items-center gap-2 px-3 h-9 rounded text-sm border ${
-                          exporting ? "bg-gray-200 text-gray-600 cursor-not-allowed"
-                                    : "bg-white hover:bg-gray-50 text-gray-800 border-gray-300"
-                        }`}
-                        title="Export all categories to CSV" aria-label="Export all categories to CSV"
-                      >
-                        <ArrowDownTrayIcon className="w-5 h-5" />
-                        {exporting ? "Exporting…" : "Export CSV"}
-                      </button>
-                    </Guard>
-                  </div>
-                </th>
-              </tr>
-            )}
-
-            {/* column labels */}
-            <tr>
-              <th className="border p-2 text-left">Name</th>
-              {hasActions && <th className="border p-2 text-center">Actions</th>}
-            </tr>
-          </thead>
-
-          <tbody>
-            {paged.length === 0 && !loading && (
-              <tr>
-                <td className="border px-3 py-6 text-center text-gray-500" colSpan={colSpan}>No categories found.</td>
-              </tr>
-            )}
-            {paged.map((c) => {
-              const used = Number(c.products_count || 0) > 0;
-              return (
-                <tr key={c.id} className="odd:bg-white even:bg-gray-50 hover:bg-blue-50 transition-colors">
-                  <td className="border p-2">{c.name}</td>
-                  {hasActions && (
-                    <td className="border p-2">
-                      <div className="flex gap-2 justify-center">
-                        {/* 🔒 Edit */}
-                        <Guard when={can.update}>
-                          <button
-                            onClick={() => handleEdit(c)}
-                            onKeyDown={(e)=>handleButtonKeyDown(e, ()=>handleEdit(c))}
-                            tabIndex={0}
-                            className="bg-yellow-500 text-white px-3 h-9 text-sm rounded inline-flex items-center gap-1"
-                            aria-label={`Edit category ${c.name}`}
-                          >
-                            <PencilSquareIcon className="w-5 h-5" />
-                            Edit
-                          </button>
-                        </Guard>
-
-                        {/* 🔒 Delete */}
-                        <Guard when={can.delete}>
-                          <button
-                            onClick={() =>
-                              used ? toast.error("Cannot delete: category is used by products.")
-                                   : handleDelete(c)
-                            }
-                            onKeyDown={(e)=>handleButtonKeyDown(e, () =>
-                              used ? toast.error("Cannot delete: category is used by products.")
-                                   : handleDelete(c)
-                            )}
-                            tabIndex={0}
-                            disabled={used}
-                            title={used ? "Cannot delete: category is used by products." : "Delete"}
-                            className={`px-3 h-9 text-sm rounded inline-flex items-center gap-1 ${
-                              used ? "bg-gray-300 text-gray-600 cursor-not-allowed" : "bg-red-600 text-white"
-                            }`}
-                            aria-label={`Delete category ${c.name}`}
-                          >
-                            <TrashIcon className="w-5 h-5" />
-                            Delete
-                          </button>
-                        </Guard>
-                      </div>
-                    </td>
-                  )}
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
-
-      {/* pagination */}
-      <div className="mt-4 flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between">
-        <div className="text-sm text-gray-600">Page {page} of {pageCount}</div>
-        <div className="flex items-center gap-2">
-          <button onClick={() => setPage(1)} disabled={page === 1} className="px-3 py-1 border rounded disabled:opacity-50">⏮ First</button>
-          <button onClick={() => setPage((p)=>Math.max(1,p-1))} disabled={page===1} className="px-3 py-1 border rounded disabled:opacity-50">◀ Prev</button>
-          <button onClick={() => setPage((p)=>Math.min(pageCount,p+1))} disabled={page===pageCount} className="px-3 py-1 border rounded disabled:opacity-50">Next ▶</button>
-          <button onClick={() => setPage(pageCount)} disabled={page===pageCount} className="px-3 py-1 border rounded disabled:opacity-50">Last ⏭</button>
-        </div>
+        </GlassCard>
       </div>
 
       {/* Import modal */}

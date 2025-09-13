@@ -1,5 +1,5 @@
 // src/pages/Suppliers.jsx
-import { useState, useEffect, useMemo, useRef } from "react";
+import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import axios from "axios";
 import toast from "react-hot-toast";
 import {
@@ -9,34 +9,32 @@ import {
   TrashIcon,
   ArrowUpTrayIcon,
   ArrowDownTrayIcon,
+  ArrowPathIcon,
+  PlusIcon,
+  BuildingStorefrontIcon,
+  XMarkIcon,
 } from "@heroicons/react/24/solid";
-import {
-  ChevronDoubleLeftIcon,
-  ChevronLeftIcon,
-  ChevronRightIcon,
-  ChevronDoubleRightIcon,
-} from "@heroicons/react/24/outline";
-
 import SupplierImportModal from "../components/SupplierImportModal.jsx";
 import { usePermissions, Guard } from "@/api/usePermissions.js";
 
-// 🧊 glass primitives (note: components, not ui)
+// 🧊 glass primitives (same import path as Categories)
 import {
   GlassCard,
   GlassSectionHeader,
   GlassToolbar,
   GlassInput,
   GlassBtn,
-} from "../components/Glass.jsx";
+} from "@/components/glass.jsx";
 
 export default function Suppliers() {
   const [suppliers, setSuppliers] = useState([]);
   const [form, setForm] = useState({ name: "", address: "", phone: "" });
   const [editingId, setEditingId] = useState(null);
+
   const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [exporting, setExporting] = useState(false);
-  const [saving, setSaving] = useState(false);
 
   // search + pagination
   const [qName, setQName] = useState("");
@@ -49,30 +47,43 @@ export default function Suppliers() {
   const phoneRef = useRef(null);
   const saveBtnRef = useRef(null);
 
-  // 🔒 permissions
+  // 🔒 permissions (same safe fallback shape as Categories)
   const { loading: permsLoading, canFor } = usePermissions();
-  const can = canFor("supplier");
+  const can = useMemo(
+    () =>
+      (typeof canFor === "function" ? canFor("supplier") : null) ?? {
+        view: false,
+        create: false,
+        update: false,
+        delete: false,
+        import: false,
+        export: false,
+      },
+    [canFor]
+  );
 
-  const fetchSuppliers = async () => {
+  useEffect(() => {
+    document.title = "Suppliers - Pharmacy ERP";
+  }, []);
+
+  const fetchSuppliers = useCallback(async () => {
     try {
       setLoading(true);
       const res = await axios.get("/api/suppliers");
       setSuppliers(res.data || []);
     } catch (err) {
-      if (err?.response?.status === 403) {
-        toast.error("You don't have permission to view suppliers.");
-      } else {
-        toast.error("Failed to fetch suppliers");
-      }
+      const status = err?.response?.status;
+      if (status === 403) toast.error("You don't have permission to view suppliers.");
+      else toast.error("Failed to fetch suppliers");
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   // Only fetch after perms loaded AND user can view
   useEffect(() => {
     if (!permsLoading && can.view) fetchSuppliers();
-  }, [permsLoading, can.view]);
+  }, [permsLoading, can.view, fetchSuppliers]);
 
   // focus name on edit/add
   useEffect(() => { nameRef.current?.focus(); }, [editingId]);
@@ -106,7 +117,7 @@ export default function Suppliers() {
       return;
     }
     if (saving) return;
-    if (!form.name.trim()) {
+    if (!(form.name || "").trim()) {
       toast.error("Name is required");
       nameRef.current?.focus();
       return;
@@ -124,7 +135,8 @@ export default function Suppliers() {
       resetForm();
       fetchSuppliers();
     } catch (err) {
-      if (err?.response?.status === 403) toast.error("You don't have permission to save suppliers.");
+      const status = err?.response?.status;
+      if (status === 403) toast.error("You don't have permission to save suppliers.");
       else toast.error(err?.response?.data?.message || "Save failed");
     } finally {
       setSaving(false);
@@ -141,19 +153,17 @@ export default function Suppliers() {
     if (!can.delete) return toast.error("You don't have permission to delete suppliers.");
     try {
       await axios.delete(`/api/suppliers/${s.id}`);
-      setSuppliers(prev => prev.filter(x => Number(x.id) !== Number(s.id)));
+      setSuppliers((prev) => prev.filter((x) => Number(x.id) !== Number(s.id)));
       if (Number(editingId) === Number(s.id)) resetForm();
       toast.success("Supplier deleted");
     } catch (err) {
-      if (err?.response?.status === 403) toast.error("You don't have permission to delete suppliers.");
+      const status = err?.response?.status;
+      if (status === 403) toast.error("You don't have permission to delete suppliers.");
       else toast.error(err?.response?.data?.message || "Delete failed");
     }
   };
 
-  const handleButtonKeyDown = (e, action) => {
-    if (e.key === "Enter" || e.key === " ") { e.preventDefault(); action(); }
-  };
-
+  // export
   const handleExport = async () => {
     if (!can.export) return toast.error("You don't have permission to export suppliers.");
     try {
@@ -167,7 +177,8 @@ export default function Suppliers() {
       a.href = url; a.download = filename; document.body.appendChild(a); a.click(); a.remove();
       window.URL.revokeObjectURL(url);
     } catch (e) {
-      if (e?.response?.status === 403) toast.error("You don't have permission to export suppliers.");
+      const status = e?.response?.status;
+      if (status === 403) toast.error("You don't have permission to export suppliers.");
       else toast.error("Export failed");
     } finally {
       setExporting(false);
@@ -192,295 +203,358 @@ export default function Suppliers() {
 
   // While perms load
   if (permsLoading) return <div className="p-6">Loading…</div>;
-
   // No view permission → hide everything
-  if (!can.view) {
-    return (
-      <div className="p-6 text-sm text-gray-700">
-        You don’t have permission to view suppliers.
-      </div>
-    );
-  }
+  if (!can.view) return <div className="p-6 text-sm text-gray-700">You don’t have permission to view suppliers.</div>;
+
+  // 🧊 iOS-tinted glass (same palette used in Categories)
+  const tintBlue   = "bg-blue-500/85 text-white shadow-[0_6px_20px_-6px_rgba(37,99,235,0.45)] ring-1 ring-white/20 hover:bg-blue-500/95";
+  const tintIndigo = "bg-indigo-500/85 text-white shadow-[0_6px_20px_-6px_rgba(99,102,241,0.45)] ring-1 ring-white/20 hover:bg-indigo-500/95";
+  const tintSlate  = "bg-slate-900/80 text-white shadow-[0_6px_20px_-6px_rgba(15,23,42,0.45)] ring-1 ring-white/15 hover:bg-slate-900/90";
+  const tintAmber  = "bg-amber-500/85 text-white shadow-[0_6px_20px_-6px_rgba(245,158,11,0.45)] ring-1 ring-white/20 hover:bg-amber-500/95";
+  const tintRed    = "bg-rose-500/85 text-white shadow-[0_6px_20px_-6px_rgba(244,63,94,0.45)] ring-1 ring-white/20 hover:bg-rose-500/95";
+  const tintGlass  = "bg-white/60 text-slate-700 ring-1 ring-white/30 hover:bg-white/75";
 
   return (
-    <div className="p-4 space-y-4 bg-gradient-to-br from-slate-50 via-white to-blue-50/30">
-      {/* Header + Search */}
+    <div className="p-4 md:p-6 space-y-4">
+      {/* ===== Header card (Search + Import/Export + Refresh) — mirrors Categories ===== */}
       <GlassCard>
         <GlassSectionHeader
-          title="Suppliers"
-          right={
-            <div className="relative w-72">
-              <MagnifyingGlassIcon className="w-5 h-5 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-              <GlassInput
-                value={qName}
-                onChange={(e) => setQName(e.target.value)}
-                placeholder="Search supplier by name…"
-                className="pl-9 w-full"
-                aria-label="Search suppliers"
-              />
-            </div>
+          title={
+            <span className="inline-flex items-center gap-2">
+              <BuildingStorefrontIcon className="w-5 h-5 text-blue-600" />
+              <span>Suppliers</span>
+            </span>
           }
-        />
-      </GlassCard>
-
-      {/* Form (create/update) */}
-      <Guard when={can.create || can.update}>
-        <GlassCard>
-          <GlassSectionHeader title={editingId ? "Edit Supplier" : "Add Supplier"} />
-          <GlassToolbar className="grid grid-cols-1 md:grid-cols-3 gap-3">
-            <div className="flex-1 min-w-[180px]">
-              <label className="block text-xs text-gray-700 mb-1">Name</label>
-              <GlassInput
-                type="text"
-                placeholder="Name"
-                value={form.name}
-                onChange={(e) => setForm({ ...form, name: e.target.value })}
-                onKeyDown={(e) => onEnterFocusNext(e, addressRef)}
-                ref={nameRef}
-                required
-                disabled={!can.create && !editingId}
-              />
-            </div>
-
-            <div className="flex-1 min-w-[220px]">
-              <label className="block text-xs text-gray-700 mb-1">Address</label>
-              <GlassInput
-                type="text"
-                placeholder="Address"
-                value={form.address}
-                onChange={(e) => setForm({ ...form, address: e.target.value })}
-                onKeyDown={(e) => onEnterFocusNext(e, phoneRef)}
-                ref={addressRef}
-              />
-            </div>
-
-            <div className="w-full md:w-56">
-              <label className="block text-xs text-gray-700 mb-1">Phone</label>
-              <GlassInput
-                type="text"
-                placeholder="Phone"
-                value={form.phone}
-                onChange={(e) => setForm({ ...form, phone: e.target.value })}
-                onKeyDown={(e) => onEnterFocusNext(e, saveBtnRef)}
-                ref={phoneRef}
-              />
-            </div>
-          </GlassToolbar>
-
-          <div className="px-4 pb-4 flex items-center justify-end gap-2">
-            <GlassBtn
-              type="button"
-              onClick={resetForm}
-              variant="ghost"
-              className="min-w-[110px]"
-              disabled={saving}
-            >
-              Clear
-            </GlassBtn>
-            <GlassBtn
-              type="button"
-              onClick={handleSave}
-              ref={saveBtnRef}
-              title="Save (Alt+S)"
-              aria-keyshortcuts="Alt+S"
-              variant="primary"
-              className="min-w-[140px] inline-flex items-center justify-center gap-2"
-              disabled={saving || (!can.create && !can.update)}
-            >
-              <CheckCircleIcon className="w-5 h-5" />
-              {editingId ? (saving ? "Updating…" : "Update") : (saving ? "Saving…" : "Save")}
-            </GlassBtn>
-          </div>
-          <div className="text-[11px] text-gray-500 px-4 pb-4 md:text-right">Shortcut: Alt+S</div>
-        </GlassCard>
-      </Guard>
-
-      {/* Meta + page size */}
-      <GlassCard>
-        <div className="px-4 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-          <div className="text-sm text-gray-700">
-            {loading ? "Loading…" : (
-              <>
-                Showing <strong>{filtered.length===0?0:start+1}-{Math.min(filtered.length, start+pageSize)}</strong> of <strong>{suppliers.length}</strong>
-                {filtered.length!==suppliers.length && <> (filtered: <strong>{filtered.length}</strong>)</>}
-              </>
-            )}
-          </div>
-          <div className="flex items-center gap-2">
-            <label className="text-sm text-gray-700">Rows per page</label>
-            <select
-              value={pageSize}
-              onChange={(e)=>setPageSize(Number(e.target.value))}
-              className="h-9 px-2 rounded-xl bg-white/70 backdrop-blur-sm border border-gray-200/70 text-sm"
-            >
-              <option value={10}>10</option>
-              <option value={25}>25</option>
-              <option value={50}>50</option>
-            </select>
-          </div>
-        </div>
-      </GlassCard>
-
-      {/* Table + toolbar */}
-      <GlassCard>
-        <GlassSectionHeader
-          title="All Suppliers"
           right={
             <div className="flex items-center gap-2">
-              <Guard when={can.import}>
-                <GlassBtn
-                  onClick={() => setImportOpen(true)}
-                  variant="primary"
-                  title="Import Suppliers (CSV)"
-                  aria-label="Import suppliers from CSV"
-                  className="inline-flex items-center gap-2"
-                >
-                  <ArrowUpTrayIcon className="w-5 h-5" />
-                  Import CSV
-                </GlassBtn>
-              </Guard>
-              <Guard when={can.export}>
-                <GlassBtn
-                  onClick={handleExport}
-                  disabled={exporting}
-                  variant="ghost"
-                  className="inline-flex items-center gap-2"
-                  title="Export all suppliers to CSV"
-                  aria-label="Export all suppliers to CSV"
-                >
-                  <ArrowDownTrayIcon className="w-5 h-5" />
-                  {exporting ? "Exporting…" : "Export CSV"}
-                </GlassBtn>
-              </Guard>
+              <GlassBtn
+                className={`h-10 min-w-[120px] ${tintSlate}`}
+                onClick={fetchSuppliers}
+                title="Refresh"
+                aria-label="Refresh list"
+              >
+                <span className="inline-flex items-center gap-2">
+                  <ArrowPathIcon className="w-5 h-5" />
+                  Refresh
+                </span>
+              </GlassBtn>
             </div>
           }
         />
+        <GlassToolbar className="gap-3">
+          <div className="relative w-full md:w-96">
+            <MagnifyingGlassIcon className="w-5 h-5 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+            <GlassInput
+              value={qName}
+              onChange={(e) => setQName(e.target.value)}
+              placeholder="Search supplier by name…"
+              className="pl-10 w-full"
+              aria-label="Search suppliers"
+            />
+          </div>
 
-        {/* Scroll region so sticky header behaves; ensure contrast */}
-        <div className="max-h-[60vh] overflow-auto">
-          <table className="w-full text-sm text-gray-900">
-            <thead className="sticky top-0 bg-white/90 backdrop-blur-sm z-10 border-b border-gray-200/70">
-              <tr className="text-left">
-                <th className="px-3 py-2 font-medium">Name</th>
-                <th className="px-3 py-2 font-medium">Address</th>
-                <th className="px-3 py-2 font-medium">Phone</th>
-                {(can.update || can.delete) && (
-                  <th className="px-3 py-2 font-medium text-center">Actions</th>
-                )}
-              </tr>
-            </thead>
+          <div className="ml-auto flex items-center gap-2">
+            <Guard when={can.import}>
+              <GlassBtn
+                className={`h-10 min-w-[150px] ${tintIndigo}`}
+                onClick={() => setImportOpen(true)}
+                title="Import Suppliers (CSV)"
+                aria-label="Import suppliers from CSV"
+              >
+                <span className="inline-flex items-center gap-2">
+                  <ArrowUpTrayIcon className="w-5 h-5" />
+                  Import CSV
+                </span>
+              </GlassBtn>
+            </Guard>
 
-            <tbody>
-              {paged.length === 0 && !loading && (
-                <tr>
-                  <td
-                    className="px-3 py-6 text-center text-gray-600"
-                    colSpan={(can.update || can.delete) ? 4 : 3}
-                  >
-                    No suppliers found.
-                  </td>
-                </tr>
-              )}
-
-              {paged.map((s, idx) => {
-                const used = Number(s.products_count || 0) > 0;
-                return (
-                  <tr
-                    key={s.id ?? idx}
-                    className="odd:bg-white/90 even:bg-white/70 hover:bg-blue-50 transition-colors"
-                  >
-                    <td className="px-3 py-2">{s.name}</td>
-                    <td className="px-3 py-2">{s.address}</td>
-                    <td className="px-3 py-2">{s.phone}</td>
-
-                    {(can.update || can.delete) && (
-                      <td className="px-3 py-2">
-                        <div className="flex gap-2 justify-center">
-                          <Guard when={can.update}>
-                            <GlassBtn
-                              onClick={() => handleEdit(s)}
-                              onKeyDown={(e) => handleButtonKeyDown(e, () => handleEdit(s))}
-                              className="inline-flex items-center gap-1"
-                            >
-                              <PencilSquareIcon className="w-5 h-5" />
-                              Edit
-                            </GlassBtn>
-                          </Guard>
-
-                          <Guard when={can.delete}>
-                            <GlassBtn
-                              onClick={() =>
-                                used
-                                  ? toast.error("Cannot delete: supplier is used by products.")
-                                  : handleDelete(s)
-                              }
-                              onKeyDown={(e) =>
-                                handleButtonKeyDown(e, () =>
-                                  used
-                                    ? toast.error("Cannot delete: supplier is used by products.")
-                                    : handleDelete(s)
-                                )
-                              }
-                              title={used ? "Cannot delete: supplier is used by products." : "Delete"}
-                              className={`inline-flex items-center gap-1 ${used ? "opacity-60 cursor-not-allowed" : ""}`}
-                              disabled={used}
-                            >
-                              <TrashIcon className="w-5 h-5" />
-                              Delete
-                            </GlassBtn>
-                          </Guard>
-                        </div>
-                      </td>
-                    )}
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+            <Guard when={can.export}>
+              <GlassBtn
+                className={`h-10 min-w-[150px] ${tintGlass}`}
+                onClick={handleExport}
+                disabled={exporting}
+                title="Export all suppliers to CSV"
+                aria-label="Export all suppliers to CSV"
+              >
+                <span className="inline-flex items-center gap-2">
+                  <ArrowDownTrayIcon className="w-5 h-5" />
+                  {exporting ? "Exporting…" : "Export CSV"}
+                </span>
+              </GlassBtn>
+            </Guard>
+          </div>
+        </GlassToolbar>
       </GlassCard>
 
-      {/* Pagination */}
-      <div className="flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between">
-        <div className="text-sm text-gray-700 px-1">Page {page} of {pageCount}</div>
-        <div className="flex items-center gap-2">
-          <GlassBtn
-            onClick={() => setPage(1)}
-            disabled={page === 1}
-            title="First"
-            className="inline-flex items-center gap-1 disabled:opacity-50"
-          >
-            <ChevronDoubleLeftIcon className="w-4 h-4" />
-            First
-          </GlassBtn>
-          <GlassBtn
-            onClick={() => setPage((p)=>Math.max(1,p-1))}
-            disabled={page === 1}
-            title="Previous"
-            className="inline-flex items-center gap-1 disabled:opacity-50"
-          >
-            <ChevronLeftIcon className="w-4 h-4" />
-            Prev
-          </GlassBtn>
-          <GlassBtn
-            onClick={() => setPage((p)=>Math.min(pageCount,p+1))}
-            disabled={page === pageCount}
-            title="Next"
-            className="inline-flex items-center gap-1 disabled:opacity-50"
-          >
-            Next
-            <ChevronRightIcon className="w-4 h-4" />
-          </GlassBtn>
-          <GlassBtn
-            onClick={() => setPage(pageCount)}
-            disabled={page === pageCount}
-            title="Last"
-            className="inline-flex items-center gap-1 disabled:opacity-50"
-          >
-            Last
-            <ChevronDoubleRightIcon className="w-4 h-4" />
-          </GlassBtn>
-        </div>
+      {/* ===== Grid: Left form / Right list — same flow as Categories ===== */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        {/* Left: Form card */}
+        <Guard when={can.create || (can.update && editingId !== null)}>
+          <GlassCard className="lg:col-span-1">
+            <GlassSectionHeader
+              title={
+                <span className="inline-flex items-center gap-2">
+                  {editingId ? (
+                    <>
+                      <PencilSquareIcon className="w-5 h-5 text-amber-600" />
+                      <span>Edit Supplier</span>
+                    </>
+                  ) : (
+                    <>
+                      <PlusIcon className="w-5 h-5 text-blue-600" />
+                      <span>Add Supplier</span>
+                    </>
+                  )}
+                </span>
+              }
+              right={
+                editingId ? (
+                  <GlassBtn className={`h-9 px-3 ${tintGlass}`} onClick={resetForm} title="Cancel editing">
+                    <span className="inline-flex items-center gap-2">
+                      <XMarkIcon className="w-5 h-5" />
+                      Cancel
+                    </span>
+                  </GlassBtn>
+                ) : null
+              }
+            />
+            <div className="px-4 pb-4 pt-2">
+              <form onSubmit={(e) => e.preventDefault()} className="space-y-3">
+                <div>
+                  <label className="block text-xs text-gray-700 mb-1">Name</label>
+                  <GlassInput
+                    type="text"
+                    placeholder="Name"
+                    value={form.name}
+                    onChange={(e) => setForm({ ...form, name: e.target.value })}
+                    onKeyDown={(e) => onEnterFocusNext(e, addressRef)}
+                    ref={nameRef}
+                    required
+                    disabled={!can.create && !editingId}
+                    className="w-full"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs text-gray-700 mb-1">Address</label>
+                  <GlassInput
+                    type="text"
+                    placeholder="Address"
+                    value={form.address}
+                    onChange={(e) => setForm({ ...form, address: e.target.value })}
+                    onKeyDown={(e) => onEnterFocusNext(e, phoneRef)}
+                    ref={addressRef}
+                    className="w-full"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs text-gray-700 mb-1">Phone</label>
+                  <GlassInput
+                    type="text"
+                    placeholder="Phone"
+                    value={form.phone}
+                    onChange={(e) => setForm({ ...form, phone: e.target.value })}
+                    onKeyDown={(e) => onEnterFocusNext(e, saveBtnRef)}
+                    ref={phoneRef}
+                    className="w-full"
+                  />
+                </div>
+
+                <div className="flex items-center justify-end gap-2">
+                  <GlassBtn
+                    type="button"
+                    onClick={resetForm}
+                    className={`min-w-[110px] ${tintGlass}`}
+                    disabled={saving}
+                  >
+                    Clear
+                  </GlassBtn>
+                  <GlassBtn
+                    type="button"
+                    onClick={handleSave}
+                    ref={saveBtnRef}
+                    title={(editingId ? "Update" : "Save") + " (Alt+S)"}
+                    aria-keyshortcuts="Alt+S"
+                    className={`h-10 min-w-[168px] ${
+                      editingId ? tintAmber : tintBlue
+                    } disabled:opacity-60`}
+                    disabled={saving || (!can.create && !can.update)}
+                  >
+                    <span className="inline-flex items-center gap-2">
+                      <CheckCircleIcon className="w-5 h-5" />
+                      {editingId ? (saving ? "Updating…" : "Update") : (saving ? "Saving…" : "Save")}
+                    </span>
+                  </GlassBtn>
+                </div>
+
+                <div className="text-[11px] text-gray-500 text-right">Shortcut: Alt+S</div>
+              </form>
+            </div>
+          </GlassCard>
+        </Guard>
+
+        {/* Right: List Card */}
+        <GlassCard className={`lg:col-span-${(can.create || can.update) ? "2" : "3"}`}>
+          <GlassSectionHeader
+            title={
+              <span className="inline-flex items-center gap-2">
+                <BuildingStorefrontIcon className="w-5 h-5 text-blue-600" />
+                <span>Supplier List</span>
+              </span>
+            }
+            right={
+              <div className="text-sm text-gray-700">
+                {loading ? (
+                  "Loading…"
+                ) : (
+                  <>
+                    Showing{" "}
+                    <strong>
+                      {filtered.length === 0 ? 0 : start + 1}-{Math.min(filtered.length, start + pageSize)}
+                    </strong>{" "}
+                    of <strong>{suppliers.length}</strong>
+                    {filtered.length !== suppliers.length && (
+                      <> (filtered: <strong>{filtered.length}</strong>)</>
+                    )}
+                  </>
+                )}
+              </div>
+            }
+          />
+
+          {/* Table */}
+          <div className="px-3 pb-3">
+            <div className="w-full overflow-x-auto rounded-2xl ring-1 ring-gray-200/60 bg-white/60 backdrop-blur-sm">
+              <table className="w-full text-sm text-gray-900">
+                <thead className="sticky top-0 bg-white/85 backdrop-blur-sm z-10 border-b border-gray-200/70">
+                  <tr className="text-left">
+                    <th className="px-4 py-3 font-medium">Name</th>
+                    <th className="px-4 py-3 font-medium">Address</th>
+                    <th className="px-4 py-3 font-medium">Phone</th>
+                    {(can.update || can.delete) && (
+                      <th className="px-4 py-3 font-medium text-center">Actions</th>
+                    )}
+                  </tr>
+                </thead>
+
+                <tbody>
+                  {paged.length === 0 && !loading && (
+                    <tr>
+                      <td className="px-4 py-10 text-center text-gray-600" colSpan={(can.update || can.delete) ? 4 : 3}>
+                        No suppliers found.
+                      </td>
+                    </tr>
+                  )}
+
+                  {paged.map((s) => {
+                    const used = Number(s.products_count || 0) > 0;
+                    return (
+                      <tr key={s.id} className="odd:bg-white/60 even:bg-white/40 hover:bg-blue-50/70 transition-colors">
+                        <td className="px-4 py-3">{s.name}</td>
+                        <td className="px-4 py-3">{s.address}</td>
+                        <td className="px-4 py-3">{s.phone}</td>
+
+                        {(can.update || can.delete) && (
+                          <td className="px-4 py-3">
+                            <div className="flex flex-wrap gap-2 justify-center">
+                              <Guard when={can.update}>
+                                <GlassBtn
+                                  onClick={() => handleEdit(s)}
+                                  className={`h-9 min-w-[128px] ${tintAmber}`}
+                                  title={`Edit ${s.name}`}
+                                  aria-label={`Edit supplier ${s.name}`}
+                                >
+                                  <span className="inline-flex items-center gap-2">
+                                    <PencilSquareIcon className="w-5 h-5" />
+                                    Edit
+                                  </span>
+                                </GlassBtn>
+                              </Guard>
+
+                              <Guard when={can.delete}>
+                                <GlassBtn
+                                  onClick={() =>
+                                    used
+                                      ? toast.error("Cannot delete: supplier is used by products.")
+                                      : handleDelete(s)
+                                  }
+                                  className={`h-9 min-w-[128px] ${
+                                    used ? "opacity-50 cursor-not-allowed " + tintGlass : tintRed
+                                  }`}
+                                  title={
+                                    used
+                                      ? "Cannot delete: supplier is used by products."
+                                      : `Delete ${s.name}`
+                                  }
+                                  aria-label={`Delete supplier ${s.name}`}
+                                  disabled={used}
+                                >
+                                  <span className="inline-flex items-center gap-2">
+                                    <TrashIcon className="w-5 h-5" />
+                                    Delete
+                                  </span>
+                                </GlassBtn>
+                              </Guard>
+                            </div>
+                          </td>
+                        )}
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            {/* ===== Footer toolbar (pagination + page size) — mirrors Categories ===== */}
+            <div className="mt-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <div className="text-sm text-gray-700">Page {page} of {pageCount}</div>
+              <div className="flex items-center gap-2">
+                <GlassBtn
+                  className={`h-9 px-3 ${tintGlass}`}
+                  onClick={() => setPage(1)}
+                  disabled={page === 1}
+                >
+                  ⏮ First
+                </GlassBtn>
+                <GlassBtn
+                  className={`h-9 px-3 ${tintGlass}`}
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                  disabled={page === 1}
+                >
+                  ◀ Prev
+                </GlassBtn>
+                <GlassBtn
+                  className={`h-9 px-3 ${tintGlass}`}
+                  onClick={() => setPage((p) => Math.min(pageCount, p + 1))}
+                  disabled={page === pageCount}
+                >
+                  Next ▶
+                </GlassBtn>
+                <GlassBtn
+                  className={`h-9 px-3 ${tintGlass}`}
+                  onClick={() => setPage(pageCount)}
+                  disabled={page === pageCount}
+                >
+                  Last ⏭
+                </GlassBtn>
+
+                <div className="ml-2 flex items-center gap-2">
+                  <label className="text-sm text-gray-600">Rows per page</label>
+                  <select
+                    value={pageSize}
+                    onChange={(e) => setPageSize(Number(e.target.value))}
+                    className="h-9 px-2 rounded-xl bg-white/70 backdrop-blur-sm border border-gray-200/70 ring-1 ring-transparent focus:ring-blue-400/40 shadow-sm focus:outline-none text-sm"
+                  >
+                    <option value={10}>10</option>
+                    <option value={25}>25</option>
+                    <option value={50}>50</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+          </div>
+        </GlassCard>
       </div>
 
       {/* Import modal */}

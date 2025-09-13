@@ -77,7 +77,7 @@ export default function DashboardLayout({ children }) {
 
       {/* Main content: bottom-right cell; independent scroll */}
       <main className="row-start-2 col-start-2 min-h-0 overflow-y-auto">
-        <div className="p-4">
+        <div className="p-0">
           <Toaster position="top-right" reverseOrder={false} />
           {children}
         </div>
