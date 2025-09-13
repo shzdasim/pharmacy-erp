@@ -81,9 +81,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('products/{product}/batches', [BatchController::class, 'index']);
     Route::get('products/available-quantity', [ProductController::class, 'availableQuantity']);
     Route::patch('/products/bulk-update-meta', [ProductController::class, 'bulkUpdateMeta']);
-    Route::get('/products', [ProductController::class, 'index']); // policy: viewAny
-    Route::post('/products', [ProductController::class, 'store'])
-        ->middleware('can:product.create');
+    Route::apiResource('products', ProductController::class);
 
     Route::get('/products/{id}', [ProductController::class, 'show']);  // policy: view(model)
     Route::post('/products/{id}', [ProductController::class, 'update']) // method spoof PUT
