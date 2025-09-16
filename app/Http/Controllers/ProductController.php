@@ -45,12 +45,13 @@ class ProductController extends Controller
     }
 
     if ($q !== '') {
-        $query->where(function (Builder $b) use ($q) {
-            $b->where('name', 'like', "%{$q}%")
-              ->orWhere('product_code', 'like', "%{$q}%")
-              ->orWhere('barcode', 'like', "%{$q}%");
-        });
-    }
+    $query->where(function (Builder $b) use ($q) {
+        $pattern = $q.'%'; // starts-with
+        $b->where('name', 'like', $pattern)
+          ->orWhere('product_code', 'like', $pattern)
+          ->orWhere('barcode', 'like', $pattern);
+    });
+}
 
     return response()->json($query->limit($limit)->get());
 }

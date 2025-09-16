@@ -116,10 +116,15 @@ const ProductSearchInput = forwardRef(
 
     // Local filter (fallback if remote not used)
     const filtered = useMemo(() => {
-      const q = (search || "").toLowerCase().trim();
-      if (!q) return items;
-      return items.filter((p) => (p?.name || "").toLowerCase().includes(q));
-    }, [items, search]);
+  const q = (search || "").toLowerCase().trim();
+  if (!q) return items;
+
+  const starts = (val) => (val ?? "").toString().toLowerCase().startsWith(q);
+  return items.filter((p) =>
+    starts(p?.name) || starts(p?.product_code) || starts(p?.barcode)
+  );
+}, [items, search]);
+
 
     // Helpers for columns
     const getPackSize = (p) => p?.pack_size ?? p?.packSize ?? p?.packsize ?? "";
