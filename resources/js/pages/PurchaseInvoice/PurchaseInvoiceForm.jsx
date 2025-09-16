@@ -1070,7 +1070,7 @@ const focusAndSelect = (el) => {
         <table className="w-full border-collapse text-xs">
           <tbody>
             <tr>
-              <td className="border p-1 w-1/6">
+              <td className="border p-1 w-1/8">
                 <label className="block text-[10px]">Tax %</label>
                 <input
                   ref={taxPercentageRef}
@@ -1087,7 +1087,7 @@ const focusAndSelect = (el) => {
                   className="border rounded w-full p-1 h-7 text-xs"
                 />
               </td>
-              <td className="border p-1 w-1/6">
+              <td className="border p-1 w-1/8">
                 <label className="block text-[10px]">Tax Amount</label>
                 <input
                   type="text"
@@ -1097,7 +1097,7 @@ const focusAndSelect = (el) => {
                   className="border rounded w-full p-1 h-7 text-xs"
                 />
               </td>
-              <td className="border p-1 w-1/6">
+              <td className="border p-1 w-1/8">
                 <label className="block text-[10px]">Discount %</label>
                 <input
                   ref={discountPercentageRef}
@@ -1114,7 +1114,7 @@ const focusAndSelect = (el) => {
                   className="border rounded w-full p-1 h-7 text-xs"
                 />
               </td>
-              <td className="border p-1 w-1/6">
+              <td className="border p-1 w-1/8">
                 <label className="block text-[10px]">Discount Amount</label>
                 <input
                   type="text"
@@ -1124,7 +1124,7 @@ const focusAndSelect = (el) => {
                   className="border rounded w-full p-1 h-7 text-xs"
                 />
               </td>
-              <td className="border p-1 w-1/6">
+              <td className="border p-1 w-1/8">
                 <label className="block text-[10px]">Total Amount</label>
                 <input
                   type="number"
@@ -1134,7 +1134,7 @@ const focusAndSelect = (el) => {
                   className="border rounded w-full p-1 h-7 text-xs bg-gray-100"
                 />
               </td>
-              <td className="border p-1 w-1/6">
+              <td className="border p-1 w-1/8">
               <label className="block text-[10px]">Total Paid</label>
               <input
                 type="text"
@@ -1151,7 +1151,8 @@ const focusAndSelect = (el) => {
                   }}
                   className="border rounded w-full p-1 h-7 text-xs"
                 />
-                <td className="border p-1 w-1/6">
+              </td>
+              <td className="border p-1 w-1/8">
                 <label className="block text-[10px]">Remaining</label>
                 <input
                   type="number"
@@ -1161,15 +1162,14 @@ const focusAndSelect = (el) => {
                   className="border rounded w-full p-1 h-7 text-xs bg-gray-100"
                 />
                 </td>
-              </td>
-              <td className="border p-1 text-center align-middle">
+              <td className="border p-1 w-1/8 text-center align-middle">
                 <button
                   ref={saveButtonRef}
                   type="button"
                   onClick={handleSubmit}
-                  className="bg-green-600 text-white px-8 py-3 rounded text-sm hover:bg-green-700 transition duration-200"
+                  className="bg-green-600 text-white px-9 py-2 rounded text-sm hover:bg-green-700 transition duration-200"
                 >
-                  {invoiceId ? "Update Invoice" : "Create Invoice"}
+                  {invoiceId ? "Update " : "Save"}
                 </button>
               </td>
             </tr>
