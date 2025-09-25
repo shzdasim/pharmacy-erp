@@ -150,15 +150,15 @@ export default function SaleReturnForm({ returnId, initialData, onSuccess }) {
 
   const [customers, setCustomers] = useState([]);
   const refreshProducts = async (q = "") => {
-  // If a sale invoice is selected, keep products limited to invoice items
-  if (form.sale_invoice_id) return;
-  try {
-    const { data } = await axios.get("/api/products/search", { params: { q, limit: 30 } });
-    setProducts(Array.isArray(data?.data) ? data.data : Array.isArray(data) ? data : []);
-  } catch (e) {}
-};
+    // If a sale invoice is selected, keep products limited to invoice items
+    if (form.sale_invoice_id) return;
+    try {
+      const { data } = await axios.get("/api/products/search", { params: { q, limit: 30 } });
+      setProducts(Array.isArray(data?.data) ? data.data : Array.isArray(data) ? data : []);
+    } catch (e) {}
+  };
 
-const [catalogProducts, setCatalogProducts] = useState([]);
+  const [catalogProducts, setCatalogProducts] = useState([]);
   const [products, setProducts] = useState([]);
   const [saleInvoices, setSaleInvoices] = useState([]);
   const [invoiceItems, setInvoiceItems] = useState([]);
@@ -495,7 +495,7 @@ const [catalogProducts, setCatalogProducts] = useState([]);
       // open mode
       unit_sale_price = await fetchProductUnitPrice(pid);
       item_discount_percentage = toNum(newItems[row]?.item_discount_percentage);
-      unit_sale_quantity = await fetchProductAvailableQty(pid); // Available Qty
+      unit_sale_quantity = await fetchProductAvailableQty(pid); // Available Qty (just for reference)
     }
 
     newItems[row] = recalcItem({
@@ -595,8 +595,8 @@ const [catalogProducts, setCatalogProducts] = useState([]);
     const v = raw === "" ? "" : Number(raw);
     const newItems = [...form.items];
 
-    // validation: qty cannot exceed allowed (unit_sale_quantity used for both modes)
-    if (field === "unit_return_quantity") {
+    // ✅ Only enforce cap in invoice-based returns
+    if (field === "unit_return_quantity" && form.sale_invoice_id) {
       const allowed = toNum(newItems[row].unit_sale_quantity);
       const prevQty = toNum(newItems[row].unit_return_quantity);
       const nextQty = toNum(v);
@@ -644,7 +644,7 @@ const [catalogProducts, setCatalogProducts] = useState([]);
         return;
       }
 
-      // Validations: duplicates & qty
+      // Validations: duplicates & qty (qty cap only for invoice-based returns)
       const seenProducts = new Set();
       const seenPairs = new Set();
       for (let i = 0; i < form.items.length; i++) {
@@ -670,11 +670,13 @@ const [catalogProducts, setCatalogProducts] = useState([]);
           seenPairs.add(keyPB);
         }
 
-        // qty > allowed
-        const allowed = toNum(it.unit_sale_quantity);
-        if (toNum(it.unit_return_quantity) > allowed) {
-          toast.error(`Row ${i + 1}: Return qty exceeds allowed (${allowed}).`);
-          return;
+        // qty > allowed — enforce only for invoice mode
+        if (form.sale_invoice_id) {
+          const allowed = toNum(it.unit_sale_quantity);
+          if (toNum(it.unit_return_quantity) > allowed) {
+            toast.error(`Row ${i + 1}: Return qty exceeds allowed (${allowed}).`);
+            return;
+          }
         }
       }
 
@@ -912,7 +914,9 @@ const [catalogProducts, setCatalogProducts] = useState([]);
             </thead>
             <tbody>
               {form.items.map((item, i) => {
-                const exceeds = toNum(item.unit_return_quantity) > toNum(item.unit_sale_quantity);
+                const exceeds = form.sale_invoice_id
+                  ? toNum(item.unit_return_quantity) > toNum(item.unit_sale_quantity)
+                  : false; // ✅ no visual cap in open mode
                 return (
                   <tr key={item.id} className="text-center">
                     <td className="border">
@@ -1103,4 +1107,3 @@ const [catalogProducts, setCatalogProducts] = useState([]);
     </div>
   );
 }
- 

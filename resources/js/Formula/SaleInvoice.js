@@ -11,11 +11,11 @@ export function recalcItem(item, changedField = null) {
   const packSize = n(item.pack_size);
   const qty = n(item.quantity);        // units
   const price = n(item.price);         // unit price
-  const discPct = n(item.item_discount_percentage);
+  const discPct = n(item.item_discount_percentage); // may be negative
 
   // derived
   const gross = qty * price;
-  const itemDisc = (gross * discPct) / 100;
+  const itemDisc = (gross * discPct) / 100; // negative disc increases subtotal
   const subTotal = gross - itemDisc;
 
   return {
@@ -33,19 +33,19 @@ export function recalcFooter(form, changedField = null) {
   const items = form.items || [];
   const grossSum = items.reduce((sum, it) => sum + n(it.quantity) * n(it.price), 0);
   const itemDiscSum = items.reduce((sum, it) => {
-    const discPct = n(it.item_discount_percentage);
+    const discPct = n(it.item_discount_percentage); // may be negative
     const gross = n(it.quantity) * n(it.price);
     return sum + (gross * discPct) / 100;
   }, 0);
 
-  let discountPct = n(form.discount_percentage);
+  let discountPct = n(form.discount_percentage); // may be negative
   let discountAmt = n(form.discount_amount);
 
   // If % changed, recompute amount; if amount changed, recompute %
   if (changedField === "discount_percentage") {
-    discountAmt = (grossSum * discountPct) / 100;
+    discountAmt = (grossSum * discountPct) / 100; // negative % => negative amount
   } else if (changedField === "discount_amount") {
-    discountPct = grossSum > 0 ? (discountAmt / grossSum) * 100 : 0;
+    discountPct = grossSum !== 0 ? (discountAmt / grossSum) * 100 : 0;
   }
 
   const taxableBase = grossSum - itemDiscSum - discountAmt;
@@ -55,10 +55,11 @@ export function recalcFooter(form, changedField = null) {
   if (changedField === "tax_percentage") {
     taxAmt = (taxableBase * taxPct) / 100;
   } else if (changedField === "tax_amount") {
-    taxPct = taxableBase > 0 ? (taxAmt / taxableBase) * 100 : 0;
+    taxPct = taxableBase !== 0 ? (taxAmt / taxableBase) * 100 : 0;
   }
 
-  const total = taxableBase + taxAmt;
+  const totalFloat = taxableBase + taxAmt;
+  const totalRounded = Math.round(totalFloat); // integer total
 
   return {
     ...form,
@@ -68,6 +69,6 @@ export function recalcFooter(form, changedField = null) {
     tax_amount: taxAmt === 0 ? "" : String(r2(taxAmt)),
     item_discount: r2(itemDiscSum),
     gross_amount: r2(grossSum),
-    total: r2(total),
+    total: String(totalRounded), // integer string, no decimals
   };
 }

@@ -92,7 +92,7 @@
   .wm img {
     width: 58mm;             /* fits inside 78mm page */
     max-width: 90%;
-    opacity: 0.08;           /* subtle for thermal */
+    opacity: 0.8;           /* subtle for thermal */
     filter: grayscale(100%) contrast(90%);
     -webkit-print-color-adjust: exact;
             print-color-adjust: exact;
@@ -175,27 +175,30 @@
     </table>
 
     <div class="totals">
-      <div class="pair"><div>Gross</div><div>{{ number_format((float)$gross, 2) }}</div></div>
-      <div class="pair"><div>Discount</div><div>{{ number_format((float)$disc, 2) }}</div></div>
-      <div class="pair"><div>Tax</div><div>{{ number_format((float)$tax, 2) }}</div></div>
-      <div class="pair total"><div>Total</div><div>{{ number_format((float)$total, 2) }}</div></div>
+  <div class="pair"><div>Gross</div><div>{{ number_format((float)$gross, 2) }}</div></div>
+  <div class="pair"><div>Discount</div><div>{{ number_format((float)$disc, 2) }}</div></div>
+  <div class="pair"><div>Tax</div><div>{{ number_format((float)$tax, 2) }}</div></div>
+  <div class="pair total"><div>Total</div><div>{{ number_format((float)$total, 2) }}</div></div>
 
-      {{-- NEW: payment & remaining summary (as requested) --}}
-      <div class="hr" style="margin:6px 0;"></div>
-      <div class="pair"><div>Total Receive</div><div>{{ number_format($totalReceive, 2) }}</div></div>
-      <div class="pair"><div>Remaining (This)</div><div>{{ number_format($remainThis, 2) }}</div></div>
-      @if($oldRemaining > 0)
-        <div class="pair"><div>Old Remaining</div><div>{{ number_format($oldRemaining, 2) }}</div></div>
-      @endif
-      <div class="pair total"><div>Total Remaining</div><div>{{ number_format($grandRemaining, 2) }}</div></div>
-    </div>
+  {{-- Show Remaining section only if there’s some balance left --}}
+  @if($remainThis > 0 || $oldRemaining > 0)
+    <div class="hr" style="margin:6px 0;"></div>
+    <div class="pair"><div>Total Receive</div><div>{{ number_format($totalReceive, 2) }}</div></div>
+    <div class="pair"><div>Remaining (This)</div><div>{{ number_format($remainThis, 2) }}</div></div>
+    @if($oldRemaining > 0)
+      <div class="pair"><div>Old Remaining</div><div>{{ number_format($oldRemaining, 2) }}</div></div>
+    @endif
+    <div class="pair total"><div>Total Remaining</div><div>{{ number_format($grandRemaining, 2) }}</div></div>
+  @endif
+</div>
+
 
     @if($footerNote !== '')
       <div class="hr"></div>
       <div class="note">{{ $footerNote }}</div>
     @endif
 
-    <div class="foot">Thank you!</div>
+    <div class="foot">Software by Engr.Asim Shahzad<br/> PH:0304-7674787</div>
   </div>
 </div>
 </body>

@@ -1,7 +1,8 @@
 // resources/js/pages/PurchaseDetailReport.jsx
 import { useEffect, useMemo, useRef, useState } from "react";
 import axios from "axios";
-import Select from "react-select";
+import AsyncSelect from "react-select/async";
+import { createFilter } from "react-select";
 import toast from "react-hot-toast";
 import { usePermissions } from "@/api/usePermissions";
 
@@ -17,7 +18,7 @@ import {
 import { ArrowPathIcon, ArrowDownOnSquareIcon } from "@heroicons/react/24/solid";
 
 /* ======================
-   Helpers (unchanged)
+   Helpers
    ====================== */
 const todayStr = () => new Date().toISOString().split("T")[0];
 const firstDayOfMonthStr = () => {
@@ -28,7 +29,7 @@ const n = (v) => (isFinite(Number(v)) ? Number(v) : 0);
 const fmtCurrency = (v) =>
   n(v).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-/* react-select → glassy control (compact) */
+/* react-select → glassy compact control */
 const smallSelectStyles = {
   control: (base) => ({
     ...base,
@@ -56,17 +57,39 @@ const smallSelectStyles = {
   }),
 };
 
+// try `/api/...` first then fallback to `/...`
+async function tryEndpoints(paths, params) {
+  let lastErr;
+  for (const path of paths) {
+    try {
+      const res = await axios.get(path, { params, withCredentials: true });
+      return res;
+    } catch (e) {
+      lastErr = e;
+    }
+  }
+  throw lastErr;
+}
+
+// map your /products/search row → option
+const mapProductToOption = (p) => ({
+  value: p.id,
+  label: p.name ? p.name : p.product_code ? p.product_code : `#${p.id}`,
+  _row: p,
+});
+
+let warnedOnceSuppliers = false;
+let warnedOnceProducts = false;
+
 export default function PurchaseDetailReport() {
   // Dates
   const [fromDate, setFromDate] = useState(firstDayOfMonthStr());
   const [toDate, setToDate] = useState(todayStr());
 
-  // Filters
-  const [supplierOptions, setSupplierOptions] = useState([]);
+  // Filters (selected values only; options are async)
   const [supplierValue, setSupplierValue] = useState(null);
   const [supplierId, setSupplierId] = useState("");
 
-  const [productOptions, setProductOptions] = useState([]);
   const [productValue, setProductValue] = useState(null);
   const [productId, setProductId] = useState("");
 
@@ -89,39 +112,80 @@ export default function PurchaseDetailReport() {
   const canView = permsReady ? !!hasFn("report.purchase-detail.view") : null;
   const canExport = permsReady ? !!hasFn("report.purchase-detail.export") : null;
 
-  // ===== Load options (unchanged) =====
-  useEffect(() => {
-    (async () => {
-      try {
-        const s = await axios.get("/api/suppliers", { params: { simple: 1 } }).catch(() => null);
-        const sRows = Array.isArray(s?.data) ? s.data : Array.isArray(s?.data?.data) ? s.data.data : [];
-        const sOpts = sRows.map((r) => ({
-          value: r.id ?? r.value,
-          label: r.name ?? r.label ?? r.title ?? `#${r.id}`,
-        }));
-        setSupplierOptions([{ value: "", label: "All Suppliers" }, ...sOpts]);
+  /* ======================
+     Async loaders (promise-based)
+     ====================== */
 
-        const p = await axios.get("/api/products", { params: { simple: 1 } }).catch(() => null);
-        const pRows = Array.isArray(p?.data) ? p.data : Array.isArray(p?.data?.data) ? p.data.data : [];
-        const pOpts = pRows.map((r) => ({
-          value: r.id ?? r.value,
-          label: r.name ?? r.label ?? r.title ?? `#${r.id}`,
-          supplier_id: r.supplier_id ?? r.supplierId ?? null,
-        }));
-        setProductOptions([{ value: "", label: "All Products" }, ...pOpts]);
-      } catch {
-        // keep form usable
-      }
-    })();
-  }, []);
+  // Supplier prefix search (expects /suppliers/search or /api/suppliers/search)
+  // If your SupplierController supports `q` + `limit` (starts-with), this will “just work”.
+  const loadSuppliers = useMemo(
+    () =>
+      async (input) => {
+        const q = String(input || "").trim();
+        if (!q) return [{ value: "", label: "All Suppliers" }];
 
-  // Filter product options by supplier (client-side)
-  const filteredProductOptions = useMemo(() => {
-    if (!supplierId) return productOptions;
-    return productOptions.filter((o) => !o.supplier_id || o.supplier_id === supplierId || o.value === "");
-  }, [productOptions, supplierId]);
+        try {
+          const res = await tryEndpoints(
+            ["/api/suppliers/search", "/suppliers/search"],
+            { q, limit: 30, mode: "starts" }
+          );
+          const rows = Array.isArray(res.data?.data)
+            ? res.data.data
+            : Array.isArray(res.data)
+            ? res.data
+            : [];
+          const opts = rows.map((r) => ({
+            value: r.id ?? r.value,
+            label: r.name ?? r.label ?? r.title ?? `#${r.id}`,
+            _row: r,
+          }));
+          return opts.length ? opts : [{ value: "", label: "No matches" }];
+        } catch (e) {
+          if (!warnedOnceSuppliers) {
+            warnedOnceSuppliers = true;
+            toast.error("Supplier search failed (check route/permissions).");
+          }
+          return [{ value: "", label: "No matches" }];
+        }
+      },
+    []
+  );
 
-  // ===== Fetch report (unchanged) =====
+  // Product prefix search — uses your ProductController::search (LIKE q%)
+  // We also pass supplier_id if you decide to support it server-side (safe to ignore if not).
+  const loadProducts = useMemo(
+    () =>
+      async (input) => {
+        const q = String(input || "").trim();
+        if (!q) return [{ value: "", label: "All Products" }];
+
+        try {
+          const res = await tryEndpoints(
+            ["/api/products/search", "/products/search"],
+            { q, limit: 30, supplier_id: supplierId || undefined }
+          );
+          const rows = Array.isArray(res.data) ? res.data : [];
+          const opts = rows.map(mapProductToOption);
+          // Optionally filter by supplier client-side if backend doesn't
+          const filtered = supplierId
+            ? opts.filter((o) => o._row?.supplier_id === Number(supplierId))
+            : opts;
+
+          return filtered.length ? filtered : [{ value: "", label: "No matches" }];
+        } catch (e) {
+          if (!warnedOnceProducts) {
+            warnedOnceProducts = true;
+            toast.error("Product search failed (check route/permissions).");
+          }
+          return [{ value: "", label: "No matches" }];
+        }
+      },
+    [supplierId]
+  );
+
+  /* ======================
+     Fetch report
+     ====================== */
   const fetchReport = async ({ silentDenied = false } = {}) => {
     if (canView !== true) {
       if (!silentDenied) toast.error("You don't have permission to view this report.");
@@ -291,19 +355,21 @@ export default function PurchaseDetailReport() {
               />
             </div>
 
-            {/* Supplier */}
+            {/* Supplier (Async, prefix-only) */}
             <div className="md:col-span-4">
               <label className="text-sm text-gray-700 mb-1 block">Supplier</label>
-              <Select
+              <AsyncSelect
                 ref={supplierRef}
                 classNamePrefix="rs"
-                isSearchable
+                cacheOptions
+                defaultOptions={[{ value: "", label: "All Suppliers" }]}
+                loadOptions={loadSuppliers}
+                isClearable
                 menuPlacement="auto"
                 menuPortalTarget={typeof document !== "undefined" ? document.body : null}
-                options={supplierOptions}
-                value={supplierValue}
-                placeholder="All Suppliers"
+                placeholder="Type to search suppliers…"
                 styles={smallSelectStyles}
+                filterOption={createFilter({ matchFrom: "start", ignoreAccents: false, trim: true })}
                 onChange={(opt) => {
                   setSupplierValue(opt);
                   const id = opt?.value || "";
@@ -315,27 +381,37 @@ export default function PurchaseDetailReport() {
                     productRef.current?.inputRef?.focus?.();
                   }, 0);
                 }}
+                noOptionsMessage={({ inputValue }) =>
+                  inputValue ? "No matches (prefix only)" : "Type at least 1 character…"
+                }
+                loadingMessage={() => "Searching…"}
               />
             </div>
 
-            {/* Product (filtered by supplier) */}
+            {/* Product (Async, prefix-only; optionally filtered by supplier) */}
             <div className="md:col-span-4">
               <label className="text-sm text-gray-700 mb-1 block">Product</label>
-              <Select
+              <AsyncSelect
                 ref={productRef}
                 classNamePrefix="rs"
-                isSearchable
+                cacheOptions
+                defaultOptions={[{ value: "", label: "All Products" }]}
+                loadOptions={loadProducts}
+                isClearable
                 menuPlacement="auto"
                 menuPortalTarget={typeof document !== "undefined" ? document.body : null}
-                options={filteredProductOptions}
-                value={productValue}
-                placeholder="All Products"
+                placeholder="Type to search products…"
                 styles={smallSelectStyles}
+                filterOption={createFilter({ matchFrom: "start", ignoreAccents: false, trim: true })}
                 onChange={(opt) => {
                   setProductValue(opt);
                   setProductId(opt?.value || "");
                   setTimeout(() => submitRef.current?.focus?.(), 0);
                 }}
+                noOptionsMessage={({ inputValue }) =>
+                  inputValue ? "No matches (prefix only)" : "Type at least 1 character…"
+                }
+                loadingMessage={() => "Searching…"}
               />
             </div>
 
@@ -424,86 +500,84 @@ export default function PurchaseDetailReport() {
                 />
 
                 {/* Items table */}
-<div className="relative max-w-full overflow-x-auto">
-  <table className="w-full min-w-[900px] text-sm text-gray-900">
-    <colgroup>
-      <col style={{ width: 180 }} />
-      <col style={{ width: 100 }} />
-      <col style={{ width: 100 }} />
-      {/* numeric cols */}
-      {Array.from({ length: 9 }).map((_, i) => (
-        <col key={i} style={{ width: 90 }} />
-      ))}
-    </colgroup>
+                <div className="relative max-w-full overflow-x-auto">
+                  <table className="w-full min-w-[900px] text-sm text-gray-900">
+                    <colgroup>
+                      <col style={{ width: 180 }} />
+                      <col style={{ width: 100 }} />
+                      <col style={{ width: 100 }} />
+                      {Array.from({ length: 9 }).map((_, i) => (
+                        <col key={i} style={{ width: 90 }} />
+                      ))}
+                    </colgroup>
 
-    <thead className="sticky top-0 bg-white/85 backdrop-blur-sm border-b border-gray-200/70">
-      <tr className="text-left">
-        <Th>Product Name</Th>
-        <Th>Batch</Th>
-        <Th>Expiry</Th>
-        <Th align="right">Pack Qty</Th>
-        <Th align="right">Pack Size</Th>
-        <Th align="right">Pack Purchase</Th>
-        <Th align="right">Pack Sale</Th>
-        <Th align="right">Pack Bonus</Th>
-        <Th align="right">Item Disc %</Th>
-        <Th align="right">Margin</Th>
-        <Th align="right">Sub Total</Th>
-        <Th align="right">Quantity</Th>
-      </tr>
-    </thead>
+                    <thead className="sticky top-0 bg-white/85 backdrop-blur-sm border-b border-gray-200/70">
+                      <tr className="text-left">
+                        <Th>Product Name</Th>
+                        <Th>Batch</Th>
+                        <Th>Expiry</Th>
+                        <Th align="right">Pack Qty</Th>
+                        <Th align="right">Pack Size</Th>
+                        <Th align="right">Pack Purchase</Th>
+                        <Th align="right">Pack Sale</Th>
+                        <Th align="right">Pack Bonus</Th>
+                        <Th align="right">Item Disc %</Th>
+                        <Th align="right">Margin</Th>
+                        <Th align="right">Sub Total</Th>
+                        <Th align="right">Quantity</Th>
+                      </tr>
+                    </thead>
 
-    <tbody className="tabular-nums">
-      {(inv.items || []).map((it, idx) => (
-        <tr
-          key={(it.id ?? idx) + "-" + (it.product_id ?? "p") + "-" + idx}
-          className="transition-all duration-150 odd:bg-white/90 even:bg-white/70 hover:bg-white/80 hover:backdrop-blur-[2px]"
-        >
-          <Td>{it.product_name || "-"}</Td>
-          <Td>{it.batch || "-"}</Td>
-          <Td>{it.expiry || "-"}</Td>
-          <Td align="right">{it.pack_quantity ?? 0}</Td>
-          <Td align="right">{it.pack_size ?? 0}</Td>
-          <Td align="right">{fmtCurrency(it.pack_purchase_price)}</Td>
-          <Td align="right">{fmtCurrency(it.pack_sale_price)}</Td>
-          <Td align="right">{it.pack_bonus ?? 0}</Td>
-          <Td align="right">{(it.item_discount_percentage ?? 0).toFixed(2)}</Td>
-          <Td align="right">{(it.margin ?? 0).toFixed(2)}</Td>
-          <Td align="right">{fmtCurrency(it.sub_total)}</Td>
-          <Td align="right">{it.quantity ?? 0}</Td>
-        </tr>
-      ))}
+                    <tbody className="tabular-nums">
+                      {(inv.items || []).map((it, idx) => (
+                        <tr
+                          key={(it.id ?? idx) + "-" + (it.product_id ?? "p") + "-" + idx}
+                          className="transition-all duration-150 odd:bg-white/90 even:bg-white/70 hover:bg-white/80 hover:backdrop-blur-[2px]"
+                        >
+                          <Td>{it.product_name || "-"}</Td>
+                          <Td>{it.batch || "-"}</Td>
+                          <Td>{it.expiry || "-"}</Td>
+                          <Td align="right">{it.pack_quantity ?? 0}</Td>
+                          <Td align="right">{it.pack_size ?? 0}</Td>
+                          <Td align="right">{fmtCurrency(it.pack_purchase_price)}</Td>
+                          <Td align="right">{fmtCurrency(it.pack_sale_price)}</Td>
+                          <Td align="right">{it.pack_bonus ?? 0}</Td>
+                          <Td align="right">{(it.item_discount_percentage ?? 0).toFixed(2)}</Td>
+                          <Td align="right">{(it.margin ?? 0).toFixed(2)}</Td>
+                          <Td align="right">{fmtCurrency(it.sub_total)}</Td>
+                          <Td align="right">{it.quantity ?? 0}</Td>
+                        </tr>
+                      ))}
 
-      {(!inv.items || !inv.items.length) && (
-        <tr>
-          <td colSpan={12} className="px-3 py-6 text-center text-gray-500">
-            No items match this filter in this invoice.
-          </td>
-        </tr>
-      )}
-    </tbody>
+                      {(!inv.items || !inv.items.length) && (
+                        <tr>
+                          <td colSpan={12} className="px-3 py-6 text-center text-gray-500">
+                            No items match this filter in this invoice.
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
 
-    <tfoot className="bg-white/70 backdrop-blur-[2px]">
-      <tr>
-        <Td colSpan={6} align="right" strong>Tax %</Td>
-        <Td colSpan={2} align="right">{(inv.tax_percentage ?? 0).toFixed(2)}</Td>
-        <Td colSpan={2} align="right" strong>Tax Amount</Td>
-        <Td colSpan={2} align="right">{fmtCurrency(inv.tax_amount)}</Td>
-      </tr>
-      <tr>
-        <Td colSpan={6} align="right" strong>Discount %</Td>
-        <Td colSpan={2} align="right">{(inv.discount_percentage ?? 0).toFixed(2)}</Td>
-        <Td colSpan={2} align="right" strong>Discount Amount</Td>
-        <Td colSpan={2} align="right">{fmtCurrency(inv.discount_amount)}</Td>
-      </tr>
-      <tr>
-        <Td colSpan={10} align="right" strong className="!font-semibold">Total Amount</Td>
-        <Td colSpan={2} align="right" className="!font-semibold">{fmtCurrency(inv.total_amount)}</Td>
-      </tr>
-    </tfoot>
-  </table>
-</div>
-
+                    <tfoot className="bg-white/70 backdrop-blur-[2px]">
+                      <tr>
+                        <Td colSpan={6} align="right" strong>Tax %</Td>
+                        <Td colSpan={2} align="right">{(inv.tax_percentage ?? 0).toFixed(2)}</Td>
+                        <Td colSpan={2} align="right" strong>Tax Amount</Td>
+                        <Td colSpan={2} align="right">{fmtCurrency(inv.tax_amount)}</Td>
+                      </tr>
+                      <tr>
+                        <Td colSpan={6} align="right" strong>Discount %</Td>
+                        <Td colSpan={2} align="right">{(inv.discount_percentage ?? 0).toFixed(2)}</Td>
+                        <Td colSpan={2} align="right" strong>Discount Amount</Td>
+                        <Td colSpan={2} align="right">{fmtCurrency(inv.discount_amount)}</Td>
+                      </tr>
+                      <tr>
+                        <Td colSpan={10} align="right" strong className="!font-semibold">Total Amount</Td>
+                        <Td colSpan={2} align="right" className="!font-semibold">{fmtCurrency(inv.total_amount)}</Td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
               </GlassCard>
             ))}
           </div>

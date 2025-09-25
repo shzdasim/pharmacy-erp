@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import axios from "axios";
 import toast from "react-hot-toast";
-import Select from "react-select";
+import AsyncSelect from "react-select/async";
 import {
   ArrowPathIcon,
   PlayCircleIcon,
@@ -37,45 +37,31 @@ export default function PurchaseOrder() {
       ? !!canFor("purchase-order")?.create
       : true;
 
-  // 🧊 tint palette
-  const tintBlue   = "bg-blue-500/85 text-white shadow-[0_6px_20px_-6px_rgba(37,99,235,0.45)] ring-1 ring-white/20 hover:bg-blue-500/95";
   const tintSlate  = "bg-slate-900/80 text-white shadow-[0_6px_20px_-6px_rgba(15,23,42,0.45)] ring-1 ring-white/15 hover:bg-slate-900/90";
   const tintGlass  = "bg-white/60 text-slate-700 ring-1 ring-white/30 hover:bg-white/75";
-  const tintGreen  = "bg-emerald-500/85 text-white shadow-[0_6px_20px_-6px_rgba(16,185,129,0.45)] ring-1 ring-white/20 hover:bg-emerald-500/95";
+  const tintGreen  = "bg-emerald-500/85 text-white ring-1 ring-white/20 hover:bg-emerald-500/95";
+  const tintBlue   = "bg-blue-500/85 text-white ring-1 ring-white/20 hover:bg-blue-500/95";
 
   const [dateFrom, setDateFrom] = useState(today);
   const [dateTo, setDateTo] = useState(today);
   const [projectedDays, setProjectedDays] = useState(7);
 
+  const [safetyPacks, setSafetyPacks] = useState(1); // knob (packs)
+  const [moqPacks, setMoqPacks] = useState(0);       // knob (packs)
+
   const [supplier, setSupplier] = useState(null);
   const [brand, setBrand] = useState(null);
-  const [supplierOptions, setSupplierOptions] = useState([]);
-  const [brandOptions, setBrandOptions] = useState([]);
 
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(false);
 
-  const printBtnRef = useRef(null);
+  // === keyboard navigation state/refs ===
+  const [selectedIndex, setSelectedIndex] = useState(-1);
+  const tableWrapRef = useRef(null);
+  const inputRefs = useRef({}); // {rowId: HTMLInputElement}
+  const rowRefs = useRef({});   // {rowId: HTMLTableRowElement}
 
-  // hydrate select options
-  useEffect(() => {
-    if (permsLoading || !canView) return;
-    (async () => {
-      try {
-        const [supRes, brRes] = await Promise.all([
-          axios.get("/api/suppliers"),
-          axios.get("/api/brands"),
-        ]);
-        const supList = Array.isArray(supRes.data) ? supRes.data : (supRes.data?.data || []);
-        const brList  = Array.isArray(brRes.data)  ? brRes.data  : (brRes.data?.data || []);
-        setSupplierOptions(supList.map((s) => ({ value: s.id, label: s.name })));
-        setBrandOptions(brList.map((b) => ({ value: b.id, label: b.name })));
-      } catch (e) {
-        // non-blocking
-        console.warn(e);
-      }
-    })();
-  }, [permsLoading, canView]);
+  const printBtnRef = useRef(null);
 
   // Alt+P: print
   useEffect(() => {
@@ -109,6 +95,8 @@ export default function PurchaseOrder() {
         date_from: dateFrom,
         date_to: dateTo,
         projected_days: projectedDays,
+        safety_packs: safetyPacks,
+        moq_packs: moqPacks,
       };
       if (supplier) params.supplier_id = supplier.value;
       if (brand) params.brand_id = brand.value;
@@ -123,6 +111,8 @@ export default function PurchaseOrder() {
       });
 
       setRows(mapped);
+      // select first row for quick keyboard flow
+      setSelectedIndex(mapped.length ? 0 : -1);
       toast.success("Forecast ready.");
     } catch (err) {
       console.error(err);
@@ -130,6 +120,23 @@ export default function PurchaseOrder() {
     } finally {
       setLoading(false);
     }
+  };
+
+  // Remove products with NO pack purchase price (<= 0 or null)
+  const pruneNoPackPrice = () => {
+    if (!rows.length) return;
+    const before = rows.length;
+    const kept = rows.filter((r) => Number(r.pack_purchase_price || 0) > 0);
+    const removed = before - kept.length;
+    setRows(kept);
+    setSelectedIndex((i) => {
+      const newLen = kept.length;
+      if (newLen === 0) return -1;
+      return Math.min(i, newLen - 1);
+    });
+    toast[removed > 0 ? "success" : "custom"](
+      removed > 0 ? `Removed ${removed} item(s) without pack purchase price.` : "No rows without pack purchase price."
+    );
   };
 
   const totals = useMemo(() => {
@@ -144,7 +151,7 @@ export default function PurchaseOrder() {
 
   const updateOrderPacks = (rowId, value) => {
     setRows((prev) =>
-      prev.map((r) => {
+      prev.map((r, idx) => {
         if (r._rowId !== rowId) return r;
         const v = Math.max(0, parseInt(value || 0, 10));
         const units = v * (r.pack_size ?? 1);
@@ -154,31 +161,118 @@ export default function PurchaseOrder() {
     );
   };
 
-  // ⬇️ IMPORTANT: portal + high z-index to ensure menus are above the table
+  // =============== Async server-side search (prefix only) ===============
+  const makeLoadOptions = (endpoint) => {
+    let timeoutId = null;
+    let lastReject = null;
+
+    return (inputValue, callback) => {
+      if (lastReject) {
+        lastReject("Aborted");
+        lastReject = null;
+      }
+      if (timeoutId) clearTimeout(timeoutId);
+
+      const query = (inputValue || "").trim();
+      if (!query) {
+        callback([]);
+        return;
+      }
+
+      timeoutId = setTimeout(async () => {
+        try {
+          const controller = new AbortController();
+          lastReject = controller.abort.bind(controller);
+          const { data } = await axios.get(endpoint, {
+            signal: controller.signal,
+            params: { q: query, mode: "prefix", limit: 30 },
+          });
+
+          const list = Array.isArray(data) ? data : (data?.data || []);
+          const options = list.map((x) => ({ value: x.id, label: x.name }));
+          callback(options);
+        } catch (e) {
+          if (axios.isCancel?.(e)) return;
+          console.warn(e);
+          callback([]);
+        } finally {
+          lastReject = null;
+        }
+      }, 250);
+    };
+  };
+
+  const loadSupplierOptions = makeLoadOptions("/api/suppliers/search");
+  const loadBrandOptions    = makeLoadOptions("/api/brands/search");
+
   const selectStyles = {
     control: (base) => ({
       ...base,
-      minHeight: 36,
-      height: 36,
-      fontSize: 13,
+      minHeight: 32,
+      height: 32,
+      fontSize: 12,
       background: "rgba(255,255,255,0.7)",
       backdropFilter: "blur(6px)",
-      borderRadius: 12,
+      borderRadius: 10,
       borderColor: "rgba(226,232,240,0.7)",
     }),
-    valueContainer: (base) => ({ ...base, height: 36, padding: "0 10px" }),
-    indicatorsContainer: (base) => ({ ...base, height: 36 }),
+    valueContainer: (base) => ({ ...base, height: 32, padding: "0 8px" }),
+    indicatorsContainer: (base) => ({ ...base, height: 32 }),
     input: (base) => ({ ...base, margin: 0, padding: 0 }),
-    menu: (base) => ({ ...base, fontSize: 13, borderRadius: 12, overflow: "hidden" }),
-    option: (base) => ({ ...base, fontSize: 13 }),
-    menuPortal: (base) => ({ ...base, zIndex: 9999 }), // ← keeps menu above sticky/overflow areas
+    menu: (base) => ({ ...base, fontSize: 12, borderRadius: 10, overflow: "hidden" }),
+    option: (base) => ({ ...base, fontSize: 12 }),
+    menuPortal: (base) => ({ ...base, zIndex: 9999 }),
+  };
+
+  // === keyboard navigation handlers ===
+  // focus active row's input and ensure visibility
+  useEffect(() => {
+    if (selectedIndex < 0 || selectedIndex >= rows.length) return;
+    const row = rows[selectedIndex];
+    const inputEl = inputRefs.current[row._rowId];
+    const trEl = rowRefs.current[row._rowId];
+
+    if (trEl && tableWrapRef.current) {
+      const wrap = tableWrapRef.current;
+      const trBox = trEl.getBoundingClientRect();
+      const wrapBox = wrap.getBoundingClientRect();
+      // Scroll into view if row is outside viewport of wrapper
+      if (trBox.top < wrapBox.top + 40 || trBox.bottom > wrapBox.bottom - 40) {
+        trEl.scrollIntoView({ block: "nearest" });
+      }
+    }
+    if (inputEl) {
+      requestAnimationFrame(() => {
+        inputEl.focus();
+        inputEl.select();
+      });
+    }
+  }, [selectedIndex, rows]);
+
+  const onKeyDownTable = (e) => {
+    // ignore when user is typing in a text input other than our table wrapper
+    const tag = (e.target?.tagName || "").toLowerCase();
+    const isInput = tag === "input" || tag === "textarea";
+    const isNumberField = isInput && e.target.type === "number";
+    // We still want Up/Down to navigate when inside our number inputs:
+    const key = e.key;
+    if (key === "ArrowDown" || key === "ArrowUp") {
+      e.preventDefault();
+      setSelectedIndex((idx) => {
+        const next =
+          key === "ArrowDown"
+            ? Math.min((idx < 0 ? -1 : idx) + 1, rows.length - 1)
+            : Math.max((idx < 0 ? 0 : idx) - 1, 0);
+        return next;
+      });
+    }
   };
 
   if (permsLoading) return <div className="p-6">Loading…</div>;
   if (!canView) return <div className="p-6 text-sm text-gray-700">You don’t have permission to view Purchase Order (Forecast).</div>;
 
   return (
-    <div className="p-4 md:p-6 space-y-4 print:p-0">
+    <div className="p-4 md:p-6 space-y-4 print:p-0" onKeyDown={onKeyDownTable}>
       {/* ===== Header ===== */}
       <GlassCard>
         <GlassSectionHeader
@@ -189,15 +283,15 @@ export default function PurchaseOrder() {
             </span>
           }
           right={
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <GlassBtn
-                className={`h-10 min-w-[120px] ${tintSlate}`}
+                className={`h-9 px-3 text-sm ${tintSlate}`}
                 onClick={() => window.location.reload()}
                 title="Refresh"
                 aria-label="Refresh page"
               >
                 <span className="inline-flex items-center gap-2">
-                  <ArrowPathIcon className="w-5 h-5" />
+                  <ArrowPathIcon className="w-4 h-4" />
                   Refresh
                 </span>
               </GlassBtn>
@@ -205,11 +299,11 @@ export default function PurchaseOrder() {
               <GlassBtn
                 ref={printBtnRef}
                 onClick={doPrint}
-                className={`h-10 min-w-[120px] ${tintGlass}`}
+                className={`h-9 px-3 text-sm ${tintGlass}`}
                 title="Print (Alt+P)"
               >
                 <span className="inline-flex items-center gap-2">
-                  <PrinterIcon className="w-5 h-5" />
+                  <PrinterIcon className="w-4 h-4" />
                   Print
                 </span>
               </GlassBtn>
@@ -218,133 +312,176 @@ export default function PurchaseOrder() {
         />
 
         {/* Filters */}
-        <GlassToolbar className="grid grid-cols-1 md:grid-cols-6 gap-3">
-          <div className="flex flex-col gap-1">
-            <label className="text-sm text-gray-700">From</label>
-            <GlassInput type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="w-full" />
+        <GlassToolbar className="grid grid-cols-1 md:grid-cols-9 gap-2">
+          <div className="flex flex-col gap-0.5">
+            <label className="text-xs text-gray-700">From</label>
+            <GlassInput type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="w-full h-8 text-xs" />
           </div>
-          <div className="flex flex-col gap-1">
-            <label className="text-sm text-gray-700">To</label>
-            <GlassInput type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="w-full" />
+          <div className="flex flex-col gap-0.5">
+            <label className="text-xs text-gray-700">To</label>
+            <GlassInput type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="w-full h-8 text-xs" />
           </div>
-          <div className="flex flex-col gap-1">
-            <label className="text-sm text-gray-700">Projected Days</label>
+          <div className="flex flex-col gap-0.5">
+            <label className="text-xs text-gray-700">Projected Days</label>
             <GlassInput
               type="number"
               min={1}
               value={projectedDays}
               onChange={(e) => setProjectedDays(parseInt(e.target.value || 0, 10))}
-              className="w-full"
+              className="w-full h-8 text-xs"
             />
           </div>
 
-          <div className="flex flex-col gap-1">
-            <label className="text-sm text-gray-700">Supplier (optional)</label>
-            <Select
-              classNamePrefix="rs"
+          <div className="flex flex-col gap-0.5">
+            <label className="text-xs text-gray-700">Safety Stock (packs)</label>
+            <GlassInput
+              type="number"
+              min={0}
+              value={safetyPacks}
+              onChange={(e)=>setSafetyPacks(parseInt(e.target.value || 0, 10))}
+              className="w-full h-8 text-xs"
+            />
+          </div>
+
+          <div className="flex flex-col gap-0.5">
+            <label className="text-xs text-gray-700">MOQ (packs)</label>
+            <GlassInput
+              type="number"
+              min={0}
+              value={moqPacks}
+              onChange={(e)=>setMoqPacks(parseInt(e.target.value || 0, 10))}
+              className="w-full h-8 text-xs"
+            />
+          </div>
+
+          <div className="flex flex-col gap-0.5">
+            <label className="text-xs text-gray-700">Supplier (server)</label>
+            <AsyncSelect
+              cacheOptions={false}
+              defaultOptions={[]}
+              loadOptions={loadSupplierOptions}
               styles={selectStyles}
-              options={supplierOptions}
               value={supplier}
               onChange={setSupplier}
-              placeholder="Supplier"
+              placeholder="Type to search…"
               isClearable
+              filterOption={() => true}
               menuPortalTarget={typeof document !== "undefined" ? document.body : null}
               menuPosition="fixed"
+              classNamePrefix="rs"
             />
           </div>
 
-          <div className="flex flex-col gap-1">
-            <label className="text-sm text-gray-700">Brand (optional)</label>
-            <Select
-              classNamePrefix="rs"
+          <div className="flex flex-col gap-0.5">
+            <label className="text-xs text-gray-700">Brand (server)</label>
+            <AsyncSelect
+              cacheOptions={false}
+              defaultOptions={[]}
+              loadOptions={loadBrandOptions}
               styles={selectStyles}
-              options={brandOptions}
               value={brand}
               onChange={setBrand}
-              placeholder="Brand"
+              placeholder="Type to search…"
               isClearable
+              filterOption={() => true}
               menuPortalTarget={typeof document !== "undefined" ? document.body : null}
               menuPosition="fixed"
+              classNamePrefix="rs"
             />
           </div>
 
-          <div className="flex items-end gap-2">
+          <div className="flex items-end gap-2 col-span-1 md:col-span-2">
             <GlassBtn
               onClick={handleFetch}
               disabled={loading || !canGenerate}
-              className={`h-10 min-w-[140px] ${canGenerate ? tintGreen : tintGlass} ${!canGenerate ? "opacity-60 cursor-not-allowed" : ""}`}
+              className={`h-9 px-3 text-sm ${canGenerate ? tintGreen : tintGlass} ${!canGenerate ? "opacity-60 cursor-not-allowed" : ""}`}
               title={!canGenerate ? "Not permitted" : "Generate forecast"}
             >
               <span className="inline-flex items-center gap-2">
-                <PlayCircleIcon className="w-5 h-5" />
+                <PlayCircleIcon className="w-4 h-4" />
                 {loading ? "Loading…" : "Generate"}
               </span>
+            </GlassBtn>
+
+            <GlassBtn
+              onClick={pruneNoPackPrice}
+              disabled={!rows.length}
+              className={`h-9 px-3 text-sm ${rows.length ? tintBlue : tintGlass}`}
+              title="Remove products with no Pack Purchase Price"
+            >
+              Remove&nbsp;Zero
             </GlassBtn>
           </div>
         </GlassToolbar>
       </GlassCard>
 
-      {/* ===== Table ===== */}
+      {/* ===== Table (bordered + keyboard nav) ===== */}
       <GlassCard>
-        <div className="max-h-[75vh] overflow-auto rounded-b-2xl">
-          <table className="min-w-[1200px] w-full text-sm text-gray-900">
-            <thead className="sticky top-0 bg-white/90 backdrop-blur-sm z-10 border-b border-gray-200/70">
+        <div
+          ref={tableWrapRef}
+          className="max-h-[75vh] overflow-auto rounded-b-2xl outline-none"
+          tabIndex={0} // allow wrapper to receive keydown even if inputs not focused
+        >
+          <table className="min-w-[880px] w-full text-[12px] text-gray-900 border border-slate-200/80 border-collapse">
+            <thead className="sticky top-0 bg-white/95 backdrop-blur-sm z-10">
               <tr className="text-left">
-                <th className="px-3 py-2 font-medium">#</th>
-                <th className="px-3 py-2 font-medium">Product</th>
-                <th className="px-3 py-2 font-medium">Brand/Supplier</th>
-                <th className="px-3 py-2 font-medium text-right">Pack Size</th>
-                <th className="px-3 py-2 font-medium text-right">Units Sold</th>
-                <th className="px-3 py-2 font-medium text-right">Packs Sold</th>
-                <th className="px-3 py-2 font-medium text-right">Days</th>
-                <th className="px-3 py-2 font-medium text-right">Daily Packs</th>
-                <th className="px-3 py-2 font-medium text-right">Stock (U)</th>
-                <th className="px-3 py-2 font-medium text-right">Stock (P)</th>
-                <th className="px-3 py-2 font-medium text-right">Pack Price</th>
-                <th className="px-3 py-2 font-medium text-right">Suggested (P)</th>
-                <th className="px-3 py-2 font-medium text-right">Order Packs</th>
-                <th className="px-3 py-2 font-medium text-right">Order Units</th>
-                <th className="px-3 py-2 font-medium text-right">Order Amount</th>
+                {["#", "Product", "Pack Size", "Units Sold", "Stock (U)", "Pack Price", "Suggested (P)", "Order Packs", "Order Units", "Order Amount"]
+                  .map((h, i) => (
+                  <th
+                    key={h}
+                    className={`px-2 py-1 font-medium ${i===0?'w-8':''} ${[2,3,4,5,6,7,8,9].includes(i) ? 'text-right' : ''} border-b border-slate-200/80`}
+                  >
+                    {h}
+                  </th>
+                ))}
               </tr>
             </thead>
 
             <tbody>
-              {rows.map((r, idx) => (
-                <tr key={r._rowId} className="transition-colors odd:bg-white/90 even:bg-white/70 hover:bg-blue-50 border-b">
-                  <td className="px-3 py-2">{idx + 1}</td>
-                  <td className="px-3 py-2">
-                    <div className="font-medium">{r.product_name}</div>
-                    {r.product_code && <div className="text-[10px] text-gray-500">{r.product_code}</div>}
-                  </td>
-                  <td className="px-3 py-2">
-                    <div className="text-xs text-gray-700">{r.brand_name || "-"} / {r.supplier_name || "-"}</div>
-                  </td>
-                  <td className="px-3 py-2 text-right">{r.pack_size}</td>
-                  <td className="px-3 py-2 text-right">{r.units_sold}</td>
-                  <td className="px-3 py-2 text-right">{fmt2(r.packs_sold)}</td>
-                  <td className="px-3 py-2 text-right">{r.days_in_range}</td>
-                  <td className="px-3 py-2 text-right">{fmt2(r.daily_packs)}</td>
-                  <td className="px-3 py-2 text-right">{r.current_stock_units}</td>
-                  <td className="px-3 py-2 text-right">{fmt2(r.current_stock_packs)}</td>
-                  <td className="px-3 py-2 text-right">{fmt2(r.pack_price)}</td>
-                  <td className="px-3 py-2 text-right">{r.suggested_packs}</td>
-                  <td className="px-3 py-2 text-right">
-                    <GlassInput
-                      type="number"
-                      min={0}
-                      value={r.order_packs}
-                      onChange={(e) => updateOrderPacks(r._rowId, e.target.value)}
-                      className="w-24 h-8 text-right"
-                    />
-                  </td>
-                  <td className="px-3 py-2 text-right">{r.order_units}</td>
-                  <td className="px-3 py-2 text-right">{fmt2(r.order_amount)}</td>
-                </tr>
-              ))}
+              {rows.map((r, idx) => {
+                const isActive = idx === selectedIndex;
+                return (
+                  <tr
+                    key={r._rowId}
+                    ref={(el) => (rowRefs.current[r._rowId] = el)}
+                    onClick={() => setSelectedIndex(idx)}
+                    className={[
+                      "transition-colors border-t border-slate-200/60",
+                      idx % 2 ? "bg-white/80" : "bg-white/60",
+                      isActive ? "bg-blue-50 ring-2 ring-blue-300/60" : "hover:bg-blue-50"
+                    ].join(" ")}
+                  >
+                    <td className="px-2 py-1">{idx + 1}</td>
+                    <td className="px-2 py-1">
+                      <div className="font-medium truncate max-w-[320px]" title={r.product_name}>{r.product_name}</div>
+                      {r.product_code && <div className="text-[10px] text-gray-500">{r.product_code}</div>}
+                    </td>
+                    <td className="px-2 py-1 text-right tabular-nums whitespace-nowrap border-l border-slate-200/60">{r.pack_size}</td>
+                    <td className="px-2 py-1 text-right tabular-nums whitespace-nowrap">{r.units_sold}</td>
+                    <td className="px-2 py-1 text-right tabular-nums whitespace-nowrap">{r.current_stock_units}</td>
+                    <td className="px-2 py-1 text-right tabular-nums whitespace-nowrap">{fmt2(r.pack_price)}</td>
+                    <td className="px-2 py-1 text-right tabular-nums whitespace-nowrap">{r.suggested_packs}</td>
+                    <td className="px-2 py-1 text-right">
+                      <GlassInput
+                        type="number"
+                        min={0}
+                        value={r.order_packs}
+                        onFocus={() => setSelectedIndex(idx)}
+                        onChange={(e) => updateOrderPacks(r._rowId, e.target.value)}
+                        ref={(el) => (inputRefs.current[r._rowId] = el)}
+                        className="w-16 h-7 text-right text-[12px] no-spinners"
+                        inputMode="numeric"
+                      />
+                    </td>
+                    <td className="px-2 py-1 text-right tabular-nums whitespace-nowrap">{r.order_units}</td>
+                    <td className="px-2 py-1 text-right tabular-nums whitespace-nowrap">{fmt2(r.order_amount)}</td>
+                  </tr>
+                );
+              })}
 
               {!rows.length && (
                 <tr>
-                  <td colSpan={15} className="px-3 py-10 text-center text-gray-600">
+                  <td colSpan={10} className="px-3 py-10 text-center text-gray-600 border-t border-slate-200/80">
                     No data. Choose filters and click <b>Generate</b>.
                   </td>
                 </tr>
@@ -353,11 +490,11 @@ export default function PurchaseOrder() {
 
             {rows.length > 0 && (
               <tfoot>
-                <tr className="bg-white/90 backdrop-blur-sm border-t border-gray-200/70 font-semibold">
-                  <td className="px-3 py-2" colSpan={12}>Totals</td>
-                  <td className="px-3 py-2 text-right">{totals.packs}</td>
-                  <td className="px-3 py-2 text-right">{totals.units}</td>
-                  <td className="px-3 py-2 text-right">{fmt2(totals.amount)}</td>
+                <tr className="bg-white/90 backdrop-blur-sm border-t border-slate-200/80 font-semibold">
+                  <td className="px-2 py-1" colSpan={7}>Totals</td>
+                  <td className="px-2 py-1 text-right tabular-nums">{totals.packs}</td>
+                  <td className="px-2 py-1 text-right tabular-nums">{totals.units}</td>
+                  <td className="px-2 py-1 text-right tabular-nums">{fmt2(totals.amount)}</td>
                 </tr>
               </tfoot>
             )}
@@ -365,14 +502,19 @@ export default function PurchaseOrder() {
         </div>
       </GlassCard>
 
-      {/* Print styles */}
+      {/* Print + number-input spinner removal */}
       <style>{`
         @media print {
           .print\\:p-0 { padding: 0 !important; }
           .rs__control, .rs__menu, input, select, button, [role="button"] { display: none !important; }
-          table { font-size: 11px; }
+          table { font-size: 10px; }
           thead { position: sticky; top: 0; }
         }
+        /* Remove spinners in number inputs (Chrome, Edge, Safari) */
+        .no-spinners::-webkit-outer-spin-button,
+        .no-spinners::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+        /* Firefox */
+        .no-spinners[type=number] { -moz-appearance: textfield; }
       `}</style>
     </div>
   );

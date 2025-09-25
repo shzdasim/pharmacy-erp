@@ -1,36 +1,53 @@
+// /src/pages/sales/Show.jsx
 import { useEffect, useRef, useState, useMemo } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import axios from "axios";
 import toast from "react-hot-toast";
-// 🔒 add permissions
+// 🔒 permissions
 import { usePermissions, Guard } from "@/api/usePermissions.js";
 
 export default function SaleInvoiceShow() {
   const { id } = useParams();
   const navigate = useNavigate();
+
   const [inv, setInv] = useState(null);
   const [loading, setLoading] = useState(true);
   const [deleting, setDeleting] = useState(false);
-  const [printerType, setPrinterType] = useState("a4"); // from Settings
+  const [printerType, setPrinterType] = useState("a4");
   const popupRef = useRef(null);
 
+  // glassy button presets (same vibe as SaleInvoiceForm)
+  const btnBlueGlass =
+    "bg-blue-500/85 text-white ring-1 ring-white/20 backdrop-blur-sm shadow-[0_6px_20px_-6px_rgba(37,99,235,0.45)] hover:bg-blue-500/95";
+  const btnRoseGlass =
+    "bg-rose-500/85 text-white ring-1 ring-white/20 backdrop-blur-sm shadow-[0_6px_20px_-6px_rgba(244,63,94,0.45)] hover:bg-rose-500/95";
+  const btnSlateGlass =
+    "bg-slate-600/85 text-white ring-1 ring-white/20 backdrop-blur-sm shadow-[0_6px_20px_-6px_rgba(15,23,42,0.45)] hover:bg-slate-600/95";
+  const btnGreenGlass =
+    "bg-green-600/85 text-white ring-1 ring-white/20 backdrop-blur-sm shadow-[0_6px_20px_-6px_rgba(22,163,74,0.45)] hover:bg-green-600/95";
+  const chip =
+    "px-1 py-0.5 border rounded bg-gray-50 text-[10px] leading-none";
+
   // 🔒 permissions
-  const { loading: permsLoading, canFor } = usePermissions();
+  const { loading: permsLoading, canFor } = usePermissions?.() || {};
   const can = useMemo(
     () =>
-      (typeof canFor === "function" ? canFor("sale-invoice") : {
-        view:false, create:false, update:false, delete:false, import:false, export:false
-      }),
+      (typeof canFor === "function"
+        ? canFor("sale-invoice")
+        : { view: false, create: false, update: false, delete: false, import: false, export: false }),
     [canFor]
   );
 
-  // ===== Delete modal state (same flow as index) =====
+  // ===== Delete modal state =====
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
-  const [deleteStep, setDeleteStep] = useState(1); // 1 confirm -> 2 choose -> 3 password
+  const [deleteStep, setDeleteStep] = useState(1);
   const [deleteMode, setDeleteMode] = useState("none"); // 'credit' | 'refund' | 'none'
   const [password, setPassword] = useState("");
 
-  // Fetch invoice + settings (keep your original logic)
+  // New: items scroller ref (to mimic form table scroll)
+  const itemsScrollRef = useRef(null);
+
+  // Fetch invoice + settings
   useEffect(() => {
     (async () => {
       try {
@@ -50,16 +67,22 @@ export default function SaleInvoiceShow() {
     })();
   }, [id]);
 
-  // Derived numbers for display + delete decision
-  const invTotal = useMemo(() => Number(inv?.total ?? inv?.grand_total ?? inv?.gross_amount ?? 0), [inv]);
+  // Derived numbers for summary
+  const invTotal = useMemo(
+    () => Number(inv?.total ?? inv?.grand_total ?? inv?.gross_amount ?? 0),
+    [inv]
+  );
   const invReceived = useMemo(
     () => Number(inv?.total_receive ?? inv?.total_recieve ?? inv?.received ?? 0),
     [inv]
   );
-  const invRemaining = useMemo(() => Math.max(invTotal - invReceived, 0), [invTotal, invReceived]);
+  const invRemaining = useMemo(
+    () => Math.max(invTotal - invReceived, 0),
+    [invTotal, invReceived]
+  );
   const needsChoice = (invReceived > 0) || (Math.abs(invRemaining) > 0.0001);
 
-  // After delete: go to previous invoice (by id), else index
+  // After delete, go to previous or index
   const goToPrevOrIndex = async (deletedId) => {
     try {
       const res = await axios.get("/api/sale-invoices");
@@ -68,11 +91,8 @@ export default function SaleInvoiceShow() {
         .filter((x) => Number(x?.id) < Number(deletedId))
         .sort((a, b) => Number(b?.id) - Number(a?.id))[0];
 
-      if (prev?.id) {
-        navigate(`/sale-invoices/${prev.id}`);
-      } else {
-        navigate("/sale-invoices");
-      }
+      if (prev?.id) navigate(`/sale-invoices/${prev.id}`);
+      else navigate("/sale-invoices");
     } catch {
       navigate("/sale-invoices");
     }
@@ -80,7 +100,6 @@ export default function SaleInvoiceShow() {
 
   // ===== Delete flow =====
   const openDeleteModal = () => {
-    // 🔒 respect can.delete
     if (!can.delete) return toast.error("You don't have permission to delete sale invoices.");
     setDeleteMode("none");
     setPassword("");
@@ -96,7 +115,7 @@ export default function SaleInvoiceShow() {
   };
   const proceedAfterConfirm = () => {
     if (needsChoice) {
-      setDeleteMode("credit"); // default
+      setDeleteMode("credit");
       setDeleteStep(2);
     } else {
       setDeleteStep(3);
@@ -106,13 +125,10 @@ export default function SaleInvoiceShow() {
 
   const confirmAndDelete = async () => {
     if (!id) return;
-    // 🔒 respect can.delete
     if (!can.delete) return toast.error("You don't have permission to delete sale invoices.");
     try {
       setDeleting(true);
-      // 1) password confirm
       await axios.post("/api/auth/confirm-password", { password });
-      // 2) delete with mode
       await axios.delete(`/api/sale-invoices/${id}`, { params: { mode: deleteMode } });
       toast.success("Sale invoice deleted");
       await goToPrevOrIndex(id);
@@ -127,7 +143,7 @@ export default function SaleInvoiceShow() {
     }
   };
 
-  // Print
+  // Print popup logic
   const handlePrint = () => {
     if (!id) return;
 
@@ -204,34 +220,27 @@ export default function SaleInvoiceShow() {
     }, 400);
   };
 
-  // Keyboard shortcuts
+  // Keyboard shortcuts (mimic form topbar)
   useEffect(() => {
     const onKey = (e) => {
       if (!e.altKey) return;
       const k = (e.key || "").toLowerCase();
-      if (k === "n") { 
-        // 🔒 respect can.create
-        if (!can.create) return;
-        e.preventDefault(); 
-        navigate("/sale-invoices/create"); 
-      }
       if (k === "b") { e.preventDefault(); navigate(-1); }
-      if (k === "p") { 
-        // 🔒 printing allowed for viewers; if you want to guard, use !can.view check here
-        e.preventDefault(); 
-        handlePrint(); 
-      }
-      if (k === "d") { 
-        // 🔒 respect can.delete
-        if (!can.delete) return;
-        e.preventDefault(); 
-        openDeleteModal(); 
-      }
-      if (k === "e") { 
-        // 🔒 respect can.update
+      if (k === "p") { e.preventDefault(); handlePrint(); }
+      if (k === "e") {
         if (!can.update) return;
-        e.preventDefault(); 
-        navigate(`/sale-invoices/${id}/edit`); 
+        e.preventDefault();
+        navigate(`/sale-invoices/${id}/edit`);
+      }
+      if (k === "d") {
+        if (!can.delete) return;
+        e.preventDefault();
+        openDeleteModal();
+      }
+      if (k === "n") {
+        if (!can.create) return;
+        e.preventDefault();
+        navigate("/sale-invoices/create");
       }
     };
     document.addEventListener("keydown", onKey);
@@ -244,7 +253,7 @@ export default function SaleInvoiceShow() {
   const fmt = (v) => ((v ?? "") === "" ? "" : String(v));
 
   return (
-    <div className="p-3 space-y-3">
+    <div className="h-[calc(95vh-100px)] flex flex-col bg-white">
       <style>{`
         @media print {
           .no-print { display: none !important; }
@@ -252,167 +261,317 @@ export default function SaleInvoiceShow() {
         }
       `}</style>
 
-      <h2 className="text-lg font-bold">Sale Invoice</h2>
+      {/* === Top Bar (glassy, same placement as Form) === */}
+      <div className="shrink-0 sticky top-0 z-30 border-b bg-white/80 backdrop-blur-sm">
+        <div className="px-2 py-1 flex items-center gap-2">
+          <div className="text-xs font-semibold">Sale Invoice</div>
 
-      {/* Header */}
-      <table className="w-full border-collapse text-xs">
-        <tbody>
-          <tr>
-            <td className="border p-1 w-28">
-              <div className="text-[10px]">Posted Number</div>
-              <div className="font-semibold">{fmt(inv.posted_number)}</div>
-            </td>
-            <td className="border p-1 w-32">
-              <div className="text-[10px]">Date</div>
-              <div>{fmt(inv.date)}</div>
-            </td>
-            <td className="border p-1 w-[28%]">
-              <div className="text-[10px]">Customer</div>
-              <div>{inv.customer?.name ?? inv.customer_id}</div>
-            </td>
-            <td className="border p-1 w-[22%]">
-              <div className="text-[10px]">Doctor Name</div>
-              <div>{fmt(inv.doctor_name)}</div>
-            </td>
-            <td className="border p-1 w-[22%]">
-              <div className="text-[10px]">Patient Name</div>
-              <div>{fmt(inv.patient_name)}</div>
-            </td>
-          </tr>
-          <tr>
-            <td className="border p-1" colSpan={5}>
-              <div className="text-[10px]">Remarks</div>
-              <div>{fmt(inv.remarks)}</div>
-            </td>
-          </tr>
-        </tbody>
-      </table>
+          {/* Inline shortcuts (same zone as Alt+S in form) */}
+          <div className="ml-auto flex items-center gap-2 text-[10px] text-gray-600 no-print">
+            <span className="hidden sm:inline-flex items-center gap-1">
+              <span className={chip}>Alt</span><span>+</span><span className={chip}>E</span><span>Edit</span>
+            </span>
+            <span className="hidden sm:inline">•</span>
+            <span className="hidden sm:inline-flex items-center gap-1">
+              <span className={chip}>Alt</span><span>+</span><span className={chip}>P</span><span>Print</span>
+            </span>
+            <span className="hidden sm:inline">•</span>
+            <span className="hidden sm:inline-flex items-center gap-1">
+              <span className={chip}>Alt</span><span>+</span><span className={chip}>B</span><span>Back</span>
+            </span>
 
-      {/* Items */}
-      <div>
-        <h3 className="text-xs font-bold mb-1">Items</h3>
-        <table className="w-full border-collapse text-[11px] print-table">
-          <thead className="bg-gray-100">
-            <tr>
-              <th className="border p-1">#</th>
-              <th className="border p-1 text-left">Product</th>
-              <th className="border p-1">PSize</th>
-              <th className="border p-1">Batch</th>
-              <th className="border p-1">Expiry</th>
-              <th className="border p-1">Qty</th>
-              <th className="border p-1">Price</th>
-              <th className="border p-1">Disc%</th>
-              <th className="border p-1">Sub Total</th>
-            </tr>
-          </thead>
-          <tbody>
-            {(inv.items || []).map((it, i) => (
-              <tr key={i} className="text-center">
-                <td className="border p-1">{i + 1}</td>
-                <td className="border p-1 text-left">{it.product?.name ?? it.product_id}</td>
-                <td className="border p-1">{fmt(it.pack_size)}</td>
-                <td className="border p-1">{fmt(it.batch_number)}</td>
-                <td className="border p-1">{fmt(it.expiry)}</td>
-                <td className="border p-1">{fmt(it.quantity)}</td>
-                <td className="border p-1">{fmt(it.price)}</td>
-                <td className="border p-1">{fmt(it.item_discount_percentage)}</td>
-                <td className="border p-1">{fmt(it.sub_total)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+            {/* Actions (right) */}
+            <div className="ml-2 flex items-center gap-2">
+              <button
+                type="button"
+                onClick={handlePrint}
+                className={`px-3 py-1.5 rounded text-[11px] ${btnGreenGlass}`}
+                title="Alt+P"
+              >
+                🖨️ Print
+              </button>
+              <Guard when={can.update}>
+                <button
+                  type="button"
+                  onClick={() => navigate(`/sale-invoices/${id}/edit`)}
+                  className={`px-3 py-1.5 rounded text-[11px] ${btnBlueGlass}`}
+                  title="Alt+E"
+                >
+                  ✏️ Edit
+                </button>
+              </Guard>
+              <Guard when={can.delete}>
+                <button
+                  type="button"
+                  onClick={openDeleteModal}
+                  className={`px-3 py-1.5 rounded text-[11px] ${btnRoseGlass}`}
+                  title="Alt+D"
+                >
+                  🗑 Delete
+                </button>
+              </Guard>
+              <Guard when={can.create}>
+              <button
+                type="button"
+                onClick={() => navigate("/sale-invoices/create")}
+                className={`px-3 py-1.5 rounded text-[11px] ${btnBlueGlass}`}
+                title="Alt+N"
+              >
+                ➕ New
+              </button>
+            </Guard>
+              <button
+                type="button"
+                onClick={() => navigate(-1)}
+                className={`px-3 py-1.5 rounded text-[11px] ${btnSlateGlass}`}
+                title="Alt+B"
+              >
+                ← Back
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Meta strip (super compact, same grid rhythm as form) */}
+        <div className="px-2 pb-1 grid grid-cols-12 gap-1 text-[11px]">
+          <div className="col-span-2">
+            <label className="block text-[9px] mb-0.5">Posted #</label>
+            <input
+              type="text"
+              value={fmt(inv.posted_number)}
+              readOnly
+              className="w-full h-7 border-2 border-black rounded px-1 bg-gray-100"
+            />
+          </div>
+          <div className="col-span-2">
+            <label className="block text-[9px] mb-0.5">Date</label>
+            <input
+              type="text"
+              value={fmt(inv.date)}
+              readOnly
+              className="w-full h-7 border-2 border-black rounded px-1 bg-gray-100"
+            />
+          </div>
+          <div className="col-span-4">
+            <label className="block text-[9px] mb-0.5">Customer</label>
+            <input
+              type="text"
+              value={inv.customer?.name ?? inv.customer_id ?? ""}
+              readOnly
+              className="w-full h-7 border-2 border-black rounded px-1 bg-gray-100"
+            />
+          </div>
+          <div className="col-span-2">
+            <label className="block text-[9px] mb-0.5">Doctor</label>
+            <input
+              type="text"
+              value={fmt(inv.doctor_name)}
+              readOnly
+              className="w-full h-7 border-2 border-black rounded px-1 bg-gray-100"
+            />
+          </div>
+            <div className="col-span-2">
+            <label className="block text-[9px] mb-0.5">Patient</label>
+            <input
+              type="text"
+              value={fmt(inv.patient_name)}
+              readOnly
+              className="w-full h-7 border-2 border-black rounded px-1 bg-gray-100"
+            />
+          </div>
+
+          <div className="col-span-10">
+            <label className="block text-[9px] mb-0.5">Remarks</label>
+            <input
+              type="text"
+              value={fmt(inv.remarks)}
+              readOnly
+              className="w-full h-7 border-2 border-black rounded px-1 bg-gray-100"
+            />
+          </div>
+          <div className="col-span-2">
+            <label className="block text-[9px] mb-0.5">Items</label>
+            <input
+              type="text"
+              value={(inv.items || []).length}
+              readOnly
+              className="w-full h-7 border-2 border-black rounded px-1 bg-gray-100 text-center"
+            />
+          </div>
+        </div>
       </div>
 
-      {/* Footer totals — now includes Total Receive & Remaining */}
-      <table className="w-full border-collapse text-xs">
-        <tbody>
-          <tr>
-            <td className="border p-1 w-1/8">
-              <div className="text-[10px]">Tax %</div>
-              <div>{fmt(inv.tax_percentage)}</div>
-            </td>
-            <td className="border p-1 w-1/8">
-              <div className="text-[10px]">Tax Amount</div>
-              <div>{fmt(inv.tax_amount)}</div>
-            </td>
-            <td className="border p-1 w-1/8">
-              <div className="text-[10px]">Discount %</div>
-              <div>{fmt(inv.discount_percentage)}</div>
-            </td>
-            <td className="border p-1 w-1/8">
-              <div className="text-[10px]">Discount Amount</div>
-              <div>{fmt(inv.discount_amount)}</div>
-            </td>
-            <td className="border p-1 w-1/8">
-              <div className="text-[10px]">Gross Amount</div>
-              <div>{fmt(inv.gross_amount)}</div>
-            </td>
-            <td className="border p-1 w-1/8">
-              <div className="text-[10px]">Total</div>
-              <div className="font-semibold">{fmt(inv.total)}</div>
-            </td>
-            <td className="border p-1 w-1/8">
-              <div className="text-[10px]">Total Receive</div>
-              <div className="font-semibold">{invReceived.toLocaleString()}</div>
-            </td>
-            <td className="border p-1 w-1/8">
-              <div className="text-[10px]">Remaining</div>
-              <div className="font-semibold">{invRemaining.toLocaleString()}</div>
-            </td>
-          </tr>
-        </tbody>
-      </table>
+      {/* === Main workspace: Items (fluid) + Summary (240px) === */}
+      <div className="flex-1 grid grid-cols-[1fr_240px] gap-2 px-2 py-2 overflow-hidden">
+        {/* LEFT: Items table (same scroll & sticky header as form) */}
+        <div className="flex flex-col min-h-0">
+          <div className="text-[11px] font-semibold mb-1">Items</div>
+          <div
+            ref={itemsScrollRef}
+            className="flex-1 overflow-auto border-2 rounded relative"
+          >
+            <table className="w-full text-[11px] table-fixed border-collapse print-table">
+              <thead className="sticky top-0 z-20 bg-white/80 backdrop-blur-sm border-b border-gray-200/70">
+                <tr className="[&>th]:py-1 [&>th]:px-1 [&>th]:text-left">
+                  <th className="w-7 text-center">#</th>
+                  <th className="w-[180px]">Product</th>
+                  <th className="w-14 text-center">PSize</th>
+                  <th className="w-24">Batch</th>
+                  <th className="w-15 text-center">Expiry</th>
+                  <th className="w-25 text-center">Qty</th>
+                  <th className="w-22 text-center">Price</th>
+                  <th className="w-18 text-center">Disc%</th>
+                  <th className="w-26 text-center">Sub Total</th>
+                </tr>
+              </thead>
+              <tbody className="[&>tr>td]:py-1 [&>tr>td]:px-0.5">
+                {(inv.items || []).map((it, i) => (
+                  <tr key={i} className="border-b text-center">
+                    <td className="px-1">{i + 1}</td>
+                    <td className="px-1 text-left">{it.product?.name ?? it.product_id}</td>
+                    <td className="px-1">{fmt(it.pack_size)}</td>
+                    <td className="px-1">{fmt(it.batch_number)}</td>
+                    <td className="px-1">{fmt(it.expiry)}</td>
+                    <td className="px-1">{fmt(it.quantity)}</td>
+                    <td className="px-1">{fmt(it.price)}</td>
+                    <td className="px-1">{fmt(it.item_discount_percentage)}</td>
+                    <td className="px-1">{fmt(it.sub_total)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
 
-      {/* Actions */}
-      <div className="no-print flex flex-wrap gap-2 justify-end pt-2">
-        {/* 🔒 guard Delete/Edit/Create buttons only */}
-        <Guard when={can.delete}>
-          <button
-            className="bg-red-600 text-white px-4 py-2 rounded text-sm disabled:opacity-60"
-            onClick={openDeleteModal}
-            disabled={deleting}
-            title="Alt+D"
-          >
-            🗑 Delete
-          </button>
-        </Guard>
-        <Guard when={can.update}>
-          <button
-            className="bg-yellow-600 text-white px-4 py-2 rounded text-sm"
-            onClick={() => navigate(`/sale-invoices/${id}/edit`)}
-            title="Alt+E"
-          >
-            ✏️ Edit Invoice
-          </button>
-        </Guard>
-        <Guard when={can.create}>
-          <button
-            className="bg-blue-600 text-white px-4 py-2 rounded text-sm"
-            onClick={() => navigate("/sale-invoices/create")}
-            title="Alt+N"
-          >
-            + Add New Invoice
-          </button>
-        </Guard>
-        <button
-          className="bg-gray-500 text-white px-4 py-2 rounded text-sm"
-          onClick={() => navigate(-1)}
-          title="Alt+B"
-        >
-          ← Go Back
-        </button>
-        {/* Print left as-is (viewers can print); if you want, wrap in <Guard when={can.view}> */}
-        <button
-          className="bg-green-600 text-white px-4 py-2 rounded text-sm"
-          onClick={handlePrint}
-          title="Alt+P"
-        >
-          🖨️ Print Invoice
-        </button>
-      </div>
+        {/* RIGHT: Slim summary (read-only, mirrors form layout) */}
+        <div className="min-h-0">
+          <div className="sticky top-[20px] space-y-2">
+            <div className="border-2 rounded p-2">
+              <div className="text-[18px] font-semibold mb-1">Summary</div>
+              <div className="grid grid-cols-2 gap-1 text-[11px]">
+                <label className="text-[13px] font-bold self-center">Tax %</label>
+                <input
+                  type="text"
+                  readOnly
+                  value={fmt(inv.tax_percentage)}
+                  className="h-7 border-2 border-black rounded px-1 bg-gray-100"
+                />
 
-      <div className="no-print text-[11px] text-gray-500">
-        Using printer template: <b>{printerType?.toUpperCase?.() || "A4"}</b> (from Settings)
+                <label className="text-[13px] font-bold self-center">Tax Amt</label>
+                <input
+                  type="text"
+                  readOnly
+                  value={fmt(inv.tax_amount)}
+                  className="h-7 border-2 border-black rounded px-1 bg-gray-100"
+                />
+
+                <label className="text-[13px] font-bold self-center">Disc %</label>
+                <input
+                  type="text"
+                  readOnly
+                  value={fmt(inv.discount_percentage)}
+                  className="h-7 border-2 border-black rounded px-1 bg-gray-100"
+                />
+
+                <label className="text-[13px] font-bold self-center">Disc Amt</label>
+                <input
+                  type="text"
+                  readOnly
+                  value={fmt(inv.discount_amount)}
+                  className="h-7 border-2 border-black rounded px-1 bg-gray-100"
+                />
+
+                <label className="text-[13px] font-bold self-center">Gross</label>
+                <input
+                  type="text"
+                  readOnly
+                  value={fmt(inv.gross_amount)}
+                  className="h-7 border-2 border-black rounded px-1 bg-gray-100"
+                />
+
+                <label className="text-[13px] font-bold self-center">Total</label>
+                <input
+                  type="text"
+                  readOnly
+                  value={fmt(inv.total)}
+                  className="h-7 border-2 border-black rounded px-1 bg-gray-100 font-extrabold text-red-600 text-lg"
+                />
+
+                <label className="text-[13px] font-bold self-center">Receive</label>
+                <input
+                  type="text"
+                  readOnly
+                  value={invReceived.toLocaleString()}
+                  className="h-7 border-2 border-black rounded px-1 bg-gray-100"
+                />
+
+                <label className="text-[13px] font-bold self-center">Remaining</label>
+                <input
+                  type="text"
+                  readOnly
+                  value={invRemaining.toLocaleString()}
+                  className="h-7 border-2 border-black rounded px-1 bg-gray-100"
+                />
+              </div>
+
+              {/* Printer info (matches your show page) */}
+              <div className="pt-2 text-[11px] text-gray-500">
+                Using printer template: <b>{(printerType || "a4").toUpperCase()}</b>
+              </div>
+
+              {/* Primary actions (mirror top bar; kept for convenience on long lists) */}
+              <div className="pt-2 grid grid-cols-2 gap-2 no-print">
+                <button
+                  type="button"
+                  onClick={handlePrint}
+                  className={`h-9 rounded text-white text-[12px] ${btnGreenGlass}`}
+                  title="Alt+P"
+                >
+                  🖨️ Print
+                </button>
+                
+                <Guard when={can.update}>
+                  <button
+                    type="button"
+                    onClick={() => navigate(`/sale-invoices/${id}/edit`)}
+                    className={`h-9 rounded text-white text-[12px] ${btnBlueGlass}`}
+                    title="Alt+E"
+                  >
+                    ✏️ Edit
+                  </button>
+                </Guard>
+                <Guard when={can.create}>
+                  <button
+                    type="button"
+                    onClick={() => navigate("/sale-invoices/create")}
+                    className={`col-span-2 h-9 rounded text-white text-[12px] ${btnBlueGlass}`}
+                    title="Alt+N"
+                  >
+                    ➕ New
+                  </button>
+                </Guard>
+                <Guard when={can.delete}>
+                  <button
+                    type="button"
+                    onClick={openDeleteModal}
+                    className={`col-span-2 h-9 rounded text-white text-[12px] ${btnRoseGlass}`}
+                    title="Alt+D"
+                  >
+                    🗑 Delete
+                  </button>
+                </Guard>
+                <button
+                  type="button"
+                  onClick={() => navigate(-1)}
+                  className={`col-span-2 h-9 rounded text-white text-[12px] ${btnSlateGlass}`}
+                  title="Alt+B"
+                >
+                  ← Back
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
 
       {/* ===== Delete confirmation / choice / password modal ===== */}
@@ -447,7 +606,7 @@ export default function SaleInvoiceShow() {
               </div>
             )}
 
-            {/* Step 2: Choose Credit or Refund (only when needed) */}
+            {/* Step 2: Choose Credit or Refund */}
             {deleteStep === 2 && (
               <div>
                 <h2 className="text-lg font-semibold mb-2">Credit or Refund?</h2>

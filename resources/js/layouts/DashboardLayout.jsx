@@ -46,6 +46,15 @@ export default function DashboardLayout({ children }) {
     "/sale-returns/create": "Create Sale Return",
     "/purchase-orders": "Purchase Orders",
     "/settings": "Settings",
+    "/reports": "Reports",
+    "/users": "Users",
+    "/roles": "Roles",
+    "/reports/sale-detail": "Sales Detail Report",
+    "/reports/purchase-detail": "Purchase Detail Report",
+    "/reports/cost-of-sale": "Cost of Sale Report",
+    "/supplier-ledger": "Supplier Ledger",
+    "/customer-ledger": "Customer Ledger",
+    "/stock-adjustments": "Stock Adjustments",
   };
 
   const currentPath = location.pathname;

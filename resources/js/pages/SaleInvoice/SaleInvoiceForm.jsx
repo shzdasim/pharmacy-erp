@@ -1,3 +1,4 @@
+// /src/pages/sales/SaleInvoiceForm.jsx
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
@@ -7,11 +8,46 @@ import ProductSearchInput from "../../components/ProductSearchInput.jsx";
 import BatchSearchInput from "../../components/BatchSearchInput.jsx";
 import { recalcItem, recalcFooter } from "../../Formula/SaleInvoice.js";
 
+/* -------- utils (unchanged) -------- */
+const normalizeFormLoaded = (f) => {
+  const safe = { ...f };
+  safe.remarks = safe.remarks ?? "";
+  safe.doctor_name = safe.doctor_name ?? "";
+  safe.patient_name = safe.patient_name ?? "";
+  safe.date = safe.date ?? new Date().toISOString().split("T")[0];
+  safe.discount_percentage = safe.discount_percentage ?? "";
+  safe.discount_amount = safe.discount_amount ?? "";
+  safe.tax_percentage = safe.tax_percentage ?? "";
+  safe.tax_amount = safe.tax_amount ?? "";
+  safe.item_discount = safe.item_discount ?? "";
+  safe.gross_amount = safe.gross_amount ?? "";
+  safe.total = safe.total ?? "";
+  safe.total_receive = safe.total_receive ?? "";
+  safe.items = Array.isArray(safe.items)
+    ? safe.items.map((it) => ({
+        product_id: it?.product_id ?? "",
+        pack_size: it?.pack_size ?? "",
+        batch_number: it?.batch_number ?? "",
+        expiry: it?.expiry ?? "",
+        current_quantity: it?.current_quantity ?? "",
+        quantity: it?.quantity ?? "",
+        price: it?.price ?? "",
+        item_discount_percentage: it?.item_discount_percentage ?? "",
+        sub_total: it?.sub_total ?? "",
+      }))
+    : [];
+  return safe;
+};
+
+// glassy button presets
+const btnBlueGlass = "bg-blue-500/85 text-white ring-1 ring-white/20 backdrop-blur-sm shadow-[0_6px_20px_-6px_rgba(37,99,235,0.45)] hover:bg-blue-500/95";
+const btnRoseGlass = "bg-rose-500/85 text-white ring-1 ring-white/20 backdrop-blur-sm shadow-[0_6px_20px_-6px_rgba(244,63,94,0.45)] hover:bg-rose-500/95";
+
 export default function SaleInvoiceForm({ saleId, onSuccess }) {
-  // ===== form state =====
+  /* -------- state -------- */
   const [form, setForm] = useState({
     customer_id: "",
-    posted_number: "",
+    posted_number: "", // ⚠️ now left empty; server assigns at save
     date: new Date().toISOString().split("T")[0],
     remarks: "",
     doctor_name: "",
@@ -23,7 +59,7 @@ export default function SaleInvoiceForm({ saleId, onSuccess }) {
     item_discount: "",
     gross_amount: "",
     total: "",
-    total_receive: "", // mirror of purchase total_paid
+    total_receive: "",
     items: [
       {
         product_id: "",
@@ -39,10 +75,7 @@ export default function SaleInvoiceForm({ saleId, onSuccess }) {
     ],
   });
 
-  // Auto-sync total_receive with total until user edits
   const [receiveTouched, setReceiveTouched] = useState(false);
-
-  // Misc state
   const [marginPct, setMarginPct] = useState("");
   const navigate = useNavigate();
   useEffect(() => {
@@ -53,8 +86,9 @@ export default function SaleInvoiceForm({ saleId, onSuccess }) {
   const [customers, setCustomers] = useState([]);
   const [products, setProducts] = useState([]);
   const [batchesByProduct, setBatchesByProduct] = useState({});
+  const byIdsSupportedRef = useRef(true);
 
-  // refs
+  // refs for grid navigation
   const productRefs = useRef([]);
   const batchRefs = useRef([]);
   const qtyRefs = useRef([]);
@@ -62,23 +96,27 @@ export default function SaleInvoiceForm({ saleId, onSuccess }) {
   const discRefs = useRef([]);
   const focusedOnce = useRef(false);
 
+  // scroll container ref for the items table
+  const itemsScrollRef = useRef(null);
+
+  /* -------- effects -------- */
   useEffect(() => {
     (async () => {
       await Promise.all([fetchCustomers(), fetchProducts()]);
       if (saleId) {
         await fetchSale();
-      } else {
-        await fetchNewCode();
       }
+      // focus first product on brand new form
       setTimeout(() => {
         if (!focusedOnce.current && !saleId) {
           productRefs.current[0]?.querySelector?.("input")?.focus?.();
           focusedOnce.current = true;
         }
-      }, 80);
+      }, 60);
     })();
   }, [saleId]);
 
+  // Alt+S save
   useEffect(() => {
     const handle = (e) => {
       if (e.altKey && e.key.toLowerCase() === "s") {
@@ -90,7 +128,7 @@ export default function SaleInvoiceForm({ saleId, onSuccess }) {
     return () => document.removeEventListener("keydown", handle);
   }, [form]);
 
-  // ===== utils/helpers =====
+  /* -------- helpers -------- */
   const to2 = (n) => Number(parseFloat(n || 0).toFixed(2));
   const asISODate = (s) => {
     if (!s) return "";
@@ -100,23 +138,25 @@ export default function SaleInvoiceForm({ saleId, onSuccess }) {
     if (m) return `${m[3]}-${m[2]}-${m[1]}`;
     return String(s);
   };
-  const sanitizeNumberInput = (value, allowDecimal = false) => {
+  const sanitizeNumberInput = (value, allowDecimal = false, allowNegative = false) => {
     if (value === "") return "";
-    if (allowDecimal) {
-      // allow "12", "12.", ".5", "12.34"
-      if (/^\d*\.?\d*$/.test(value)) return value;
-      return value.slice(0, -1);
-    }
-    return value.replace(/\D/g, "");
+    const sign = allowNegative ? "-?" : "";
+    const regex = allowDecimal
+      ? new RegExp(`^${sign}\\d*\\.?\\d*$`)
+      : new RegExp(`^${sign}\\d*$`);
+    if (regex.test(value)) return value;
+    return value.slice(0, -1);
   };
   const eqId = (a, b) => String(a ?? "") === String(b ?? "");
   const zeroToEmpty = (v) => (v === 0 || v === "0" ? "" : (v ?? ""));
 
-  // ===== data =====
+  /* -------- data -------- */
   const fetchCustomers = async () => {
     try {
       const res = await axios.get("/api/customers");
-      const list = res.data || [];
+      let list = Array.isArray(res.data) ? res.data : [];
+      // pick the LOWEST ID as default
+      list = list.slice().sort((a, b) => (a?.id ?? 0) - (b?.id ?? 0));
       setCustomers(list);
       if (!saleId && !form.customer_id && list.length > 0) {
         setForm((prev) => ({ ...prev, customer_id: list[0].id }));
@@ -155,28 +195,29 @@ export default function SaleInvoiceForm({ saleId, onSuccess }) {
 
   const fetchSale = async () => {
     const res = await axios.get(`/api/sale-invoices/${saleId}`);
-    setForm(res.data);
-    setReceiveTouched(true); // prevent auto-sync overwrite on edit
-    await ensureProductsForItems(res.data?.items || []);
-    await ensureBatchesForItems(res.data?.items || []);
+    const loaded = normalizeFormLoaded(res.data);
+    const tr = Math.round(Number(loaded?.total_receive ?? 0));
+    const tt = Math.round(Number(loaded?.total ?? 0));
+    const shouldSync = loaded?.total_receive === "" || tr === tt;
+    setForm(loaded);
+    setReceiveTouched(!shouldSync);
+    await ensureProductsForItems(loaded?.items || []);
+    await ensureBatchesForItems(loaded?.items || []);
   };
 
-  const fetchNewCode = async () => {
-    const res = await axios.get("/api/sale-invoices/new-code");
-    setForm((prev) => ({ ...prev, posted_number: res.data.posted_number }));
-  };
-
-  // ===== handlers =====
+  /* -------- handlers -------- */
   const handleHeaderChange = (e) => {
     const { name, value } = e.target;
+    const allowNegative = name === "discount_percentage";
     const decimalFields = new Set([
       "discount_percentage",
       "discount_amount",
       "tax_percentage",
       "tax_amount",
     ]);
-    const v = decimalFields.has(name) ? sanitizeNumberInput(value, true) : value;
-
+    const v = decimalFields.has(name)
+      ? sanitizeNumberInput(value, true, allowNegative)
+      : value;
     const tmp = { ...form, [name]: v };
     let next = recalcFooter(tmp, name);
     next[name] = v;
@@ -186,20 +227,20 @@ export default function SaleInvoiceForm({ saleId, onSuccess }) {
 
   function handleItemChange(index, field, rawValue) {
     let value = rawValue;
-    const allowDecimal = ["price", "item_discount_percentage"];
-    const integerFields = ["quantity", "pack_size"];
-
-    if (allowDecimal.includes(field)) {
-      // allow 12, 12., .5, 12.34
-      if (!/^\d*\.?\d*$/.test(value)) return;
-    } else if (integerFields.includes(field)) {
-      value = value.replace(/\D/g, "");
+    const allowNegative = field === "item_discount_percentage";
+    if (field === "price" || field === "item_discount_percentage") {
+      value = sanitizeNumberInput(value, true, allowNegative);
+      if (field === "item_discount_percentage" && (value === "-" || value === "-."))
+        return setForm((prev) => {
+          const items = [...prev.items];
+          items[index] = { ...items[index], item_discount_percentage: value };
+          return { ...prev, items };
+        });
+    } else if (field === "quantity" || field === "pack_size") {
+      value = sanitizeNumberInput(value, false, false);
     }
-
     setForm((prev) => {
       const items = [...prev.items];
-
-      // toast when quantity crosses available
       if (field === "quantity") {
         const available = Number(items[index].current_quantity || 0);
         const prevQtyNum = Number(items[index].quantity || 0);
@@ -208,17 +249,9 @@ export default function SaleInvoiceForm({ saleId, onSuccess }) {
           toast.error(`Row ${index + 1}: quantity exceeds available (${available})`);
         }
       }
-
-      // run formula
       let row = recalcItem({ ...items[index], [field]: value }, field);
-
-      // Force-keep user's decimal text for item_discount_percentage
-      if (field === "item_discount_percentage") {
-        row.item_discount_percentage = value;
-      }
-
+      if (field === "item_discount_percentage") row.item_discount_percentage = value;
       items[index] = row;
-
       let updated = recalcFooter({ ...prev, items }, "items");
       if (!receiveTouched) updated.total_receive = updated.total ?? "";
       return updated;
@@ -226,23 +259,31 @@ export default function SaleInvoiceForm({ saleId, onSuccess }) {
   }
 
   const addRow = () => {
-    setForm((prev) => ({
-      ...prev,
-      items: [
-        ...prev.items,
-        {
-          product_id: "",
-          pack_size: "",
-          batch_number: "",
-          expiry: "",
-          current_quantity: "",
-          quantity: "",
-          price: "",
-          item_discount_percentage: "",
-          sub_total: "",
-        },
-      ],
-    }));
+    setForm((prev) => {
+      const next = {
+        ...prev,
+        items: [
+          ...prev.items,
+          {
+            product_id: "",
+            pack_size: "",
+            batch_number: "",
+            expiry: "",
+            current_quantity: "",
+            quantity: "",
+            price: "",
+            item_discount_percentage: "",
+            sub_total: "",
+          },
+        ],
+      };
+      if (!receiveTouched) {
+        const afterFooter = recalcFooter(next, "items");
+        afterFooter.total_receive = afterFooter.total ?? "";
+        return afterFooter;
+      }
+      return next;
+    });
   };
 
   const removeRow = (i) => {
@@ -279,12 +320,10 @@ export default function SaleInvoiceForm({ saleId, onSuccess }) {
     });
   };
 
-  // Product select: set qty & discount empty; unique product constraint; preload batches
   const handleProductSelect = async (rowIndex, productIdOrObj) => {
     const productId = resolveId(productIdOrObj);
     if (!productId && productId !== 0) return;
 
-    // Strict uniqueness
     const dupIndex = form.items.findIndex(
       (row, idx) => idx !== rowIndex && eqId(row.product_id, productId)
     );
@@ -293,7 +332,7 @@ export default function SaleInvoiceForm({ saleId, onSuccess }) {
       resetRow(rowIndex);
       setTimeout(() => {
         productRefs.current[rowIndex]?.querySelector?.("input")?.focus?.();
-      }, 50);
+      }, 40);
       return;
     }
 
@@ -308,7 +347,6 @@ export default function SaleInvoiceForm({ saleId, onSuccess }) {
     const available = selected?.quantity ?? selected?.available_units ?? 0;
     const price = selected?.unit_sale_price ?? selected?.unit_purchase_price ?? "";
 
-    // Preload batches
     const batchList = await fetchBatches(productId);
     const hasBatches = Array.isArray(batchList) && batchList.length > 0;
 
@@ -323,8 +361,8 @@ export default function SaleInvoiceForm({ saleId, onSuccess }) {
           batch_number: "",
           expiry: "",
           current_quantity: available.toString(),
-          quantity: "",                    // empty (not 0)
-          item_discount_percentage: "",    // empty (not 0)
+          quantity: "",
+          item_discount_percentage: "",
           sub_total: "",
         },
         "product_select"
@@ -340,23 +378,18 @@ export default function SaleInvoiceForm({ saleId, onSuccess }) {
       } else {
         qtyRefs.current[rowIndex]?.focus?.();
       }
-    }, 60);
+    }, 40);
   };
 
-  // Batch select: update expiry & available
   const handleBatchSelect = async (rowIndex, batchNum) => {
     const row0 = form.items[rowIndex];
-
     try {
       const batches = await fetchBatches(row0.product_id);
       const b = (batches || []).find((x) => String(x.batch_number) === String(batchNum));
-
-      // Prefer API; fall back to batch
       const params = new URLSearchParams({
         product_id: row0.product_id || "",
         batch: batchNum || "",
       }).toString();
-
       let available = Number(b?.available_units ?? 0);
       try {
         const res = await axios.get(`/api/products/available-quantity?${params}`);
@@ -364,9 +397,7 @@ export default function SaleInvoiceForm({ saleId, onSuccess }) {
           res?.data?.available ?? res?.data?.available_units ?? res?.data?.quantity ?? available ?? 0
         );
       } catch {}
-
       const exp = asISODate(b?.expiry || "");
-
       setForm((prev) => {
         const items = [...prev.items];
         const updated = {
@@ -380,14 +411,12 @@ export default function SaleInvoiceForm({ saleId, onSuccess }) {
         if (!receiveTouched) next.total_receive = next.total ?? "";
         return next;
       });
-
       setTimeout(() => {
         qtyRefs.current[rowIndex]?.focus?.();
-      }, 60);
+      }, 40);
     } catch {}
   };
 
-  // Merge new products into state (by id, dedup)
   const upsertProducts = (list) => {
     if (!Array.isArray(list)) return;
     setProducts((prev) => {
@@ -397,23 +426,27 @@ export default function SaleInvoiceForm({ saleId, onSuccess }) {
     });
   };
 
-  // Ensure all product_ids in form.items exist in products[]
   const ensureProductsForItems = async (items = []) => {
     const ids = Array.from(new Set(items.map((it) => it.product_id).filter(Boolean))).map(String);
     if (!ids.length) return;
-
     const have = new Set((products || []).map((p) => String(p.id)));
     const missing = ids.filter((id) => !have.has(id));
     if (!missing.length) return;
 
-    try {
-      const { data } = await axios.get("/api/products/by-ids", {
-        params: { ids: missing.join(",") },
-      });
-      const list = Array.isArray(data?.data) ? data.data : Array.isArray(data) ? data : [];
-      upsertProducts(list);
-      return;
-    } catch (_) {}
+    if (byIdsSupportedRef.current) {
+      try {
+        const { data } = await axios.get("/api/products/by-ids", {
+          params: { ids: missing.join(",") },
+        });
+        const list = Array.isArray(data?.data) ? data.data : Array.isArray(data) ? data : [];
+        upsertProducts(list);
+        return;
+      } catch (err) {
+        if (err?.response?.status === 404) {
+          byIdsSupportedRef.current = false;
+        }
+      }
+    }
 
     const fetched = await Promise.all(
       missing.map(async (id) => {
@@ -444,16 +477,12 @@ export default function SaleInvoiceForm({ saleId, onSuccess }) {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-
-    // Row validations
     for (let i = 0; i < form.items.length; i++) {
       const it = form.items[i];
       if (!it.product_id) return toast.error(`Row ${i + 1}: select a product`);
-
       const list = batchesByProduct[String(it.product_id)];
       const hasBatches = Array.isArray(list) && list.length > 0;
       if (hasBatches && !it.batch_number) return toast.error(`Row ${i + 1}: select a batch`);
-
       if (it.quantity === "" || it.quantity == null)
         return toast.error(`Row ${i + 1}: enter quantity`);
       const available = Number(it.current_quantity || 0);
@@ -462,7 +491,7 @@ export default function SaleInvoiceForm({ saleId, onSuccess }) {
       }
     }
 
-    // Strict unique product across rows
+    // unique product validation
     {
       const seen = new Set();
       for (let i = 0; i < form.items.length; i++) {
@@ -476,100 +505,115 @@ export default function SaleInvoiceForm({ saleId, onSuccess }) {
       }
     }
 
-    // total_receive validation against total
+    // total_receive validation
     {
-      const totalNum = Number(form.total || 0);
-      const recvNum = Number(form.total_receive || 0);
-      if (recvNum < 0) {
-        toast.error("Total Receive cannot be negative");
-        return;
-      }
-      if (recvNum > totalNum) {
-        toast.error("Total Receive cannot exceed Total");
-        return;
-      }
+      const totalNum = Math.round(Number(form.total || 0));
+      const recvNum = Math.round(Number(form.total_receive || 0));
+      if (recvNum < 0) return toast.error("Total Receive cannot be negative");
+      if (recvNum > totalNum) return toast.error("Total Receive cannot exceed Total");
     }
+
+    // Let backend assign posted_number; we send whatever is present.
+    const payload = {
+      ...form,
+      discount_percentage:
+        form.discount_percentage === "-" || form.discount_percentage === "-."
+          ? "-0"
+          : form.discount_percentage,
+      items: form.items.map((it) => ({
+        ...it,
+        item_discount_percentage:
+          it.item_discount_percentage === "-" || it.item_discount_percentage === "-."
+            ? "-0"
+            : it.item_discount_percentage,
+      })),
+    };
 
     try {
       if (saleId) {
-        const res = await axios.put(`/api/sale-invoices/${saleId}`, form);
+        const res = await axios.put(`/api/sale-invoices/${saleId}`, payload);
         const id = res?.data?.id ?? saleId;
         toast.success("Sale invoice updated");
         navigate(`/sale-invoices/${id}`);
       } else {
-        const res = await axios.post(`/api/sale-invoices`, form);
+        const res = await axios.post(`/api/sale-invoices`, payload);
         const id = res?.data?.id;
         toast.success("Sale invoice created");
-        if (id) {
-          navigate(`/sale-invoices/${id}`);
-        } else {
-          toast.error("Missing invoice ID from server response.");
-        }
+        if (id) navigate(`/sale-invoices/${id}`);
+        else toast.error("Missing invoice ID from server response.");
       }
     } catch {
       toast.error("Failed to save sale invoice");
     }
   };
 
-  // ---------- Keyboard Navigation ----------
-  const COLS = ["product", "batch", "quantity", "disc"];
+  // --- scroll helpers (unchanged logic) ---
+  const scrollTargetIntoItemsView = (node) => {
+    const container = itemsScrollRef.current;
+    if (!container || !node) return;
 
-  const focusCell = (row, col) => {
-    const map = {
-      product: productRefs,
-      batch: batchRefs,
-      quantity: qtyRefs,
-      price: priceRefs,
-      disc: discRefs,
-    };
-    const ref = map[col]?.current?.[row];
-    if (!ref) return;
-    const input = ref.querySelector?.("input");
-    if (input) {
-      input.focus();
-      input.select?.(); // select on focus
-    } else if (ref.focus) {
-      ref.focus();
+    const target = node.closest?.("tr") || node;
+
+    const head = container.querySelector("thead");
+    const headH = head ? head.getBoundingClientRect().height : 0;
+
+    const targetTop = target.offsetTop;
+    const targetBottom = targetTop + target.offsetHeight;
+
+    const viewTop = container.scrollTop;
+    const viewBottom = viewTop + container.clientHeight;
+
+    if (targetTop < viewTop + headH + 4) {
+      container.scrollTop = Math.max(targetTop - headH - 4, 0);
+    } else if (targetBottom > viewBottom - 4) {
+      container.scrollTop = targetBottom - container.clientHeight + 4;
     }
   };
 
+  // --- keyboard nav (unchanged) ---
+  const COLS = ["product", "batch", "quantity", "disc"];
+  const focusCell = (row, col) => {
+    const map = { product: productRefs, batch: batchRefs, quantity: qtyRefs, price: priceRefs, disc: discRefs };
+    const ref = map[col]?.current?.[row];
+    if (!ref) return;
+    const input = ref.querySelector?.("input") || ref;
+    if (input?.focus) {
+      input.focus();
+      input.select?.();
+    } else if (ref?.focus) {
+      ref.focus();
+    }
+    requestAnimationFrame(() => {
+      scrollTargetIntoItemsView(input || ref);
+    });
+  };
   const moveSameCol = (row, col, dir) => {
     const lastIdx = form.items.length - 1;
     if (dir === 1) {
       if (row === lastIdx) {
         addRow();
-        setTimeout(() => {
-          const targetCol = col === "quantity" || col === "disc" ? "product" : col;
-          focusCell(row + 1, targetCol);
-        }, 60);
+        setTimeout(() => focusCell(row + 1, col === "quantity" || col === "disc" ? "product" : col), 40);
       } else {
         focusCell(row + 1, col);
       }
-    } else {
-      if (row > 0) focusCell(row - 1, col);
+    } else if (row > 0) {
+      focusCell(row - 1, col);
     }
   };
-
   const moveNextCol = (row, col) => {
     const i = COLS.indexOf(col);
     if (i < 0) return;
-    if (i < COLS.length - 1) {
-      focusCell(row, COLS[i + 1]);
-    } else {
+    if (i < COLS.length - 1) focusCell(row, COLS[i + 1]);
+    else {
       const lastIdx = form.items.length - 1;
       if (row === lastIdx) {
         addRow();
-        setTimeout(() => focusCell(row + 1, COLS[0]), 60);
-      } else {
-        focusCell(row + 1, COLS[0]);
-      }
+        setTimeout(() => focusCell(row + 1, COLS[0]), 40);
+      } else focusCell(row + 1, COLS[0]);
     }
   };
-
   const onKeyNav = (e, row, col) => {
-    if (col === "batch" && (e.key === "ArrowDown" || e.key === "ArrowUp")) {
-      return; // BatchSearchInput likely manages its own list navigation
-    }
+    if (col === "batch" && (e.key === "ArrowDown" || e.key === "ArrowUp")) return;
     switch (e.key) {
       case "ArrowDown":
         e.preventDefault();
@@ -581,419 +625,452 @@ export default function SaleInvoiceForm({ saleId, onSuccess }) {
         break;
       case "Enter":
         e.preventDefault();
-        if (col === "quantity") {
-          focusCell(row, "disc");
-        } else {
-          moveNextCol(row, col);
-        }
+        if (col === "quantity") focusCell(row, "disc");
+        else moveNextCol(row, col);
         break;
       default:
         break;
     }
   };
 
-  // ===== render =====
+  /* ===================== R E N D E R ===================== */
   return (
-    <form className="flex flex-col" style={{ minHeight: "74vh", maxHeight: "80vh" }}>
-      {/* Header */}
-      <div className="sticky top-0 bg-white shadow p-2 z-10">
-        <h2 className="text-sm font-bold mb-2">
-          Sale Invoice (Enter → next field, Arrow ↑/↓ to move rows, Alt+S to save)
-        </h2>
+    <form
+      className="h-[calc(90vh-100px)] flex flex-col bg-white"
+      autoComplete="off" autoCapitalize="off" autoCorrect="off" spellCheck={false}
+    >
+      {/* Top Bar */}
+      <div className="shrink-0 sticky top-0 z-20 border-b bg-white">
+        <div className="px-2 py-1 flex items-center gap-2">
+          <div className="text-xs font-semibold">Sale Invoice</div>
 
-        <table className="w-full border-collapse text-xs">
-          <tbody>
-            <tr>
-              <td className="border p-1 w-24">
-                <label className="block text-[10px]">Posted Number</label>
-                <input
-                  type="text"
-                  name="posted_number"
-                  readOnly
-                  value={form.posted_number || ""}
-                  className="bg-gray-100 border rounded w-full p-1 h-7 text-xs"
-                />
-              </td>
+          <div className="ml-auto flex items-center gap-2">
+            <div className="hidden sm:flex items-center gap-2 text-[10px] text-gray-600">
+              <span className="inline-flex items-center gap-1">
+                <span className="px-1 py-0.5 border rounded bg-gray-50">Alt</span>
+                <span>+</span>
+                <span className="px-1 py-0.5 border rounded bg-gray-50">S</span>
+                <span>Save</span>
+              </span>
+              <span>•</span>
+              <span>Enter→next</span>
+              <span>•</span>
+              <span>↑/↓ rows</span>
+            </div>
 
-              <td className="border p-1 w-40">
-                <label className="block text-[10px]">Date</label>
-                <input
-                  type="date"
-                  name="date"
-                  value={form.date}
-                  onChange={handleHeaderChange}
-                  className="border rounded w-full p-1 h-7 text-xs"
-                />
-              </td>
+            <button
+              type="button"
+              onClick={handleSubmit}
+              className={`px-3 py-1.5 rounded text-[11px] ${btnBlueGlass}`}
+            >
+              {saleId ? "Update (Alt+S)" : "Create (Alt+S)"}
+            </button>
+          </div>
+        </div>
 
-              <td className="border p-1 w-[28%]">
-                <label className="block text-[10px]">Customer *</label>
-                <Select
-                  options={customers.map((c) => ({ value: c.id, label: c.name }))}
-                  value={
-                    customers
-                      .map((c) => ({ value: c.id, label: c.name }))
-                      .find((s) => s.value === form.customer_id) || null
-                  }
-                  onChange={(val) =>
-                    setForm((prev) => ({ ...prev, customer_id: val?.value || "" }))
-                  }
-                  isSearchable
-                  className="text-xs"
-                  styles={{
-                    control: (base) => ({
-                      ...base,
-                      minHeight: "28px",
-                      height: "28px",
-                      fontSize: "12px",
-                    }),
-                    valueContainer: (base) => ({
-                      ...base,
-                      height: "28px",
-                      padding: "0 4px",
-                    }),
-                    input: (base) => ({ ...base, margin: 0, padding: 0 }),
-                  }}
-                />
-              </td>
+        {/* Meta strip */}
+        <div className="px-2 pb-1 grid grid-cols-12 gap-1 text-[11px]">
+          <div className="col-span-2">
+            <label className="block text-[9px] mb-0.5">Posted #</label>
+            <input
+              type="text"
+              readOnly
+              value={form.posted_number || ""}
+              placeholder={saleId ? "" : "Auto on Save"}
+              autoComplete="off"
+              className="w-full h-7 border-2 border-black rounded px-1 bg-gray-100"
+            />
+          </div>
+          <div className="col-span-2">
+            <label className="block text-[9px] mb-0.5">Date</label>
+            <input
+              type="date"
+              name="date"
+              value={form.date ?? ""}
+              onChange={handleHeaderChange}
+              autoComplete="off"
+              className="w-full h-7 border-2 border-black rounded px-1"
+            />
+          </div>
+          <div className="col-span-4">
+            <label className="block text-[9px] mb-0.5">Customer *</label>
+            <Select
+              options={customers.map((c) => ({ value: c.id, label: c.name }))}
+              value={
+                customers
+                  .map((c) => ({ value: c.id, label: c.name }))
+                  .find((s) => s.value === form.customer_id) || null
+              }
+              onChange={(val) => setForm((prev) => ({ ...prev, customer_id: val?.value || "" }))}
+              className="text-[11px]"
+              // React-Select already uses a custom input; but we still hint the browser:
+              name="customer_select" inputId="customer_select" aria-autocomplete="list"
+              styles={{
+                control: (base) => ({ ...base, minHeight: 28, height: 28, fontSize: 11, borderRadius: 6 }),
+                valueContainer: (base) => ({ ...base, height: 28, padding: "0 6px" }),
+                indicatorsContainer: (base) => ({ ...base, height: 28 }),
+                input: (base) => ({ ...base, margin: 0, padding: 0 }),
+                menu: (base) => ({ ...base, fontSize: 12 }),
+              }}
+              isSearchable
+            />
+          </div>
+          <div className="col-span-2">
+            <label className="block text-[9px] mb-0.5">Doctor</label>
+            <input
+              type="text"
+              name="doctor_name"
+              value={form.doctor_name ?? ""}
+              onChange={handleHeaderChange}
+              autoComplete="off"
+              className="w-full h-7 border-2 border-black rounded px-1"
+            />
+          </div>
+            <div className="col-span-2">
+            <label className="block text-[9px] mb-0.5">Patient</label>
+            <input
+              type="text"
+              name="patient_name"
+              value={form.patient_name ?? ""}
+              onChange={handleHeaderChange}
+              autoComplete="off"
+              className="w-full h-7 border-2 border-black rounded px-1"
+            />
+          </div>
 
-              <td className="border p-1 w-[22%]">
-                <label className="block text-[10px]">Doctor Name</label>
-                <input
-                  type="text"
-                  name="doctor_name"
-                  value={form.doctor_name}
-                  onChange={handleHeaderChange}
-                  className="border rounded w-full p-1 h-7 text-xs"
-                />
-              </td>
-
-              <td className="border p-1 w-[22%]">
-                <label className="block text-[10px]">Patient Name</label>
-                <input
-                  type="text"
-                  name="patient_name"
-                  value={form.patient_name}
-                  onChange={handleHeaderChange}
-                  className="border rounded w-full p-1 h-7 text-xs"
-                />
-              </td>
-            </tr>
-
-            <tr>
-              <td className="border p-1" colSpan={5}>
-                <label className="block text-[10px]">Remarks</label>
-                <input
-                  type="text"
-                  name="remarks"
-                  value={form.remarks}
-                  onChange={handleHeaderChange}
-                  className="border rounded w-full p-1 h-7 text-xs"
-                />
-              </td>
-            </tr>
-          </tbody>
-        </table>
+          <div className="col-span-10">
+            <label className="block text-[9px] mb-0.5">Remarks</label>
+            <input
+              type="text"
+              name="remarks"
+              value={form.remarks ?? ""}
+              onChange={handleHeaderChange}
+              autoComplete="off"
+              className="w-full h-7 border-2 border-black rounded px-1"
+            />
+          </div>
+          <div className="col-span-2">
+            <label className="block text-[9px] mb-0.5">Items</label>
+            <input
+              type="text"
+              readOnly
+              value={form.items.length}
+              autoComplete="off"
+              className="w-full h-7 border-2 border-black rounded px-1 bg-gray-100 text-center"
+            />
+          </div>
+        </div>
       </div>
 
-      {/* Items */}
-      <div className="flex-1 overflow-auto p-1">
-        <h2 className="text-xs font-bold mb-1">Items</h2>
-        <table className="w-full border-collapse text-[11px]">
-          <thead className="sticky top-0 bg-gray-100">
-            <tr>
-              <th className="border w-6">#</th>
-              <th className="border w-[160px]">Product</th>
-              <th className="border w-14">PSize</th>
-              <th className="border w-20">Batch</th>
-              <th className="border w-20">Expiry</th>
-              <th className="border w-16">Available</th>
-              <th className="border w-16">Qty</th>
-              <th className="border w-20">Price</th>
-              <th className="border w-20">Disc%</th>
-              <th className="border w-24">Sub Total</th>
-              <th className="border w-6">+</th>
-            </tr>
-          </thead>
-          <tbody>
-            {form.items.map((it, i) => (
-              <tr key={i} className="text-center">
-                <td className="border">
-                  <button
-                    type="button"
-                    onClick={() => removeRow(i)}
-                    className="bg-red-500 text-white px-1 rounded text-[10px]"
-                  >
-                    X
-                  </button>
-                </td>
+      {/* Main workspace: Items + Summary */}
+      <div className="flex-1 grid grid-cols-[1fr_240px]  gap-2 px-2 py-2 overflow-hidden">
+        {/* LEFT: Items */}
+        <div className="flex flex-col min-h-0">
+          <div className="text-[11px] font-semibold mb-1">Items</div>
+          <div ref={itemsScrollRef} className="flex-1 overflow-auto border-2 rounded relative">
+            <table className="w-full text-[11px] table-fixed border-collapse" autoComplete="off">
+              <thead className="sticky top-0 z-20 bg-white/80 backdrop-blur-sm border-b border-gray-200/70">
+                <tr className="[&>th]:py-1 [&>th]:px-1 [&>th]:text-left">
+                  <th className="w-7 text-center text-red-600">DEL</th>
+                  <th className="w-7 text-center">#</th>
+                  <th className="w-[180px]">Product</th>
+                  <th className="w-14 text-center">PSize</th>
+                  <th className="w-24">Batch</th>
+                  <th className="w-15 text-center">Expiry</th>
+                  <th className="w-18 text-center">Avail</th>
+                  <th className="w-25 text-center">Qty</th>
+                  <th className="w-22 text-center">Price</th>
+                  <th className="w-18 text-center">Disc%</th>
+                  <th className="w-26 text-center">Sub Total</th>
+                  <th className="w-7 text-center">+</th>
+                </tr>
+              </thead>
+              <tbody className="[&>tr>td]:py-1 [&>tr>td]:px-0.2">
+                {form.items.map((it, i) => (
+                  <tr key={i} className="border-b">
+                    <td className="text-center">
+                      <button
+                        type="button"
+                        onClick={() => removeRow(i)}
+                        className={`px-2 rounded text-white text-[10px] ${btnRoseGlass}`}
+                      >
+                        X
+                      </button>
+                    </td>
+                    <td className="text-center">{i + 1}</td>
 
-                <td className="border text-left">
-                  <div ref={(el) => (productRefs.current[i] = el)}>
-                    <ProductSearchInput
-                      value={products.find((p) => eqId(p.id, it.product_id)) || it.product_id}
-                      onChange={(val) => handleProductSelect(i, val)}
-                      onKeyDown={(e) => onKeyNav(e, i, "product")}
-                      products={products}
-                      onRefreshProducts={fetchProducts}
-                    />
-                  </div>
-                </td>
+                    <td>
+                      <div ref={(el) => (productRefs.current[i] = el)}>
+                        <ProductSearchInput
+                          value={products.find((p) => eqId(p.id, it.product_id)) || it.product_id}
+                          onChange={(val) => handleProductSelect(i, val)}
+                          onKeyDown={(e) => onKeyNav(e, i, "product")}
+                          products={products}
+                          onRefreshProducts={fetchProducts}
+                          // ensure inner input disables suggestions (if your component forwards it)
+                          inputProps={{ autoComplete: "off", autoCapitalize: "off", autoCorrect: "off", spellCheck: false }}
+                        />
+                      </div>
+                    </td>
 
-                <td className="border">
-                  <input
-                    type="text"
-                    readOnly
-                    value={it.pack_size ?? ""}
-                    className="border bg-gray-100 w-full h-6 text-[11px] px-1"
-                  />
-                </td>
+                    <td className="text-center">
+                      <input
+                        type="text"
+                        readOnly
+                        value={it.pack_size ?? ""}
+                        autoComplete="off"
+                        className="w-full h-6 border rounded px-1 bg-gray-100 text-center"
+                      />
+                    </td>
 
-                <td className="border">
-                  <div ref={(el) => (batchRefs.current[i] = el)}>
-                    <BatchSearchInput
-                      value={it.batch_number}
-                      onChange={(val) => handleBatchSelect(i, val)}
-                      batches={(batchesByProduct[it.product_id] || []).map((b) => ({
-                        ...b,
-                        batch_number: b.batch_number || b.batch,
-                      }))}
-                      usedBatches={form.items
-                        .filter((row, idx) => idx !== i && row.product_id === it.product_id)
-                        .map((row) => row.batch_number)
-                        .filter(Boolean)}
-                      onKeyDown={(e) => onKeyNav(e, i, "batch")}
-                    />
-                  </div>
-                </td>
+                    <td>
+                      <div ref={(el) => (batchRefs.current[i] = el)}>
+                        <BatchSearchInput
+                          value={it.batch_number}
+                          onChange={(val) => handleBatchSelect(i, val)}
+                          batches={(batchesByProduct[it.product_id] || []).map((b) => ({
+                            ...b,
+                            batch_number: b.batch_number || b.batch,
+                          }))}
+                          usedBatches={form.items
+                            .filter((row, idx) => idx !== i && row.product_id === it.product_id)
+                            .map((row) => row.batch_number)
+                            .filter(Boolean)}
+                          onKeyDown={(e) => onKeyNav(e, i, "batch")}
+                          inputProps={{ autoComplete: "off", autoCapitalize: "off", autoCorrect: "off", spellCheck: false }}
+                        />
+                      </div>
+                    </td>
 
-                <td className="border">
-                  <input
-                    type="date"
-                    value={it.expiry ?? ""}
-                    readOnly
-                    className="border bg-gray-100 w-full h-6 text-[11px] px-1"
-                  />
-                </td>
+                    <td className="text-center">
+                      <input
+                        type="date"
+                        value={it.expiry ?? ""}
+                        readOnly
+                        autoComplete="off"
+                        className="w-full h-6 border rounded px-1 bg-gray-100 text-center"
+                      />
+                    </td>
 
-                <td className="border">
-                  <input
-                    type="text"
-                    readOnly
-                    value={it.current_quantity ?? ""}
-                    className="border bg-gray-100 w-full h-6 text-[11px] px-1"
-                  />
-                </td>
+                    <td className="text-center">
+                      <input
+                        type="text"
+                        readOnly
+                        value={it.current_quantity ?? ""}
+                        autoComplete="off"
+                        className="w-full h-6 border rounded px-1 bg-gray-100 text-center"
+                      />
+                    </td>
 
-                <td className="border">
-                  <input
-                    ref={(el) => (qtyRefs.current[i] = el)}
-                    type="text"
-                    inputMode="numeric"
-                    value={zeroToEmpty(it.quantity)} // show "" instead of 0
-                    onChange={(e) => handleItemChange(i, "quantity", e.target.value)}
-                    className={
-                      "border w-full h-6 text-[11px] px-1 " +
-                      (Number(it.quantity || 0) > Number(it.current_quantity || 0)
-                        ? "border-red-500 ring-1 ring-red-400"
-                        : "")
-                    }
-                    onKeyDown={(e) => onKeyNav(e, i, "quantity")}
-                    onFocus={(e) => e.target.select()} // select on focus
-                  />
-                </td>
-
-                <td className="border">
-                  <input
-                    ref={(el) => (priceRefs.current[i] = el)}
-                    type="text"
-                    value={to2(it.price ?? "")}
-                    readOnly
-                    className="border bg-gray-100 w-full h-6 text-[11px] px-1"
-                    onKeyDown={(e) => onKeyNav(e, i, "price")}
-                  />
-                </td>
-
-                <td className="border">
-                  <input
-                    ref={(el) => (discRefs.current[i] = el)}
-                    type="text"
-                    inputMode="decimal"
-                    value={zeroToEmpty(it.item_discount_percentage)} // show "" instead of 0
-                    onChange={(e) =>
-                      handleItemChange(i, "item_discount_percentage", e.target.value)
-                    }
-                    onBlur={(e) => {
-                      const v = e.target.value;
-                      if (v !== "") {
-                        const num = Number(v);
-                        if (Number.isFinite(num)) {
-                          // normalize to 2dp but keep via handleItemChange which preserves decimals
-                          handleItemChange(i, "item_discount_percentage", num.toFixed(2));
+                    <td className="text-center">
+                      <input
+                        ref={(el) => (qtyRefs.current[i] = el)}
+                        type="text"
+                        inputMode="numeric"
+                        value={zeroToEmpty(it.quantity)}
+                        onChange={(e) => handleItemChange(i, "quantity", e.target.value)}
+                        autoComplete="off"
+                        className={
+                          "w-full h-6 border rounded px-1 text-center " +
+                          (Number(it.quantity || 0) > Number(it.current_quantity || 0)
+                            ? "border-red-500 ring-1 ring-red-400"
+                            : "")
                         }
-                      }
-                    }}
-                    className="border w-full h-6 text-[11px] px-1"
-                    onKeyDown={(e) => onKeyNav(e, i, "disc")}
-                    onFocus={(e) => e.target.select()} // select on focus
-                  />
-                </td>
+                        onKeyDown={(e) => onKeyNav(e, i, "quantity")}
+                        onFocus={(e) => e.target.select()}
+                      />
+                    </td>
 
-                <td className="border">
-                  <input
-                    type="text"
-                    readOnly
-                    value={it.sub_total ?? ""}
-                    className="border bg-gray-100 w-full h-6 text-[11px] px-1"
-                  />
-                </td>
+                    <td className="text-center">
+                      <input
+                        ref={(el) => (priceRefs.current[i] = el)}
+                        type="text"
+                        value={to2(it.price ?? "")}
+                        readOnly
+                        autoComplete="off"
+                        className="w-full h-6 border rounded px-1 bg-gray-100 text-center"
+                        onKeyDown={(e) => onKeyNav(e, i, "price")}
+                      />
+                    </td>
 
-                <td className="border">
-                  <button
-                    type="button"
-                    onClick={addRow}
-                    className="bg-blue-500 text-white px-1 rounded text-[10px]"
-                  >
-                    +
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+                    <td className="text-center">
+                      <input
+                        ref={(el) => (discRefs.current[i] = el)}
+                        type="text"
+                        inputMode="decimal"
+                        value={zeroToEmpty(it.item_discount_percentage)}
+                        onChange={(e) => handleItemChange(i, "item_discount_percentage", e.target.value)}
+                        onBlur={(e) => {
+                          const v = e.target.value;
+                          if (v !== "" && v !== "-" && v !== "-.") {
+                            const num = Number(v);
+                            if (Number.isFinite(num)) {
+                              handleItemChange(i, "item_discount_percentage", num.toFixed(2));
+                            }
+                          }
+                        }}
+                        autoComplete="off"
+                        className="w-full h-6 border rounded px-1 text-center"
+                        onKeyDown={(e) => onKeyNav(e, i, "disc")}
+                        onFocus={(e) => e.target.select()}
+                      />
+                    </td>
 
-      {/* Footer */}
-      <div className="sticky bottom-0 bg-white shadow p-2 z-10">
-        <table className="w-full border-collapse text-xs">
-          <tbody>
-            <tr>
-              <td className="border p-1">
-                <label className="block text-[10px]">Margin %</label>
+                    <td className="text-center">
+                      <input
+                        type="text"
+                        readOnly
+                        value={it.sub_total ?? ""}
+                        autoComplete="off"
+                        className="w-full h-6 border rounded px-1 bg-gray-100 text-center"
+                      />
+                    </td>
+
+                    <td className="text-center">
+                      <button
+                        type="button"
+                        onClick={addRow}
+                        className={`px-2 rounded text-white text-[10px] ${btnBlueGlass}`}
+                      >
+                        +
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* RIGHT: Summary */}
+        <div className="min-h-0">
+          <div className="sticky top-[20px] space-y-2">
+            <div className="border-2 rounded p-2">
+              <div className="text-[18px] font-semibold mb-1">Summary</div>
+              <div className="grid grid-cols-2 gap-1 text-[11px]">
+                <label className="text-[13px] font-bold self-center">Margin %</label>
                 <input
                   type="text"
                   name="margin_percentage"
                   readOnly
                   value={marginPct}
-                  onChange={(e) =>
-                    setMarginPct(sanitizeNumberInput(e.target.value, true))
-                  }
-                  className="border rounded w-full p-1 h-7 text-xs bg-gray-100"
+                  onChange={(e) => setMarginPct(sanitizeNumberInput(e.target.value, true))}
+                  autoComplete="off"
+                  className="h-7 border-2 border-black rounded px-1 bg-gray-100 font-extrabold text-red-600 text-lg"
                 />
-              </td>
 
-              <td className="border p-1 w-1/8">
-                <label className="block text-[10px]">Tax %</label>
+                <label className="text-[13px] font-bold self-center">Tax %</label>
                 <input
                   type="text"
                   name="tax_percentage"
                   value={form.tax_percentage ?? ""}
                   onChange={handleHeaderChange}
-                  className="border rounded w-full p-1 h-7 text-xs"
+                  autoComplete="off"
+                  className="h-7 border-2 border-black rounded px-1"
                 />
-              </td>
 
-              <td className="border p-1 w-1/8">
-                <label className="block text-[10px]">Tax Amount</label>
+                <label className="text-[13px] font-bold self-center">Tax Amt</label>
                 <input
                   type="text"
                   name="tax_amount"
                   value={form.tax_amount ?? ""}
                   onChange={handleHeaderChange}
-                  className="border rounded w-full p-1 h-7 text-xs"
+                  autoComplete="off"
+                  className="h-7 border-2 border-black rounded px-1"
                 />
-              </td>
 
-              <td className="border p-1 w-1/8">
-                <label className="block text-[10px]">Discount %</label>
+                <label className="text-[13px] font-bold self-center">Disc %</label>
                 <input
                   type="text"
                   name="discount_percentage"
                   value={form.discount_percentage ?? ""}
                   onChange={handleHeaderChange}
-                  className="border rounded w-full p-1 h-7 text-xs"
+                  onBlur={(e) => {
+                    const v = e.target.value;
+                    if (v !== "" && v !== "-" && v !== "-.") {
+                      const num = Number(v);
+                      if (Number.isFinite(num)) {
+                        handleHeaderChange({ target: { name: "discount_percentage", value: num.toFixed(2) } });
+                      }
+                    }
+                  }}
+                  autoComplete="off"
+                  className="h-7 border-2 border-black rounded px-1"
                 />
-              </td>
 
-              <td className="border p-1 w-1/8">
-                <label className="block text-[10px]">Discount Amount</label>
+                <label className="text-[13px] font-bold self-center">Disc Amt</label>
                 <input
                   type="text"
                   name="discount_amount"
                   value={form.discount_amount ?? ""}
                   onChange={handleHeaderChange}
-                  className="border rounded w-full p-1 h-7 text-xs"
+                  autoComplete="off"
+                  className="h-7 border-2 border-black rounded px-1"
                 />
-              </td>
 
-              <td className="border p-1 w-1/8">
-                <label className="block text-[10px]">Gross Amount</label>
+                <label className="text-[13px] font-bold self-center">Gross</label>
                 <input
                   type="text"
                   readOnly
                   value={form.gross_amount ?? ""}
-                  className="border rounded w-full p-1 h-7 text-xs bg-gray-100"
+                  autoComplete="off"
+                  className="h-7 border-2 border-black rounded px-1 bg-gray-100"
                 />
-              </td>
 
-              <td className="border p-1 w-1/8">
-                <label className="block text-[10px]">Total</label>
+                <label className="text-[13px] font-bold self-center">Total</label>
                 <input
                   type="text"
                   readOnly
                   value={form.total ?? ""}
-                  className="border rounded w-full p-1 h-7 text-xs bg-gray-100"
+                  autoComplete="off"
+                  className="h-7 border-2 border-black rounded px-1 bg-gray-100 font-extrabold text-red-600 text-lg"
                 />
-              </td>
 
-              {/* Total Receive */}
-              <td className="border p-1 w-1/8">
-                <label className="block text-[10px]">Total Receive</label>
+                <label className="text-[13px] font-bold self-center">Receive</label>
                 <input
                   type="text"
                   name="total_receive"
-                  inputMode="decimal"
+                  inputMode="numeric"
                   value={form.total_receive ?? ""}
                   onChange={(e) => {
-                    const v = sanitizeNumberInput(e.target.value, true);
+                    const v = sanitizeNumberInput(e.target.value, true, false);
                     setReceiveTouched(true);
                     setForm((prev) => ({ ...prev, total_receive: v }));
                   }}
                   onBlur={() => {
                     setForm((prev) => ({
                       ...prev,
-                      total_receive: to2(prev.total_receive).toFixed(2),
+                      total_receive: String(Math.round(Number(prev.total_receive || 0))),
                     }));
                   }}
-                  className="border rounded w-full p-1 h-7 text-xs"
+                  autoComplete="off"
+                  className="h-7 border-2 border-black rounded px-1"
                 />
-              </td>
 
-              {/* Remaining */}
-              <td className="border p-1 w-1/8">
-                <label className="block text-[10px]">Remaining</label>
+                <label className="text-[13px] font-bold self-center">Remaining</label>
                 <input
                   type="text"
                   readOnly
-                  value={to2(
-                    (Number(form.total) || 0) - (Number(form.total_receive) || 0)
-                  ).toFixed(2)}
-                  className="border rounded w-full p-1 h-7 text-xs bg-gray-100"
+                  value={String(
+                    Math.round(Number(form.total || 0)) - Math.round(Number(form.total_receive || 0))
+                  )}
+                  autoComplete="off"
+                  className="h-7 border-2 border-black rounded px-1 bg-gray-100"
                 />
-              </td>
+              </div>
 
-              <td className="border p-1 w-1/6 text-center align-middle">
+              <div className="pt-2">
                 <button
                   type="button"
                   onClick={handleSubmit}
-                  className="bg-green-600 text-white px-8 py-3 rounded text-sm hover:bg-green-700 transition duration-200"
+                  className={`w-full h-9 rounded text-white text-[12px] ${btnBlueGlass}`}
                 >
                   {saleId ? "Update Sale" : "Create Sale"}
                 </button>
-              </td>
-            </tr>
-          </tbody>
-        </table>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     </form>
   );

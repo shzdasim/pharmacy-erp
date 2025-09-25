@@ -10,7 +10,8 @@ use Illuminate\Support\Facades\DB;
 
 class PurchaseInvoiceController extends Controller
 {
-    // Generate new invoice code
+    // (Legacy helper) Generate new invoice code — kept for backward compatibility, but
+    // the UI no longer calls this; posted_number is now assigned server-side on SAVE.
     public function generateNewCode()
     {
         $this->authorize('create', PurchaseInvoice::class);
@@ -56,13 +57,13 @@ class PurchaseInvoiceController extends Controller
         return $purchaseInvoice->load('supplier', 'items.product');
     }
 
-    // Store new invoice
+    // Store new invoice — posted_number is assigned HERE (atomic, race-safe)
     public function store(Request $request)
     {
         $this->authorize('create', PurchaseInvoice::class);
         $data = $request->validate([
             'supplier_id'          => 'required|exists:suppliers,id',
-            'posted_number'        => 'required|string',
+            // 'posted_number'      => now generated server-side
             'posted_date'          => 'required|date',
             'remarks'              => 'nullable|string',
             'invoice_number'       => 'required|string|unique:purchase_invoices,invoice_number',
@@ -72,50 +73,69 @@ class PurchaseInvoiceController extends Controller
             'discount_percentage'  => 'nullable|numeric',
             'discount_amount'      => 'nullable|numeric',
             'total_amount'         => 'required|numeric|min:0',
-            'total_paid'           => 'nullable|numeric|min:0', // NEW
+            'total_paid'           => 'nullable|numeric|min:0',
 
             'items'                                => 'required|array',
             'items.*.product_id'                   => 'required|exists:products,id',
             'items.*.pack_size'                    => 'nullable|integer',
             'items.*.batch'                        => 'nullable|string',
             'items.*.expiry'                       => 'nullable|date',
-            'items.*.pack_quantity'                => 'required|integer',
+            'items.*.pack_quantity'                => 'required|numeric',
             'items.*.unit_quantity'                => 'required|integer',
             'items.*.pack_purchase_price'          => 'required|numeric',
             'items.*.unit_purchase_price'          => 'required|numeric',
             'items.*.pack_sale_price'              => 'required|numeric',
             'items.*.unit_sale_price'              => 'required|numeric',
             'items.*.item_discount_percentage'     => 'nullable|numeric|min:0',
-            'items.*.pack_bonus'                   => 'nullable|integer|min:0',
+            'items.*.pack_bonus'                   => 'nullable|numeric|min:0',
             'items.*.unit_bonus'                   => 'nullable|integer|min:0',
             'items.*.margin'                       => 'required|numeric',
             'items.*.sub_total'                    => 'required|numeric',
-            'items.*.avg_price'                    => 'required|numeric', // effective cost
+            'items.*.avg_price'                    => 'required|numeric',
             'items.*.quantity'                     => 'required|integer',
         ]);
 
-        // Default "paid equals total" unless user provided a value.
         if (!array_key_exists('total_paid', $data) || $data['total_paid'] === null || $data['total_paid'] === '') {
             $data['total_paid'] = $data['total_amount'] ?? 0;
         }
 
-        DB::beginTransaction();
-
         try {
-            $invoice = PurchaseInvoice::create($data);
+            return DB::transaction(function () use ($data) {
+                // Lock the sequence by selecting last row FOR UPDATE to avoid two requests
+                // generating the same posted_number when saving concurrently.
+                $prefix = 'PRINV-';
+                $lastPosted = DB::table('purchase_invoices')
+                    ->whereNotNull('posted_number')
+                    ->where('posted_number', 'like', $prefix . '%')
+                    ->lockForUpdate()
+                    ->orderByDesc('id')
+                    ->value('posted_number');
 
-            $this->processInvoiceItems($invoice, $data['items']);
+                $nextNum = 1;
+                if ($lastPosted && preg_match('/^' . preg_quote($prefix, '/') . '(\d+)$/', $lastPosted, $m)) {
+                    $nextNum = (int) $m[1] + 1;
+                }
+                $nextCode = $prefix . str_pad($nextNum, 4, '0', STR_PAD_LEFT);
 
-            // Optionally polish costing (won't touch quantity)
-            $this->recalcProductsByIds(
-                collect($data['items'])->pluck('product_id')->unique()->all()
-            );
+                $invoice = PurchaseInvoice::create(array_merge($data, [
+                    'posted_number' => $nextCode,
+                ]));
 
-            DB::commit();
+                $this->processInvoiceItems($invoice, $data['items']);
 
-            return response()->json($invoice->load('items.product', 'supplier'), 201);
+                $this->recalcProductsByIds(
+                    collect($data['items'])->pluck('product_id')->unique()->all()
+                );
+
+                // Return the created invoice including items and supplier for the client
+                return response()->json($invoice->load('items.product', 'supplier'), 201);
+            });
+        } catch (\Illuminate\Database\QueryException $e) {
+            // Likely unique-constraint violation (invoice_number / posted_number)
+            return $this->respondDuplicateError($e);
+        } catch (\Illuminate\Database\QueryException $e) {
+            return $this->respondDuplicateError($e);
         } catch (\Exception $e) {
-            DB::rollBack();
             return response()->json([
                 'message' => 'Error creating purchase invoice',
                 'error'   => $e->getMessage()
@@ -123,13 +143,13 @@ class PurchaseInvoiceController extends Controller
         }
     }
 
-    // Update invoice
+    // Update invoice (posted_number stays unchanged; do not regenerate)
     public function update(Request $request, PurchaseInvoice $purchaseInvoice)
     {
         $this->authorize('update', $purchaseInvoice);
         $data = $request->validate([
             'supplier_id'          => 'required|exists:suppliers,id',
-            'posted_number'        => 'required|string',
+            // 'posted_number'      => not user-editable on update
             'posted_date'          => 'required|date',
             'remarks'              => 'nullable|string',
             'invoice_number'       => 'required|string|unique:purchase_invoices,invoice_number,' . $purchaseInvoice->id,
@@ -139,56 +159,55 @@ class PurchaseInvoiceController extends Controller
             'discount_percentage'  => 'nullable|numeric',
             'discount_amount'      => 'nullable|numeric',
             'total_amount'         => 'required|numeric|min:0',
-            'total_paid'           => 'nullable|numeric|min:0', // NEW (optional on update)
+            'total_paid'           => 'nullable|numeric|min:0',
 
             'items'                                => 'required|array',
             'items.*.product_id'                   => 'required|exists:products,id',
             'items.*.pack_size'                    => 'nullable|integer',
             'items.*.batch'                        => 'nullable|string',
             'items.*.expiry'                       => 'nullable|date',
-            'items.*.pack_quantity'                => 'required|integer',
+            'items.*.pack_quantity'                => 'required|numeric',
             'items.*.unit_quantity'                => 'required|integer',
             'items.*.pack_purchase_price'          => 'required|numeric',
             'items.*.unit_purchase_price'          => 'required|numeric',
             'items.*.pack_sale_price'              => 'required|numeric',
             'items.*.unit_sale_price'              => 'required|numeric',
             'items.*.item_discount_percentage'     => 'nullable|numeric|min:0',
-            'items.*.pack_bonus'                   => 'nullable|integer|min:0',
+            'items.*.pack_bonus'                   => 'nullable|numeric|min:0',
             'items.*.unit_bonus'                   => 'nullable|integer|min:0',
             'items.*.margin'                       => 'required|numeric',
             'items.*.sub_total'                    => 'required|numeric',
-            'items.*.avg_price'                    => 'required|numeric', // effective cost
+            'items.*.avg_price'                    => 'required|numeric',
             'items.*.quantity'                     => 'required|integer',
         ]);
 
-        // On update: DO NOT auto-force total_paid; honor what the user sends.
-        // If 'total_paid' is not present, we simply won't touch it (fill ignores absent keys).
-
-        DB::beginTransaction();
-
         try {
-            $purchaseInvoice->update($data);
+            return DB::transaction(function () use ($purchaseInvoice, $data) {
+                // Keep existing posted_number intact
+                $data['posted_number'] = $purchaseInvoice->posted_number;
 
-            $purchaseInvoice->load('items');
+                $purchaseInvoice->update($data);
+                $purchaseInvoice->load('items');
 
-            $affectedIds = $purchaseInvoice->items->pluck('product_id')->merge(
-                collect($data['items'])->pluck('product_id')
-            )->unique()->all();
+                $affectedIds = $purchaseInvoice->items->pluck('product_id')->merge(
+                    collect($data['items'])->pluck('product_id')
+                )->unique()->all();
 
-            foreach ($purchaseInvoice->items as $oldItem) {
-                $this->revertItem($oldItem, false);
-            }
+                foreach ($purchaseInvoice->items as $oldItem) {
+                    $this->revertItem($oldItem, false);
+                }
 
-            $purchaseInvoice->items()->delete();
-            $this->processInvoiceItems($purchaseInvoice, $data['items']);
+                $purchaseInvoice->items()->delete();
+                $this->processInvoiceItems($purchaseInvoice, $data['items']);
 
-            $this->recalcProductsByIds($affectedIds);
+                $this->recalcProductsByIds($affectedIds);
 
-            DB::commit();
-
-            return response()->json($purchaseInvoice->load('items.product', 'supplier'));
+                return response()->json($purchaseInvoice->load('items.product', 'supplier'));
+            });
+        } catch (\Illuminate\Database\QueryException $e) {
+            // Likely unique-constraint violation (invoice_number / posted_number)
+            return $this->respondDuplicateError($e);
         } catch (\Exception $e) {
-            DB::rollBack();
             return response()->json([
                 'message' => 'Failed to update purchase invoice',
                 'error'   => $e->getMessage()
@@ -200,32 +219,59 @@ class PurchaseInvoiceController extends Controller
     public function destroy(PurchaseInvoice $purchaseInvoice)
     {
         $this->authorize('delete', $purchaseInvoice);
-        DB::beginTransaction();
-
         try {
-            $purchaseInvoice->load('items');
+            return DB::transaction(function () use ($purchaseInvoice) {
+                $purchaseInvoice->load('items');
 
-            $affectedIds = $purchaseInvoice->items->pluck('product_id')->unique()->all();
+                $affectedIds = $purchaseInvoice->items->pluck('product_id')->unique()->all();
 
-            foreach ($purchaseInvoice->items as $item) {
-                $this->revertItem($item, true);
-            }
+                foreach ($purchaseInvoice->items as $item) {
+                    $this->revertItem($item, true);
+                }
 
-            $purchaseInvoice->items()->delete();
-            $purchaseInvoice->delete();
+                $purchaseInvoice->items()->delete();
+                $purchaseInvoice->delete();
 
-            $this->recalcProductsByIds($affectedIds);
+                $this->recalcProductsByIds($affectedIds);
 
-            DB::commit();
-
-            return response()->json(['message' => 'Invoice and related data deleted successfully']);
+                return response()->json(['message' => 'Invoice and related data deleted successfully']);
+            });
+        } catch (\Illuminate\Database\QueryException $e) {
+            // Likely unique-constraint violation (invoice_number / posted_number)
+            return $this->respondDuplicateError($e);
         } catch (\Exception $e) {
-            DB::rollBack();
             return response()->json([
                 'message' => 'Failed to delete invoice',
                 'error'   => $e->getMessage()
             ], 500);
         }
+    }
+
+    
+    private function respondDuplicateError(\Throwable $e)
+    {
+        // Try to infer which field caused the duplicate via constraint name/text
+        $errorInfo = method_exists($e, 'errorInfo') ? ($e->errorInfo ?? []) : [];
+        $message   = $errorInfo[2] ?? ($e->getMessage() ?? '');
+        $mLower    = strtolower($message);
+
+        $errors = [];
+
+        if (str_contains($mLower, 'invoice_number')) {
+            $errors['invoice_number'][] = 'Invoice number has already been taken for this supplier or globally.';
+        }
+        if (str_contains($mLower, 'posted_number')) {
+            $errors['posted_number'][] = 'Posted number has already been assigned. Please try again.';
+        }
+
+        if (!$errors) {
+            $errors['general'][] = 'Duplicate value detected.';
+        }
+
+        return response()->json([
+            'message' => 'Validation failed. Please correct the highlighted fields.',
+            'errors'  => $errors,
+        ], 422);
     }
 
     private function processInvoiceItems(PurchaseInvoice $invoice, array $items): void
@@ -239,7 +285,7 @@ class PurchaseInvoiceController extends Controller
             }
 
             if (!empty($item['batch']) && !empty($item['expiry'])) {
-                $batch = Batch::firstOrNew([
+                $batch = \App\Models\Batch::firstOrNew([
                     'product_id'   => $item['product_id'],
                     'batch_number' => $item['batch'],
                     'expiry_date'  => $item['expiry'],
@@ -275,11 +321,6 @@ class PurchaseInvoiceController extends Controller
         }
     }
 
-    /**
-     * Recalculate avg_price & margin from purchase history WITHOUT touching quantity
-     * or any sale/purchase price fields. Uses line-level avg_price (effective cost)
-     * so bonuses/discounts are included.
-     */
     private function recalcProductAverages(Product $product): void
     {
         $items = DB::table('purchase_invoice_items')
@@ -294,15 +335,13 @@ class PurchaseInvoiceController extends Controller
         foreach ($items as $item) {
             $q = (int) $item->quantity;
             $totalQty  += $q;
-            $totalCost += $q * (float) $item->avg_price; // effective cost captured per line
+            $totalCost += $q * (float) $item->avg_price;
         }
 
         $avgPrice = $totalQty > 0 ? ($totalCost / $totalQty) : 0.0;
 
-        // ✅ Only costing fields — DO NOT touch quantity or sale/purchase prices
         $product->avg_price = round($avgPrice, 2);
 
-        // Recompute margin using whatever unit_sale_price the product already has
         $product->margin = ($product->unit_sale_price > 0 && $avgPrice > 0)
             ? round((($product->unit_sale_price - $avgPrice) / $product->unit_sale_price) * 100, 2)
             : 0.0;
@@ -328,12 +367,13 @@ class PurchaseInvoiceController extends Controller
             'invoice_number' => 'required|string',
             'exclude_id'     => 'nullable|integer',
         ]);
+
         if ($request->filled('exclude_id')) {
-        $invoice = PurchaseInvoice::findOrFail($request->input('exclude_id'));
-        $this->authorize('update', $invoice);
-    } else {
-        $this->authorize('create', PurchaseInvoice::class);
-    }
+            $invoice = PurchaseInvoice::findOrFail($request->input('exclude_id'));
+            $this->authorize('update', $invoice);
+        } else {
+            $this->authorize('create', PurchaseInvoice::class);
+        }
 
         $query = \App\Models\PurchaseInvoice::where('supplier_id', $request->supplier_id)
             ->where('invoice_number', $request->invoice_number);

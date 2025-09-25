@@ -1,3 +1,4 @@
+// /src/pages/purchases/PurchaseInvoiceForm.jsx
 import { useState, useEffect, useRef } from "react";
 import axios from "axios";
 import toast from "react-hot-toast";
@@ -5,10 +6,36 @@ import Select from "react-select";
 import ProductSearchInput from "../../components/ProductSearchInput.jsx";
 import { recalcItem, recalcFooter } from "../../Formula/PurchaseInvoice.js";
 
+// Centralized Axios error → toast mapper
+function showAxiosError(err) {
+  const resp = err?.response;
+  if (!resp) {
+    toast.error("Network error. Please check your connection.");
+    return;
+  }
+  const { status, data } = resp;
+  // Laravel validation
+  if (status === 422) {
+    const errs = data?.errors || {};
+    const msgs = Object.values(errs).flat();
+    if (msgs.length) {
+      msgs.slice(0, 6).forEach((m) => toast.error(String(m)));
+      return;
+    }
+  }
+  // Conflict/duplicate
+  if (status === 409) {
+    toast.error(data?.message || "Conflict while saving. Please review and try again.");
+    return;
+  }
+  // Fallback
+  toast.error(data?.message || "Unable to save invoice");
+}
+
 export default function PurchaseInvoiceForm({ invoiceId, onSuccess }) {
   const [form, setForm] = useState({
     supplier_id: "",
-    posted_number: "",
+    posted_number: "", // (auto on save, stays empty until saved)
     posted_date: new Date().toISOString().split("T")[0],
     remarks: "",
     invoice_number: "",
@@ -43,7 +70,7 @@ export default function PurchaseInvoiceForm({ invoiceId, onSuccess }) {
   });
 
   // only allow numbers (and optionally decimals)
-  // allow decimals for price/percentage fields
+  // allow decimals for price/percentage fields + Pack.Q and PBonus
   const sanitizeNumberInput = (value, allowDecimal = false) => {
     if (value === "") return ""; // allow empty input
 
@@ -87,9 +114,9 @@ export default function PurchaseInvoiceForm({ invoiceId, onSuccess }) {
     fetchProducts();
     if (invoiceId) {
       fetchInvoice();
-    } else {
-      fetchNewCode();
     }
+    // IMPORTANT: we NO LONGER prefetch/assign a new posted_number here.
+    // It is generated server-side on SAVE to avoid collisions when multiple forms are open.
   }, [invoiceId]);
 
   useEffect(() => {
@@ -111,7 +138,7 @@ export default function PurchaseInvoiceForm({ invoiceId, onSuccess }) {
     };
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [form]);
+  }, [form, paidTouched]);
 
   const fetchSuppliers = async () => {
     const res = await axios.get("/api/suppliers");
@@ -125,17 +152,12 @@ export default function PurchaseInvoiceForm({ invoiceId, onSuccess }) {
 
   const fetchInvoice = async () => {
     const res = await axios.get(`/api/purchase-invoices/${invoiceId}`);
-    setForm(res.data);
-    await ensureProductsForItems(res.data?.items || []);
-    setPaidTouched(true); // prevent auto-syncing to total_amount on edit
-  };
-
-  const fetchNewCode = async () => {
-    const res = await axios.get("/api/purchase-invoices/new-code");
-    setForm((prev) => ({
-      ...prev,
-      posted_number: res.data.posted_number,
-    }));
+    let next = recalcFooter(res.data, "init");
+    // 🔗 Keep total_paid linked to total_amount on edit load
+    next.total_paid = next.total_amount ?? "";
+    setForm(next);
+    setPaidTouched(false);
+    await ensureProductsForItems(next?.items || []);
   };
 
   const handleChange = (e) => {
@@ -150,7 +172,6 @@ export default function PurchaseInvoiceForm({ invoiceId, onSuccess }) {
       "discount_amount",
     ]);
 
-    // Sanitize while preserving typing like ".", "12.", ".5"
     const newValue = decimalFields.has(name)
       ? sanitizeNumberInput(value, true)
       : value;
@@ -161,8 +182,8 @@ export default function PurchaseInvoiceForm({ invoiceId, onSuccess }) {
     // Recalculate totals, but DO NOT overwrite the field the user is typing
     let nextForm = recalcFooter(tempForm, name);
     nextForm[name] = newValue;
-    // If user hasn't touched total_paid, keep it equal to total_amount
-     if (!paidTouched) {
+
+    if (!paidTouched) {
       nextForm.total_paid = nextForm.total_amount ?? "";
     }
 
@@ -176,40 +197,35 @@ export default function PurchaseInvoiceForm({ invoiceId, onSuccess }) {
   function handleItemChange(index, field, rawValue) {
     let value = rawValue;
 
-    // fields that can have decimals
+    // fields that can have decimals (✅ added pack_quantity and pack_bonus)
     const allowDecimalFields = [
       "pack_purchase_price",
       "unit_purchase_price",
       "pack_sale_price",
       "unit_sale_price",
       "item_discount_percentage",
+      "pack_quantity",
+      "pack_bonus",
     ];
 
     // integer-only fields
     const integerFields = [
-      "pack_quantity",
       "unit_quantity",
-      "pack_bonus",
       "unit_bonus",
     ];
 
     if (allowDecimalFields.includes(field)) {
-      // allow numbers like 34, 34., 34.5, 34.56
-      if (!/^\d*\.?\d*$/.test(value)) {
-        return; // reject invalid chars
-      }
+      if (!/^\d*\.?\d*$/.test(value)) return;
     } else if (integerFields.includes(field)) {
-      // strip everything except digits
       value = value.replace(/\D/g, "");
     }
 
-    // push to items
     const newItems = [...form.items];
     newItems[index] = recalcItem({ ...newItems[index], [field]: value }, field);
 
-    // recalc totals
     let newForm = { ...form, items: newItems };
     newForm = recalcFooter(newForm, "items");
+
     if (!paidTouched) {
       newForm.total_paid = newForm.total_amount ?? "";
     }
@@ -262,12 +278,10 @@ export default function PurchaseInvoiceForm({ invoiceId, onSuccess }) {
       const container = productSearchRefs.current[rowIndex];
       if (!container) return false;
 
-      // If the ref is a DOM node that wraps the input
       if (container instanceof HTMLElement) {
         const input = container.querySelector('input, [contenteditable="true"]');
         if (input && typeof input.focus === "function") {
           input.focus();
-          // select text if applicable
           if (typeof input.select === "function") input.select();
           setCurrentField("product");
           setCurrentRowIndex(rowIndex);
@@ -275,7 +289,6 @@ export default function PurchaseInvoiceForm({ invoiceId, onSuccess }) {
         }
       }
 
-      // If the ref is a component instance exposing focus
       if (container && typeof container.focus === "function") {
         container.focus();
         setCurrentField("product");
@@ -286,7 +299,6 @@ export default function PurchaseInvoiceForm({ invoiceId, onSuccess }) {
       return false;
     };
 
-    // Try immediately, then retry a few times in case of render delay
     if (tryFocus()) return;
 
     let attempts = 0;
@@ -299,57 +311,51 @@ export default function PurchaseInvoiceForm({ invoiceId, onSuccess }) {
     setTimeout(retry, 30);
   };
 
-
   // Merge new products into state (by id, dedup)
-const upsertProducts = (list) => {
-  if (!Array.isArray(list)) return;
-  setProducts((prev) => {
-    const map = new Map((prev || []).map((p) => [p.id, p]));
-    list.forEach((p) => p?.id && map.set(p.id, p));
-    return Array.from(map.values());
-  });
-};
-
-// Make sure all product_ids used in items exist in products[]
-const ensureProductsForItems = async (items = []) => {
-  const ids = Array.from(new Set(items.map(it => it.product_id).filter(Boolean)));
-  if (ids.length === 0) return;
-
-  const have = new Set((products || []).map(p => p.id));
-  const missing = ids.filter(id => !have.has(id));
-  if (missing.length === 0) return;
-
-  // Try a batch endpoint first if you have one
-  try {
-    const { data } = await axios.get("/api/products/by-ids", {
-      params: { ids: missing.join(",") },
+  const upsertProducts = (list) => {
+    if (!Array.isArray(list)) return;
+    setProducts((prev) => {
+      const map = new Map((prev || []).map((p) => [p.id, p]));
+      list.forEach((p) => p?.id && map.set(p.id, p));
+      return Array.from(map.values());
     });
-    upsertProducts(data);
-    return;
-  } catch (_) { /* fall back to per-id */ }
+  };
 
-  // Fallback: fetch missing one-by-one (or via search)
-  const fetched = await Promise.all(
-    missing.map(async (id) => {
-      try {
-        const { data } = await axios.get(`/api/products/${id}`);
-        return data;
-      } catch {
+  // Make sure all product_ids used in items exist in products[]
+  const ensureProductsForItems = async (items = []) => {
+    const ids = Array.from(new Set(items.map(it => it.product_id).filter(Boolean)));
+    if (ids.length === 0) return;
+
+    const have = new Set((products || []).map(p => p.id));
+    const missing = ids.filter(id => !have.has(id));
+    if (missing.length === 0) return;
+
+    try {
+      const { data } = await axios.get("/api/products/by-ids", {
+        params: { ids: missing.join(",") },
+      });
+      upsertProducts(data);
+      return;
+    } catch (_) { /* fall back to per-id */ }
+
+    const fetched = await Promise.all(
+      missing.map(async (id) => {
         try {
-          const { data } = await axios.get("/api/products/search", { params: { q: id, limit: 1 } });
-          return Array.isArray(data) ? data[0] : data?.data?.[0];
+          const { data } = await axios.get(`/api/products/${id}`);
+          return data;
         } catch {
-          return null;
+          try {
+            const { data } = await axios.get("/api/products/search", { params: { q: id, limit: 1 } });
+            return Array.isArray(data) ? data[0] : data?.data?.[0];
+          } catch {
+            return null;
+          }
         }
-      }
-    })
-  );
-  upsertProducts(fetched.filter(Boolean));
-};
+      })
+    );
+    upsertProducts(fetched.filter(Boolean));
+  };
 
-
-
-  // Helper function to focus on the same field in a different row
   const focusOnField = (field, rowIndex) => {
     setTimeout(() => {
       switch (field) {
@@ -389,7 +395,6 @@ const ensureProductsForItems = async (items = []) => {
           }
           break;
         default:
-          // For product field and others, use product search
           focusProductSearch(rowIndex);
           break;
       }
@@ -412,7 +417,6 @@ const ensureProductsForItems = async (items = []) => {
           }
           break;
         case "invoice_amount":
-          // robust focus into first product search input
           focusProductSearch(0);
           break;
         case "product":
@@ -448,10 +452,10 @@ const ensureProductsForItems = async (items = []) => {
         case "pack_sale_price":
           if (rowIndex < form.items.length - 1) {
             focusProductSearch(rowIndex + 1);
-            } else {
-              addItem();
-              focusProductSearch(rowIndex + 1);
-            }
+          } else {
+            addItem();
+            focusProductSearch(rowIndex + 1);
+          }
           break;
       }
     }, 50);
@@ -462,15 +466,13 @@ const ensureProductsForItems = async (items = []) => {
       e.preventDefault();
       navigateToNextField(field, rowIndex);
     } else if (e.key === "Tab" && field === "invoice_amount") {
-      // intercept Tab on invoice amount to move to product search
       e.preventDefault();
       navigateToNextField(field, rowIndex);
     } else if (e.key === "ArrowDown") {
       e.preventDefault();
       if (rowIndex === form.items.length - 1) {
-        addItem(); // Add a new row if currently on the last row
+        addItem();
         setTimeout(() => {
-          // Focus on the same field in the new row
           focusProductSearch(rowIndex + 1);
         }, 200);
       } else {
@@ -497,9 +499,9 @@ const ensureProductsForItems = async (items = []) => {
     } else if (e.key === "ArrowDown") {
       e.preventDefault();
       if (rowIndex === form.items.length - 1) {
-        addItem(); // Add a new row if currently on the last row
+        addItem();
         setTimeout(() => {
-          focusProductSearch(rowIndex + 1); // Focus on the new row's product search input
+          focusProductSearch(rowIndex + 1);
         }, 200);
       } else {
         focusProductSearch(rowIndex + 1);
@@ -507,26 +509,24 @@ const ensureProductsForItems = async (items = []) => {
     }
   };
 
-const zeroToEmpty = (v) => (v === 0 || v === "0" ? "" : (v ?? ""));
-const focusAndSelect = (el) => {
-  if (!el) return;
-  el.focus();
-  // select after focus to ensure it sticks
-  setTimeout(() => {
-    if (typeof el.select === "function") el.select();
-  }, 0);
-};
+  const zeroToEmpty = (v) => (v === 0 || v === "0" ? "" : (v ?? ""));
+  const focusAndSelect = (el) => {
+    if (!el) return;
+    el.focus();
+    setTimeout(() => {
+      if (typeof el.select === "function") el.select();
+    }, 0);
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
 
     // 0) Block if any selected product has margin <= 0 (or not a number)
     const badItem = form.items.find((item) => {
-      if (!item.product_id) return false; // ignore empty rows
+      if (!item.product_id) return false;
       const m = Number(item.margin);
       return !Number.isFinite(m) || m <= 0;
     });
-
     if (badItem) {
       const idx = form.items.indexOf(badItem);
       const product = products.find((p) => p.id === badItem.product_id);
@@ -535,7 +535,7 @@ const focusAndSelect = (el) => {
       return;
     }
 
-    // 1) (kept) Prevent negative margin (redundant now but harmless)
+    // 1) Prevent negative margin (redundant now)
     const negativeMarginItem = form.items.find(
       (item) => item.product_id && Number(item.margin) < 0
     );
@@ -546,7 +546,7 @@ const focusAndSelect = (el) => {
       return;
     }
 
-    // 2) (kept) Validate invoice vs total
+    // 2) Validate invoice vs total
     const invoiceAmount = Number(form.invoice_amount || 0);
     const totalAmount = Number(form.total_amount || 0);
     const totalPaid = Number(form.total_paid || 0);
@@ -566,7 +566,7 @@ const focusAndSelect = (el) => {
     }
 
     try {
-      // 3) (kept) Duplicate invoice number check
+      // 3) Duplicate invoice number check per supplier
       const checkRes = await axios.get("/api/purchase-invoices/check-unique", {
         params: {
           supplier_id: form.supplier_id,
@@ -574,7 +574,6 @@ const focusAndSelect = (el) => {
           exclude_id: invoiceId || null,
         },
       });
-
       if (!checkRes.data.unique) {
         toast.error(
           `Invoice number "${form.invoice_number}" already exists for this supplier`
@@ -582,25 +581,48 @@ const focusAndSelect = (el) => {
         return;
       }
 
-      // 4) (kept) Save
-      if (invoiceId) {
-        await axios.put(`/api/purchase-invoices/${invoiceId}`, form);
-        toast.success("Invoice updated successfully");
-      } else {
-        await axios.post("/api/purchase-invoices", form);
-        toast.success("Invoice created successfully");
+      // 🔒 Final guard: keep linked if user never changed it
+      const payload = {
+        ...form,
+        total_paid: paidTouched ? form.total_paid : (form.total_amount ?? ""),
+      };
+
+      const payloadToSend = { ...payload };
+      if (!invoiceId) {
+        // Do NOT send posted_number on CREATE; server will atomically generate it.
+        delete payloadToSend.posted_number;
       }
 
-      onSuccess();
-    } catch (err) {
-      toast.error("Failed to save invoice");
-    }
+      if (invoiceId) {
+        await axios.put(`/api/purchase-invoices/${invoiceId}`, payloadToSend);
+        toast.success("Invoice updated successfully");
+        onSuccess && onSuccess();
+      } else {
+        const { data: saved } = await axios.post("/api/purchase-invoices", payloadToSend);
+        // Server returns created invoice with posted_number assigned — reflect it locally.
+        setForm((prev) => ({ ...prev, posted_number: saved?.posted_number || prev.posted_number }));
+        toast.success(`Invoice created: ${saved?.posted_number || "(number assigned)"}`);
+        onSuccess && onSuccess();
+      }
+    } catch (err) { showAxiosError(err); }
+  };
+
+  // Common anti-autofill props to spread on inputs
+  const antiFill = {
+    autoComplete: "off",
+    autoCorrect: "off",
+    autoCapitalize: "off",
+    spellCheck: false,
   };
 
   return (
-    <form className="flex flex-col" style={{ minHeight: "74vh", maxHeight: "80vh" }}>
+    <form
+      className="flex flex-col"
+      style={{ minHeight: "74vh", maxHeight: "80vh" }}
+      autoComplete="off" // disable browser suggestions globally
+    >
       {/* ================= HEADER SECTION ================= */}
-      <div className="sticky top-0 bg-white shadow p-2 z-10">
+      <div className="sticky top-0 bg-white shadow p-2 z-10" autoComplete="off">
         <h2 className="text-sm font-bold mb-2">
           Purchase Invoice (Use Enter to navigate, Alt+S to save)
         </h2>
@@ -614,8 +636,10 @@ const focusAndSelect = (el) => {
                   inputMode="decimal"
                   name="posted_number"
                   readOnly
+                  placeholder="(auto on save)"
                   value={form.posted_number || ""}
                   className="bg-gray-100 border rounded w-full p-1 h-7 text-xs"
+                  {...antiFill}
                 />
               </td>
               <td className="border p-1 w-1/6">
@@ -626,49 +650,54 @@ const focusAndSelect = (el) => {
                   value={form.posted_date}
                   onChange={handleChange}
                   className="border rounded w-full p-1 h-7 text-xs"
+                  {...antiFill}
                 />
               </td>
               <td className="border p-1 w-1/3">
                 <label className="block text-[10px]">Supplier *</label>
-                <Select
-                  ref={supplierRef}
-                  options={suppliers.map((s) => ({ value: s.id, label: s.name }))}
-                  value={
-                    suppliers
-                      .map((s) => ({ value: s.id, label: s.name }))
-                      .find((s) => s.value === form.supplier_id) || null
-                  }
-                  onChange={(val) => {
-                    handleSelectChange("supplier_id", val);
-                    navigateToNextField("supplier");
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && form.supplier_id) {
-                      e.preventDefault();
-                      navigateToNextField("supplier");
+                <div {...antiFill}>
+                  <Select
+                    ref={supplierRef}
+                    inputId="supplier_select"
+                    name="supplier_select"
+                    options={suppliers.map((s) => ({ value: s.id, label: s.name }))}
+                    value={
+                      suppliers
+                        .map((s) => ({ value: s.id, label: s.name }))
+                        .find((s) => s.value === form.supplier_id) || null
                     }
-                  }}
-                  isSearchable
-                  className="text-xs"
-                  styles={{
-                    control: (base) => ({
-                      ...base,
-                      minHeight: "28px",
-                      height: "28px",
-                      fontSize: "12px",
-                    }),
-                    valueContainer: (base) => ({
-                      ...base,
-                      height: "28px",
-                      padding: "0 4px",
-                    }),
-                    input: (base) => ({
-                      ...base,
-                      margin: 0,
-                      padding: 0,
-                    }),
-                  }}
-                />
+                    onChange={(val) => {
+                      handleSelectChange("supplier_id", val);
+                      navigateToNextField("supplier");
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && form.supplier_id) {
+                        e.preventDefault();
+                        navigateToNextField("supplier");
+                      }
+                    }}
+                    isSearchable
+                    className="text-xs"
+                    styles={{
+                      control: (base) => ({
+                        ...base,
+                        minHeight: "28px",
+                        height: "28px",
+                        fontSize: "12px",
+                      }),
+                      valueContainer: (base) => ({
+                        ...base,
+                        height: "28px",
+                        padding: "0 4px",
+                      }),
+                      input: (base) => ({
+                        ...base,
+                        margin: 0,
+                        padding: 0,
+                      }),
+                    }}
+                  />
+                </div>
               </td>
               <td className="border p-1 w-1/8">
                 <label className="block text-[10px]">Invoice Number</label>
@@ -681,6 +710,7 @@ const focusAndSelect = (el) => {
                   onKeyDown={(e) => handleKeyDown(e, "invoice_number")}
                   onFocus={(e) => e.target.select()}
                   className="border rounded w-full p-1 h-7 text-xs"
+                  {...antiFill}
                 />
               </td>
               <td className="border p-1 w-1/8">
@@ -694,6 +724,7 @@ const focusAndSelect = (el) => {
                   onKeyDown={(e) => handleKeyDown(e, "invoice_amount")}
                   onFocus={(e) => e.target.select()}
                   className="border rounded w-full p-1 h-7 text-xs"
+                  {...antiFill}
                 />
               </td>
               <td className="border p-1 w-1/4">
@@ -704,6 +735,7 @@ const focusAndSelect = (el) => {
                   value={form.remarks}
                   onChange={handleChange}
                   className="border rounded w-full p-1 h-7 text-xs"
+                  {...antiFill}
                 />
               </td>
             </tr>
@@ -712,7 +744,7 @@ const focusAndSelect = (el) => {
       </div>
 
       {/* ================= ITEMS SECTION ================= */}
-      <div className="flex-1 overflow-auto p-1">
+      <div className="flex-1 overflow-auto p-1" autoComplete="off">
         <h2 className="text-xs font-bold mb-1">Items (↑↓ arrows to navigate rows)</h2>
 
         <table className="w-full border-collapse text-[11px]">
@@ -768,13 +800,10 @@ const focusAndSelect = (el) => {
                     <ProductSearchInput
                       value={products.find(p => p.id === item.product_id) || item.product_id}
                       onChange={(val) => {
-                        // Accept either a product object (preferred) or an id
                         const list = Array.isArray(products) ? products : (Array.isArray(products?.data) ? products.data : []);
                         const selectedProduct = (val && typeof val === "object") ? val : list.find((p) => p?.id === val);
-
                         if (!selectedProduct) return;
 
-                        // Fallback getters
                         const get = (obj, keys, d="") => {
                           for (const k of keys) {
                             const v = obj?.[k];
@@ -791,10 +820,8 @@ const focusAndSelect = (el) => {
                         const packSize = toNum(get(selectedProduct, ["pack_size","packSize","packsize"]));
                         const packPurchase = toNum(get(selectedProduct, ["pack_purchase_price","packPurchasePrice"]));
                         const unitPurchase = toNum(get(selectedProduct, ["unit_purchase_price","unitPurchasePrice"])) ?? ((packPurchase != null && packSize) ? (packPurchase / packSize) : null);
-
                         const packSale = toNum(get(selectedProduct, ["pack_sale_price","packSalePrice"]));
                         const unitSale = toNum(get(selectedProduct, ["unit_sale_price","unitSalePrice"])) ?? ((packSale != null && packSize) ? (packSale / packSize) : null);
-
                         const margin = get(selectedProduct, ["margin","margin_percentage","marginPercent"], "");
                         const avg = get(selectedProduct, ["avg_price","average_price","avgPrice"], "");
 
@@ -807,9 +834,7 @@ const focusAndSelect = (el) => {
                           unit_purchase_price: unitPurchase ?? "",
                           pack_sale_price: zeroToEmpty(packSale),
                           unit_sale_price: unitSale ?? "",
-                          // keep user batch
                           batch: newItems[i].batch || "",
-                          // reset editables
                           pack_quantity: "",
                           unit_quantity: "",
                           pack_bonus: "",
@@ -821,10 +846,10 @@ const focusAndSelect = (el) => {
                           quantity: "",
                         };
 
-                        // Recalculate line and footer totals (field='product')
                         newItems[i] = recalcItem(prepared, "product");
                         let nextForm = { ...form, items: newItems };
                         nextForm = recalcFooter(nextForm, "items");
+                        if (!paidTouched) nextForm.total_paid = nextForm.total_amount ?? "";
                         setForm(nextForm);
                         navigateToNextField("product", i);
                       }}
@@ -842,6 +867,7 @@ const focusAndSelect = (el) => {
                     readOnly
                     value={item.pack_size ?? ""}
                     className="border bg-gray-100 w-full h-6 text-[11px] px-1 appearance-none [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                    {...antiFill}
                   />
                 </td>
 
@@ -852,42 +878,30 @@ const focusAndSelect = (el) => {
                     value={item.batch ?? ""}
                     onChange={(e) => {
                       const newBatch = e.target.value;
-
-                      // ✅ Duplicate check
                       const duplicateIndex = form.items.findIndex((it, idx) => {
                         if (idx === i) return false;
                         if (it.product_id !== item.product_id) return false;
-
-                        // If another row has batch → block only if same batch
                         if (it.batch && it.batch.trim() !== "") {
                           return it.batch === newBatch;
                         }
-
-                        // If another row has no batch → block outright
                         return !newBatch;
                       });
 
                       if (duplicateIndex !== -1) {
                         toast.error(
                           newBatch
-                            ? `Product "${
-                                products.find((p) => p.id === item.product_id)?.name
-                              }" with batch "${newBatch}" already exists in row ${
-                                duplicateIndex + 1
-                              }`
-                            : `Product "${
-                                products.find((p) => p.id === item.product_id)?.name
-                              }" without batch already exists in row ${duplicateIndex + 1}`
+                            ? `Product "${products.find((p) => p.id === item.product_id)?.name}" with batch "${newBatch}" already exists in row ${duplicateIndex + 1}`
+                            : `Product "${products.find((p) => p.id === item.product_id)?.name}" without batch already exists in row ${duplicateIndex + 1}`
                         );
-                        return; // ⛔ block update
+                        return;
                       }
 
-                      // If no duplicate → update
                       const newItems = [...form.items];
                       newItems[i] = { ...newItems[i], batch: newBatch };
                       setForm({ ...form, items: newItems });
                     }}
                     className="border w-full h-6 text-[11px] px-1"
+                    {...antiFill}
                   />
                 </td>
 
@@ -898,10 +912,11 @@ const focusAndSelect = (el) => {
                     value={item.expiry ?? ""}
                     onChange={(e) => handleItemChange(i, "expiry", e.target.value)}
                     className="border w-full h-6 text-[11px] px-1"
+                    {...antiFill}
                   />
                 </td>
 
-                {/* Pack Qty */}
+                {/* Pack Qty (✅ now supports decimals) */}
                 <td className="border">
                   <input
                     ref={(el) => (packQuantityRefs.current[i] = el)}
@@ -911,6 +926,7 @@ const focusAndSelect = (el) => {
                     onKeyDown={(e) => handleKeyDown(e, "pack_quantity", i)}
                     onFocus={(e) => e.target.select()}
                     className="border w-full h-6 text-[11px] px-1 appearance-none [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                    {...antiFill}
                   />
                 </td>
 
@@ -921,6 +937,7 @@ const focusAndSelect = (el) => {
                     value={item.unit_quantity === 0 ? "" : item.unit_quantity}
                     onChange={(e) => handleItemChange(i, "unit_quantity", e.target.value)}
                     className="border w-full h-6 text-[11px] px-1 appearance-none [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                    {...antiFill}
                   />
                 </td>
 
@@ -934,6 +951,7 @@ const focusAndSelect = (el) => {
                     onKeyDown={(e) => handleKeyDown(e, "pack_purchase_price", i)}
                     onFocus={(e) => e.target.select()}
                     className="border w-full h-6 text-[11px] px-1 appearance-none [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                    {...antiFill}
                   />
                 </td>
 
@@ -944,6 +962,7 @@ const focusAndSelect = (el) => {
                     value={item.unit_purchase_price ?? ""}
                     onChange={(e) => handleItemChange(i, "unit_purchase_price", e.target.value)}
                     className="border w-full h-6 text-[11px] px-1 appearance-none [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                    {...antiFill}
                   />
                 </td>
 
@@ -959,10 +978,11 @@ const focusAndSelect = (el) => {
                     onKeyDown={(e) => handleKeyDown(e, "item_discount", i)}
                     onFocus={(e) => e.target.select()}
                     className="border w-full h-6 text-[11px] px-1 appearance-none [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                    {...antiFill}
                   />
                 </td>
 
-                {/* Pack Bonus */}
+                {/* Pack Bonus (✅ now supports decimals) */}
                 <td className="border">
                   <input
                     ref={(el) => (packBonusRefs.current[i] = el)}
@@ -972,6 +992,7 @@ const focusAndSelect = (el) => {
                     onKeyDown={(e) => handleKeyDown(e, "pack_bonus", i)}
                     onFocus={(e) => e.target.select()}
                     className="border w-full h-6 text-[11px] px-1 appearance-none [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                    {...antiFill}
                   />
                 </td>
 
@@ -982,6 +1003,7 @@ const focusAndSelect = (el) => {
                     value={item.unit_bonus === 0 ? "" : item.unit_bonus}
                     onChange={(e) => handleItemChange(i, "unit_bonus", e.target.value)}
                     className="border w-full h-6 text-[11px] px-1 appearance-none [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                    {...antiFill}
                   />
                 </td>
 
@@ -995,6 +1017,7 @@ const focusAndSelect = (el) => {
                     onKeyDown={(e) => handleKeyDown(e, "pack_sale_price", i)}
                     onFocus={(e) => e.target.select()}
                     className="border w-full h-6 text-[11px] px-1 appearance-none [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                    {...antiFill}
                   />
                 </td>
 
@@ -1005,6 +1028,7 @@ const focusAndSelect = (el) => {
                     value={item.unit_sale_price ?? ""}
                     onChange={(e) => handleItemChange(i, "unit_sale_price", e.target.value)}
                     className="border w-full h-6 text-[11px] px-1 appearance-none [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                    {...antiFill}
                   />
                 </td>
 
@@ -1015,6 +1039,7 @@ const focusAndSelect = (el) => {
                     readOnly
                     value={item.margin ?? ""}
                     className="border bg-gray-100 w-full h-6 text-[11px] px-1 appearance-none [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                    {...antiFill}
                   />
                 </td>
 
@@ -1025,6 +1050,7 @@ const focusAndSelect = (el) => {
                     value={item.avg_price ?? ""}
                     readOnly
                     className="border w-full h-6 text-[11px] px-1 bg-gray-100"
+                    {...antiFill}
                   />
                 </td>
 
@@ -1035,6 +1061,7 @@ const focusAndSelect = (el) => {
                     value={item.sub_total ?? ""}
                     readOnly
                     className="border w-full h-6 text-[11px] px-1 bg-gray-100"
+                    {...antiFill}
                   />
                 </td>
 
@@ -1046,6 +1073,7 @@ const focusAndSelect = (el) => {
                     hidden
                     value={item.quantity ?? ""}
                     className="border bg-gray-100 w-full h-6 text-[11px] px-1 appearance-none [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                    {...antiFill}
                   />
                 </td>
 
@@ -1066,7 +1094,7 @@ const focusAndSelect = (el) => {
       </div>
 
       {/* ================= FOOTER SECTION ================= */}
-      <div className="sticky bottom-0 bg-white shadow p-2 z-10">
+      <div className="sticky bottom-0 bg-white shadow p-2 z-10" autoComplete="off">
         <table className="w-full border-collapse text-xs">
           <tbody>
             <tr>
@@ -1085,6 +1113,7 @@ const focusAndSelect = (el) => {
                     }
                   }}
                   className="border rounded w-full p-1 h-7 text-xs"
+                  {...antiFill}
                 />
               </td>
               <td className="border p-1 w-1/8">
@@ -1095,6 +1124,7 @@ const focusAndSelect = (el) => {
                   value={form.tax_amount ?? ""}
                   onChange={handleChange}
                   className="border rounded w-full p-1 h-7 text-xs"
+                  {...antiFill}
                 />
               </td>
               <td className="border p-1 w-1/8">
@@ -1112,6 +1142,7 @@ const focusAndSelect = (el) => {
                     }
                   }}
                   className="border rounded w-full p-1 h-7 text-xs"
+                  {...antiFill}
                 />
               </td>
               <td className="border p-1 w-1/8">
@@ -1122,6 +1153,7 @@ const focusAndSelect = (el) => {
                   value={form.discount_amount ?? ""}
                   onChange={handleChange}
                   className="border rounded w-full p-1 h-7 text-xs"
+                  {...antiFill}
                 />
               </td>
               <td className="border p-1 w-1/8">
@@ -1132,25 +1164,46 @@ const focusAndSelect = (el) => {
                   readOnly
                   value={form.total_amount}
                   className="border rounded w-full p-1 h-7 text-xs bg-gray-100"
+                  {...antiFill}
                 />
               </td>
               <td className="border p-1 w-1/8">
-              <label className="block text-[10px]">Total Paid</label>
-              <input
-                type="text"
-                name="total_paid"
-                value={form.total_paid ?? ""}
-                onChange={(e) => {
-                  const v = sanitizeNumberInput(e.target.value, true);
-                  setPaidTouched(true);
-                  setForm((prev) => ({ ...prev, total_paid: v }));
-                  }}
-                  onBlur={() => {
-                    // normalize to 2 decimals on blur
-                    setForm((prev) => ({ ...prev, total_paid: to2(prev.total_paid).toFixed(2) }));
-                  }}
-                  className="border rounded w-full p-1 h-7 text-xs"
-                />
+                <label className="block text-[10px]">Total Paid</label>
+                <div className="flex items-center gap-1">
+                  <input
+                    type="text"
+                    name="total_paid"
+                    value={form.total_paid ?? ""}
+                    onChange={(e) => {
+                      const v = sanitizeNumberInput(e.target.value, true);
+                      setPaidTouched(true);
+                      setForm((prev) => ({ ...prev, total_paid: v }));
+                    }}
+                    onBlur={() => {
+                      setForm((prev) => {
+                        const normalized = prev.total_paid === "" ? "" : to2(prev.total_paid).toFixed(2);
+                        const amt = prev.total_amount === "" || prev.total_amount == null ? "" : to2(prev.total_amount).toFixed(2);
+                        if (normalized !== "" && normalized === amt) {
+                          setPaidTouched(false);
+                        }
+                        return { ...prev, total_paid: normalized };
+                      });
+                    }}
+                    className="border rounded w-full p-1 h-7 text-xs"
+                    {...antiFill}
+                  />
+                  <button
+                    type="button"
+                    title="Relink paid to total"
+                    onClick={() => {
+                      setPaidTouched(false);
+                      setForm((prev) => ({ ...prev, total_paid: prev.total_amount ?? "" }));
+                    }}
+                    className="px-2 py-1 text-[11px] bg-gray-200 rounded"
+                  >
+                    🔗
+                  </button>
+                </div>
               </td>
               <td className="border p-1 w-1/8">
                 <label className="block text-[10px]">Remaining</label>
@@ -1160,8 +1213,9 @@ const focusAndSelect = (el) => {
                   readOnly
                   value={to2((form.total_amount || 0) - (form.total_paid || 0)).toFixed(2)}
                   className="border rounded w-full p-1 h-7 text-xs bg-gray-100"
+                  {...antiFill}
                 />
-                </td>
+              </td>
               <td className="border p-1 w-1/8 text-center align-middle">
                 <button
                   ref={saveButtonRef}

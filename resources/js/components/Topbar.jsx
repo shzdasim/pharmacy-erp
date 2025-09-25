@@ -2,11 +2,22 @@
 import React, { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext.jsx";
-import {
-  ClipboardDocumentListIcon,
-  ShoppingCartIcon,
-} from "@heroicons/react/24/solid";
-import ProductSearch from "@/components/ProductSearch.jsx"; // 👈 add this
+import { ClipboardDocumentListIcon, ShoppingCartIcon, ClockIcon } from "@heroicons/react/24/solid";
+import { useLicense } from "@/context/LicenseContext.jsx";
+import ProductSearch from "@/components/ProductSearch.jsx";
+
+function formatRemaining(ms) {
+  if (ms == null) return "Perpetual";
+  const s = Math.floor(ms / 1000);
+  const d = Math.floor(s / 86400);
+  const h = Math.floor((s % 86400) / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = s % 60;
+  if (d > 0) return `${d}d ${h}h ${m}m`;
+  if (h > 0) return `${h}h ${m}m ${sec}s`;
+  if (m > 0) return `${m}m ${sec}s`;
+  return `${sec}s`;
+}
 
 export default function Topbar() {
   const [open, setOpen] = useState(false);
@@ -16,12 +27,22 @@ export default function Topbar() {
   const navigate = useNavigate();
   const { user, logout } = useAuth();
 
+  // License status
+  const { loading: licLoading, valid: licValid, remainingMs } = useLicense();
+  const leftTxt = formatRemaining(remainingMs);
+  const badgeClass = (() => {
+    if (!licValid) return "bg-rose-600";
+    if (remainingMs == null) return "bg-emerald-600";           // perpetual
+    if (remainingMs <= 24 * 3600 * 1000) return "bg-rose-600";  // <1 day
+    if (remainingMs <= 3 * 24 * 3600 * 1000) return "bg-amber-500";
+    return "bg-emerald-600";
+  })();
+
   const openInNewTab = (path) => window.open(path, "_blank", "noopener,noreferrer");
 
   useEffect(() => {
     const onKeyDown = (e) => {
       if (!e.altKey) return;
-
       const tag = (e.target?.tagName || "").toLowerCase();
       const isTyping =
         ["input", "textarea", "select"].includes(tag) || e.target?.isContentEditable;
@@ -83,8 +104,24 @@ export default function Topbar() {
             <ProductSearch />
           </div>
 
-          {/* Right: Quick actions + User */}
+          {/* Right: License badge + Quick actions + User */}
           <div className="flex items-center gap-2">
+            {/* License badge */}
+            <button
+              onClick={() => navigate("/activate")}
+              className={[
+                "inline-flex items-center gap-2 rounded-xl px-3 py-1.5 text-white text-xs",
+                badgeClass, "shadow-sm ring-1 ring-white/15",
+                "transition-all hover:opacity-95 focus:outline-none focus:ring-2 focus:ring-white/50",
+              ].join(" ")}
+              title={licValid ? "License is active" : "License required – click to activate"}
+            >
+              <ClockIcon className="w-4 h-4" />
+              {licLoading ? "Checking…" : licValid ? `${leftTxt} left` : "Activate license"}
+            </button>
+
+            <div className="mx-1 h-6 w-px bg-gradient-to-b from-transparent via-slate-300/60 to-transparent" />
+
             <button
               onClick={() => openInNewTab("/purchase-invoices/create")}
               aria-keyshortcuts="Alt+1"
@@ -121,7 +158,7 @@ export default function Topbar() {
 
             <div className="mx-1 h-6 w-px bg-gradient-to-b from-transparent via-slate-300/60 to-transparent" />
 
-            {/* User menu (unchanged) */}
+            {/* User menu */}
             <div className="relative">
               <button
                 ref={btnRef}
@@ -172,9 +209,7 @@ export default function Topbar() {
                       setOpen(false);
                       fetch("/api/logout", {
                         method: "POST",
-                        headers: {
-                          Authorization: `Bearer ${localStorage.getItem("token")}`,
-                        },
+                        headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
                       }).finally(() => {
                         logout();
                         navigate("/");

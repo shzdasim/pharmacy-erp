@@ -42,7 +42,8 @@ import EditUser from "../pages/users/Edit.jsx";
 import RolesIndex from "../pages/roles/index.jsx";
 import CreateRole from "../pages/roles/Create.jsx";
 import EditRole from "../pages/roles/Edit.jsx";
-
+import LicenseGuard from "../context/LicenseGuard.jsx";
+import ActivateLicense from "../pages/ActivateLicense.jsx";
 
 
 export default function AppRoutes() {
@@ -450,6 +451,16 @@ export default function AppRoutes() {
         </ProtectedRoute>
       }
       />
+      {/* License Activation - no DashboardLayout */}
+      <Route path="/activate" element={<ActivateLicense />} />
+
+        <Route path="/" element={
+          <ProtectedRoute>
+            <LicenseGuard>
+              <Dashboard />
+            </LicenseGuard>
+          </ProtectedRoute>
+        } />
 
 </Routes>
   );

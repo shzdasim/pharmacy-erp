@@ -1,7 +1,8 @@
 // resources/js/pages/SaleDetailReport.jsx
 import { useEffect, useMemo, useRef, useState } from "react";
 import axios from "axios";
-import Select from "react-select";
+import AsyncSelect from "react-select/async";
+import { createFilter } from "react-select";
 import toast from "react-hot-toast";
 import { usePermissions } from "@/api/usePermissions";
 
@@ -17,7 +18,7 @@ import {
 import { ArrowPathIcon, ArrowDownOnSquareIcon } from "@heroicons/react/24/solid";
 
 /* ======================
-   Helpers (unchanged)
+   Helpers
    ====================== */
 const todayStr = () => new Date().toISOString().split("T")[0];
 const firstDayOfMonthStr = () => {
@@ -56,17 +57,40 @@ const selectStyles = {
   }),
 };
 
+// map your /products/search rich row → react-select option
+const mapProductToOption = (p) => ({
+  value: p.id,
+  label: p.name ? p.name : p.product_code ? p.product_code : `#${p.id}`,
+  _row: p,
+});
+
+// helper to try /api/... then /...
+async function tryEndpoints(paths, params) {
+  let lastErr;
+  for (const path of paths) {
+    try {
+      const res = await axios.get(path, { params, withCredentials: true });
+      return res;
+    } catch (e) {
+      lastErr = e;
+      // keep trying next path
+    }
+  }
+  throw lastErr;
+}
+
+let warnedOnceProducts = false;
+let warnedOnceCustomers = false;
+
 export default function SaleDetailReport() {
   // Dates
   const [fromDate, setFromDate] = useState(firstDayOfMonthStr());
   const [toDate, setToDate] = useState(todayStr());
 
-  // Filters
-  const [customerOptions, setCustomerOptions] = useState([]);
+  // Selected filters
   const [customerValue, setCustomerValue] = useState(null);
   const [customerId, setCustomerId] = useState("");
 
-  const [productOptions, setProductOptions] = useState([]);
   const [productValue, setProductValue] = useState(null);
   const [productId, setProductId] = useState("");
 
@@ -89,32 +113,79 @@ export default function SaleDetailReport() {
   const canView = permsReady ? !!hasFn("report.sale-detail.view") : null;
   const canExport = permsReady ? !!hasFn("report.sale-detail.export") : null;
 
-  // ===== Load options (unchanged) =====
-  useEffect(() => {
-    (async () => {
-      try {
-        const c = await axios.get("/api/customers", { params: { simple: 1 } }).catch(() => null);
-        const cRows = Array.isArray(c?.data) ? c.data : Array.isArray(c?.data?.data) ? c.data.data : [];
-        const cOpts = cRows.map((r) => ({
-          value: r.id ?? r.value,
-          label: r.name ?? r.label ?? r.title ?? `#${r.id}`,
-        }));
-        setCustomerOptions([{ value: "", label: "All Customers" }, ...cOpts]);
+  /* ======================
+     Async loaders (promise-based)
+     ====================== */
 
-        const p = await axios.get("/api/products", { params: { simple: 1 } }).catch(() => null);
-        const pRows = Array.isArray(p?.data) ? p.data : Array.isArray(p?.data?.data) ? p.data.data : [];
-        const pOpts = pRows.map((r) => ({
-          value: r.id ?? r.value,
-          label: r.name ?? r.label ?? r.title ?? `#${r.id}`,
-        }));
-        setProductOptions([{ value: "", label: "All Products" }, ...pOpts]);
-      } catch {}
-    })();
-  }, []);
+  // Customers: prefix-only search (your backend route may be /api/customers/search or /customers/search)
+  const loadCustomers = useMemo(
+    () =>
+      async (input) => {
+        const q = String(input || "").trim();
+        if (!q) return [{ value: "", label: "All Customers" }];
 
-  const filteredProductOptions = useMemo(() => productOptions, [productOptions]);
+        try {
+          const res = await tryEndpoints(
+            ["/api/customers/search", "/customers/search"],
+            { q, limit: 30, mode: "starts" }
+          );
 
-  // ===== Fetch report (unchanged) =====
+          const rows = Array.isArray(res.data?.data)
+            ? res.data.data
+            : Array.isArray(res.data)
+            ? res.data
+            : [];
+
+          const opts = rows.map((r) => ({
+            value: r.id ?? r.value,
+            label: r.name ?? r.label ?? r.title ?? `#${r.id}`,
+            _row: r,
+          }));
+
+          return opts.length ? opts : [{ value: "", label: "No matches" }];
+        } catch (e) {
+          if (!warnedOnceCustomers) {
+            warnedOnceCustomers = true;
+            toast.error("Customer search failed (check route/permissions).");
+          }
+          return [{ value: "", label: "No matches" }];
+        }
+      },
+    []
+  );
+
+  // Products: uses your existing ProductController::search (q%)
+  const loadProducts = useMemo(
+    () =>
+      async (input) => {
+        const q = String(input || "").trim();
+        if (!q) return [{ value: "", label: "All Products" }];
+
+        try {
+          const res = await tryEndpoints(
+            ["/api/products/search", "/products/search"],
+            { q, limit: 30 }
+          );
+
+          // Your controller returns an array of product rows
+          const rows = Array.isArray(res.data) ? res.data : [];
+          const opts = rows.map(mapProductToOption);
+
+          return opts.length ? opts : [{ value: "", label: "No matches" }];
+        } catch (e) {
+          if (!warnedOnceProducts) {
+            warnedOnceProducts = true;
+            toast.error("Product search failed (check route/permissions).");
+          }
+          return [{ value: "", label: "No matches" }];
+        }
+      },
+    []
+  );
+
+  /* ======================
+     Fetch report
+     ====================== */
   const fetchReport = async ({ silentDenied = false } = {}) => {
     if (canView !== true) {
       if (!silentDenied) toast.error("You don't have permission to view this report.");
@@ -154,7 +225,7 @@ export default function SaleDetailReport() {
     fetchReport({ silentDenied: false });
   };
 
-  // PDF export (popup-safe) — logic unchanged
+  // PDF export (popup-safe)
   const exportPdf = async () => {
     if (canExport !== true) return toast.error("You don't have permission to export PDF.");
     const win = window.open("", "_blank");
@@ -206,7 +277,7 @@ export default function SaleDetailReport() {
     }
   };
 
-  // Keyboard flow (unchanged)
+  // Keyboard flow
   const nextFocus = (ref) => ref?.current?.focus?.();
   const onKeyDownEnter = (e, next) => {
     if (e.key === "Enter") {
@@ -216,7 +287,8 @@ export default function SaleDetailReport() {
   };
 
   // tints (match other glass pages)
-  const tintSlate = "bg-slate-900/80 text-white ring-1 ring-white/15 shadow-[0_6px_20px_-6px_rgba(15,23,42,0.45)] hover:bg-slate-900/90";
+  const tintSlate =
+    "bg-slate-900/80 text-white ring-1 ring-white/15 shadow-[0_6px_20px_-6px_rgba(15,23,42,0.45)] hover:bg-slate-900/90";
   const tintGlass = "bg-white/60 text-slate-700 ring-1 ring-white/30 hover:bg-white/80";
 
   return (
@@ -233,6 +305,10 @@ export default function SaleDetailReport() {
                 onClick={() => {
                   setFromDate(firstDayOfMonthStr());
                   setToDate(todayStr());
+                  setCustomerValue(null);
+                  setCustomerId("");
+                  setProductValue(null);
+                  setProductId("");
                 }}
               >
                 Reset
@@ -274,24 +350,28 @@ export default function SaleDetailReport() {
                 type="date"
                 value={toDate}
                 onChange={(e) => setToDate(e.target.value)}
-                onKeyDown={(e) => onKeyDownEnter(e, { current: customerRef.current?.inputRef })}
+                onKeyDown={(e) =>
+                  onKeyDownEnter(e, { current: customerRef.current?.inputRef })
+                }
                 className="w-full"
               />
             </div>
 
-            {/* Customer */}
+            {/* Customer (Async, prefix-only) */}
             <div className="md:col-span-4">
               <label className="text-sm text-gray-700 mb-1 block">Customer</label>
-              <Select
+              <AsyncSelect
                 ref={customerRef}
                 classNamePrefix="rs"
-                isSearchable
+                cacheOptions
+                defaultOptions={[{ value: "", label: "All Customers" }]}
+                loadOptions={loadCustomers}
+                isClearable
                 menuPlacement="auto"
                 menuPortalTarget={typeof document !== "undefined" ? document.body : null}
-                options={customerOptions}
-                value={customerValue}
-                placeholder="All Customers"
+                placeholder="Type to search customers…"
                 styles={selectStyles}
+                filterOption={createFilter({ matchFrom: "start", ignoreAccents: false, trim: true })}
                 onChange={(opt) => {
                   setCustomerValue(opt);
                   const id = opt?.value || "";
@@ -301,27 +381,37 @@ export default function SaleDetailReport() {
                     productRef.current?.inputRef?.focus?.();
                   }, 0);
                 }}
+                noOptionsMessage={({ inputValue }) =>
+                  inputValue ? "No matches (prefix only)" : "Type at least 1 character…"
+                }
+                loadingMessage={() => "Searching…"}
               />
             </div>
 
-            {/* Product */}
+            {/* Product (Async, prefix-only via your controller) */}
             <div className="md:col-span-4">
               <label className="text-sm text-gray-700 mb-1 block">Product</label>
-              <Select
+              <AsyncSelect
                 ref={productRef}
                 classNamePrefix="rs"
-                isSearchable
+                cacheOptions
+                defaultOptions={[{ value: "", label: "All Products" }]}
+                loadOptions={loadProducts}
+                isClearable
                 menuPlacement="auto"
                 menuPortalTarget={typeof document !== "undefined" ? document.body : null}
-                options={filteredProductOptions}
-                value={productValue}
-                placeholder="All Products"
+                placeholder="Type to search products…"
                 styles={selectStyles}
+                filterOption={createFilter({ matchFrom: "start", ignoreAccents: false, trim: true })}
                 onChange={(opt) => {
                   setProductValue(opt);
                   setProductId(opt?.value || "");
                   setTimeout(() => submitRef.current?.focus?.(), 0);
                 }}
+                noOptionsMessage={({ inputValue }) =>
+                  inputValue ? "No matches (prefix only)" : "Type at least 1 character…"
+                }
+                loadingMessage={() => "Searching…"}
               />
             </div>
 
@@ -355,7 +445,9 @@ export default function SaleDetailReport() {
               <GlassBtn
                 type="button"
                 onClick={exportPdf}
-                className={`h-9 ${canExport ? tintGlass : tintGlass + " opacity-60 cursor-not-allowed"}`}
+                className={`h-9 ${
+                  canExport ? tintGlass : tintGlass + " opacity-60 cursor-not-allowed"
+                }`}
                 disabled={pdfLoading || !canExport}
                 title="Export PDF"
               >

@@ -17,7 +17,6 @@ import {
   Squares2X2Icon,
   ArrowPathIcon,
 } from "@heroicons/react/24/solid";
-import Select from "react-select";
 import AsyncSelect from "react-select/async";
 import ProductImportModal from "../../components/ProductImportModal.jsx";
 import { usePermissions, Guard } from "@/api/usePermissions.js";
@@ -82,6 +81,7 @@ export default function ProductsIndex() {
   // selection
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [showBulkModal, setShowBulkModal] = useState(false);
+  const [showBulkDelete, setShowBulkDelete] = useState(false);
 
   const navigate = useNavigate();
 
@@ -288,6 +288,14 @@ export default function ProductsIndex() {
     });
   };
 
+  // helper to toggle by clicking product name
+  const toggleById = (id) =>
+    setSelectedIds((prev) => {
+      const copy = new Set(prev);
+      copy.has(id) ? copy.delete(id) : copy.add(id);
+      return copy;
+    });
+
   const openBulkModal = () => {
     if (!can.update) return toast.error("You don't have permission to update products.");
     setShowBulkModal(true);
@@ -338,6 +346,20 @@ export default function ProductsIndex() {
                   <span className="inline-flex items-center gap-2">
                     <PencilSquareIcon className="w-5 h-5" />
                     Edit Selected ({selectedIds.size})
+                  </span>
+                </GlassBtn>
+              </Guard>
+
+              <Guard when={can.delete}>
+                <GlassBtn
+                  className={`h-10 min-w-[170px] ${selectedIds.size ? tintRed : tintGlass} ${selectedIds.size ? "" : "opacity-60 cursor-not-allowed"}`}
+                  disabled={selectedIds.size === 0}
+                  onClick={() => setShowBulkDelete(true)}
+                  title="Delete selected products (bulk)"
+                >
+                  <span className="inline-flex items-center gap-2">
+                    <TrashIcon className="w-5 h-5" />
+                    Delete Selected ({selectedIds.size})
                   </span>
                 </GlassBtn>
               </Guard>
@@ -473,9 +495,7 @@ export default function ProductsIndex() {
                 return (
                   <tr
                     key={p.id}
-                    className={`transition-colors ${
-                      selectedIds.has(p.id) ? "bg-blue-50" : "odd:bg-white/90 even:bg-white/70"
-                    } hover:bg-blue-50`}
+                    className={`transition-colors ${selectedIds.has(p.id) ? "bg-blue-50" : "odd:bg-white/90 even:bg-white/70"} hover:bg-blue-50`}
                   >
                     <td className="px-3 py-2">
                       <input
@@ -486,7 +506,24 @@ export default function ProductsIndex() {
                       />
                     </td>
                     <td className="px-3 py-2">{p.product_code}</td>
-                    <td className="px-3 py-2">{p.name}</td>
+
+                    {/* Name cell clickable for selection */}
+                    <td
+                      className="px-3 py-2 cursor-pointer select-none"
+                      role="button"
+                      tabIndex={0}
+                      title="Click to select"
+                      onClick={() => toggleById(p.id)}
+                      onKeyDown={(e) => {
+                        if (e.key === " " || e.key === "Enter") {
+                          e.preventDefault();
+                          toggleById(p.id);
+                        }
+                      }}
+                    >
+                      {p.name}
+                    </td>
+
                     <td className="px-3 py-2">
                       {p.image ? (
                         <img
@@ -581,7 +618,7 @@ export default function ProductsIndex() {
       {/* Import modal */}
       <ProductImportModal open={importOpen} onClose={() => setImportOpen(false)} onImported={fetchProducts} />
 
-      {/* Delete confirmation modal (glassy) */}
+      {/* Single Delete confirmation modal (glassy) */}
       {deleteModalOpen && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center"
@@ -662,6 +699,31 @@ export default function ProductsIndex() {
           </div>
         </div>
       )}
+
+      {/* Bulk Delete Modal */}
+      {showBulkDelete && (
+        <BulkDeleteModal
+          onClose={() => setShowBulkDelete(false)}
+          selectedIds={[...selectedIds]}
+          onDone={async (result) => {
+            if (result?.deleted) toast.success(`Deleted ${result.deleted} product(s).`);
+            if (result?.failed?.length) {
+              const firstFew = result.failed.slice(0, 3).map(f => `${f.name ?? `#${f.id}`}: ${f.reason}`);
+              toast.error(
+                `Couldn't delete ${result.failed.length} item(s).\n` + firstFew.join("\n")
+              );
+            }
+            if (controllerRef.current) controllerRef.current.abort();
+            const ctrl = new AbortController();
+            controllerRef.current = ctrl;
+            await fetchProducts(ctrl.signal);
+            setSelectedIds(new Set());
+            setShowBulkDelete(false);
+          }}
+          tintGlass={tintGlass}
+          tintRed={tintRed}
+        />
+      )}
     </div>
   );
 }
@@ -700,15 +762,15 @@ function BulkEditModal({ onClose, selectedCount, selectedIds, onSaved, tintBlue,
     return list.map((i) => ({ value: i.id, label: i.name }));
   };
 
-  const loadCategories = useMemo(
+  const loadCategories = React.useMemo(
     () => debouncePromise((input) => fetchOptions("/api/categories/search", input), 300),
     []
   );
-  const loadBrands = useMemo(
+  const loadBrands = React.useMemo(
     () => debouncePromise((input) => fetchOptions("/api/brands/search", input), 300),
     []
   );
-  const loadSuppliers = useMemo(
+  const loadSuppliers = React.useMemo(
     () => debouncePromise((input) => fetchOptions("/api/suppliers/search", input), 300),
     []
   );
@@ -814,6 +876,85 @@ function BulkEditModal({ onClose, selectedCount, selectedIds, onSaved, tintBlue,
             </div>
           </GlassCard>
         </div>
+      </div>
+    </div>
+  );
+}
+
+/** Bulk delete modal */
+function BulkDeleteModal({ onClose, selectedIds, onDone, tintGlass, tintRed }) {
+  const [password, setPassword] = useState("");
+  const [working, setWorking] = useState(false);
+
+  const submit = async () => {
+    try {
+      setWorking(true);
+      await axios.post("/api/auth/confirm-password", { password });
+      const { data } = await axios.post("/api/products/bulk-destroy", {
+        product_ids: selectedIds,
+      });
+      await onDone?.(data);
+    } catch (e) {
+      const msg = e?.response?.data?.message || "Bulk delete failed";
+      toast.error(msg);
+    } finally {
+      setWorking(false);
+    }
+  };
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center"
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div className="absolute inset-0 bg-black/40" />
+      <div className="relative w-full max-w-md">
+        <GlassCard>
+          <GlassSectionHeader
+            title={<span className="inline-flex items-center gap-2">
+              <ShieldExclamationIcon className="w-5 h-5 text-rose-600" />
+              <span>Delete selected products</span>
+            </span>}
+            right={
+              <GlassBtn className={`h-8 px-3 ${tintGlass}`} onClick={onClose} title="Close">
+                <XMarkIcon className="w-5 h-5" />
+              </GlassBtn>
+            }
+          />
+          <div className="px-4 py-4 space-y-4">
+            <p className="text-sm text-gray-700">
+              You are about to permanently delete <strong>{selectedIds.length}</strong> product(s). This action cannot be undone.
+            </p>
+
+            <div className="space-y-2">
+              <label className="block text-sm font-medium">Confirm your password</label>
+              <GlassInput
+                type="password"
+                value={password}
+                autoFocus
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="Your password"
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && password.trim()) submit();
+                  if (e.key === "Escape") onClose();
+                }}
+              />
+            </div>
+
+            <div className="flex justify-end gap-2">
+              <GlassBtn className={`min-w-[110px] ${tintGlass}`} onClick={onClose} disabled={working}>
+                Cancel
+              </GlassBtn>
+              <GlassBtn
+                className={`min-w-[160px] ${tintRed}`}
+                onClick={submit}
+                disabled={working || password.trim() === ""}
+              >
+                {working ? "Deleting…" : "Confirm & Delete"}
+              </GlassBtn>
+            </div>
+          </div>
+        </GlassCard>
       </div>
     </div>
   );
