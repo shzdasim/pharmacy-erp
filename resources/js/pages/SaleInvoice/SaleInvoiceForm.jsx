@@ -208,7 +208,14 @@ export default function SaleInvoiceForm({ saleId, onSuccess }) {
   /* -------- handlers -------- */
   const handleHeaderChange = (e) => {
     const { name, value } = e.target;
-    const allowNegative = name === "discount_percentage";
+    // allow negatives for these summary fields
+    const negativeFields = new Set([
+      "discount_percentage",
+      "discount_amount",
+      "tax_percentage",
+      "tax_amount",
+      ]);
+  const allowNegative = negativeFields.has(name);
     const decimalFields = new Set([
       "discount_percentage",
       "discount_amount",
@@ -352,6 +359,11 @@ export default function SaleInvoiceForm({ saleId, onSuccess }) {
 
     setForm((prev) => {
       const items = [...prev.items];
+      // If quantity is empty, preset it to 1
+      const presetQty =
+       items[rowIndex]?.quantity === "" || items[rowIndex]?.quantity == null
+       ? "1"
+       : items[rowIndex].quantity;
       items[rowIndex] = recalcItem(
         {
           ...items[rowIndex],
@@ -361,7 +373,7 @@ export default function SaleInvoiceForm({ saleId, onSuccess }) {
           batch_number: "",
           expiry: "",
           current_quantity: available.toString(),
-          quantity: "",
+          quantity: presetQty,
           item_discount_percentage: "",
           sub_total: "",
         },
