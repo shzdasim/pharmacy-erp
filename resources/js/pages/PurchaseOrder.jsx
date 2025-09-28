@@ -429,7 +429,12 @@ export default function PurchaseOrder() {
                   .map((h, i) => (
                   <th
                     key={h}
-                    className={`px-2 py-1 font-medium ${i===0?'w-8':''} ${[2,3,4,5,6,7,8,9].includes(i) ? 'text-right' : ''} border-b border-slate-200/80`}
+                   className={[
+                      "px-2 py-1 font-medium border-b border-slate-200/80",
+                      i === 0 ? "w-8" : "",
+                      [2,3,4,5,6,7,8,9].includes(i) ? "text-right" : "",
+                      h === "Stock (U)" ? "bg-red-500 text-white font-bold" : ""
+                    ].join(" ")}
                   >
                     {h}
                   </th>
@@ -458,7 +463,7 @@ export default function PurchaseOrder() {
                     </td>
                     <td className="px-2 py-1 text-right tabular-nums whitespace-nowrap border-l border-slate-200/60">{r.pack_size}</td>
                     <td className="px-2 py-1 text-right tabular-nums whitespace-nowrap">{r.units_sold}</td>
-                    <td className="px-2 py-1 text-right tabular-nums whitespace-nowrap">{r.current_stock_units}</td>
+                    <td className="px-2 py-1 text-center tabular-nums whitespace-nowrap bg-red-500 text-white font-bold">{r.current_stock_units}</td>
                     <td className="px-2 py-1 text-right tabular-nums whitespace-nowrap">{fmt2(r.pack_price)}</td>
                     <td className="px-2 py-1 text-right tabular-nums whitespace-nowrap">{r.suggested_packs}</td>
                     <td className="px-2 py-1 text-right">
