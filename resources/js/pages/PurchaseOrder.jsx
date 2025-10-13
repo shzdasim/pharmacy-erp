@@ -474,7 +474,7 @@ export default function PurchaseOrder() {
                         onFocus={() => setSelectedIndex(idx)}
                         onChange={(e) => updateOrderPacks(r._rowId, e.target.value)}
                         ref={(el) => (inputRefs.current[r._rowId] = el)}
-                        className="w-16 h-7 text-right text-[12px] no-spinners"
+                        className="w-16 h-7 text-red-500 font-bold text-right text-[12px] no-spinners"
                         inputMode="numeric"
                       />
                     </td>
