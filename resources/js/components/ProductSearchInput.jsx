@@ -16,12 +16,35 @@ const ProductSearchInput = forwardRef(
     const [highlightIndex, setHighlightIndex] = useState(0);
     const [isInvalidInput, setIsInvalidInput] = useState(false);
 
+    const [windowPos, setWindowPos] = useState(() => {
+      const saved = localStorage.getItem("productModalPos");
+      if (saved) return JSON.parse(saved);
+
+      // Default center
+      const width = 900;
+      const height = 600;
+      const x = (window.innerWidth - width) / 2;
+      const y = (window.innerHeight - height) / 2;
+      return { x, y };
+    });
+
+
+    const [windowSize, setWindowSize] = useState(() => {
+      const saved = localStorage.getItem("productModalSize");
+      return saved
+        ? JSON.parse(saved)
+        : { width: 900, height: 600 }; // default size
+    });
+
     const triggerRef = useRef(null);
     const searchRef = useRef(null);
     const tableRef = useRef(null);
+    const modalRef = useRef(null);
 
     const didRefreshRef = useRef(false);
     const debounceRef = useRef(null);
+    const dragRef = useRef({ isDragging: false, offsetX: 0, offsetY: 0 });
+    const resizeRef = useRef({ isResizing: false, startX: 0, startY: 0, startWidth: 0, startHeight: 0 });
 
     const items = useMemo(() => {
       if (Array.isArray(products)) return products;
@@ -106,7 +129,7 @@ const ProductSearchInput = forwardRef(
       );
     }, [items, search]);
 
-    // --- Infinite Scroll ---
+    // Infinite scroll
     useEffect(() => {
       const container = tableRef.current?.parentElement;
       if (!container) return;
@@ -125,8 +148,10 @@ const ProductSearchInput = forwardRef(
     const getPackSize = (p) => p?.pack_size ?? p?.packSize ?? p?.packsize ?? "";
     const getSupplierName = (p) => p?.supplier?.name || p?.supplier_name || "-";
     const getBrandName = (p) => p?.brand?.name || p?.brand_name || "-";
-    const getMargin = (p) => p?.margin ?? p?.margin_percentage ?? p?.marginPercent ?? "-";
-    const getAvgPrice = (p) => p?.avg_price ?? p?.average_price ?? p?.avgPrice ?? "-";
+    const getMargin = (p) =>
+      p?.margin ?? p?.margin_percentage ?? p?.marginPercent ?? "-";
+    const getAvgPrice = (p) =>
+      p?.avg_price ?? p?.average_price ?? p?.avgPrice ?? "-";
 
     const handleSelect = (product) => {
       setDisplay(product?.name || "");
@@ -159,19 +184,70 @@ const ProductSearchInput = forwardRef(
       }
     };
 
-    // --- Handle valid search input only ---
     const handleSearchChange = (e) => {
       const val = e.target.value;
-      // Allow only A-Z, a-z, 0-9 and space
       const valid = /^[a-zA-Z0-9-\s]*$/;
       if (!valid.test(val)) {
-        // Invalid input → reject + trigger "keyboard error"
         setIsInvalidInput(true);
         setTimeout(() => setIsInvalidInput(false), 200);
         return;
       }
       setSearch(val);
       setHighlightIndex(0);
+    };
+
+    // --- Dragging Logic ---
+    const startDrag = (e) => {
+      if (!modalRef.current) return;
+      dragRef.current = {
+        isDragging: true,
+        offsetX: e.clientX - windowPos.x,
+        offsetY: e.clientY - windowPos.y,
+      };
+      document.addEventListener("mousemove", handleDrag);
+      document.addEventListener("mouseup", stopDrag);
+    };
+
+    const handleDrag = (e) => {
+      if (!dragRef.current.isDragging) return;
+      setWindowPos({
+        x: e.clientX - dragRef.current.offsetX,
+        y: e.clientY - dragRef.current.offsetY,
+      });
+    };
+
+    const stopDrag = () => {
+      dragRef.current.isDragging = false;
+      localStorage.setItem("productModalPos", JSON.stringify(windowPos));
+      document.removeEventListener("mousemove", handleDrag);
+      document.removeEventListener("mouseup", stopDrag);
+    };
+
+    // --- Resizing Logic ---
+    const startResize = (e) => {
+      resizeRef.current = {
+        isResizing: true,
+        startX: e.clientX,
+        startY: e.clientY,
+        startWidth: windowSize.width,
+        startHeight: windowSize.height,
+      };
+      document.addEventListener("mousemove", handleResize);
+      document.addEventListener("mouseup", stopResize);
+    };
+
+    const handleResize = (e) => {
+      if (!resizeRef.current.isResizing) return;
+      const newWidth = Math.max(600, resizeRef.current.startWidth + (e.clientX - resizeRef.current.startX));
+      const newHeight = Math.max(400, resizeRef.current.startHeight + (e.clientY - resizeRef.current.startY));
+      setWindowSize({ width: newWidth, height: newHeight });
+    };
+
+    const stopResize = () => {
+      resizeRef.current.isResizing = false;
+      localStorage.setItem("productModalSize", JSON.stringify(windowSize));
+      document.removeEventListener("mousemove", handleResize);
+      document.removeEventListener("mouseup", stopResize);
     };
 
     return (
@@ -208,13 +284,26 @@ const ProductSearchInput = forwardRef(
               className="fixed inset-0 z-[10000] flex items-center justify-center"
               onKeyDown={handleModalKeyDown}
             >
-              {/* Backdrop */}
               <div className="absolute inset-0 bg-black/40" onClick={closeModal} />
 
-              {/* Dialog */}
-              <div className="relative bg-white w-[92vw] max-w-5xl rounded-xl shadow-2xl border">
-                {/* Header */}
-                <div className="px-4 py-3 border-b flex items-center justify-between">
+              {/* Draggable + Resizable Dialog */}
+              <div
+                ref={modalRef}
+                className="absolute bg-white rounded-xl shadow-2xl border flex flex-col"
+                style={{
+                  left: `${windowPos.x}px`,
+                  top: `${windowPos.y}px`,
+                  width: `${windowSize.width}px`,
+                  height: `${windowSize.height}px`,
+                  minWidth: "600px",
+                  minHeight: "400px",
+                }}
+              >
+                {/* Header (Draggable) */}
+                <div
+                  className="px-4 py-3 border-b flex items-center justify-between cursor-move bg-gray-50 rounded-t-xl"
+                  onMouseDown={startDrag}
+                >
                   <h3 className="text-sm font-semibold">Select Product</h3>
                   <button
                     type="button"
@@ -225,86 +314,99 @@ const ProductSearchInput = forwardRef(
                   </button>
                 </div>
 
-                {/* Search */}
-                <div className="p-3">
-                  <input
-                    ref={searchRef}
-                    type="text"
-                    value={search}
-                    onChange={handleSearchChange}
-                    placeholder="Type to search… (Enter to select, Esc to close)"
-                    className={`border w-full h-8 text-sm px-2 rounded ${
-                      isInvalidInput ? "animate-shake border-red-400" : ""
-                    }`}
-                  />
-                </div>
+                {/* Body */}
+                <div className="flex-1 overflow-hidden flex flex-col">
+                  {/* Search */}
+                  <div className="p-3">
+                    <input
+                      ref={searchRef}
+                      type="text"
+                      value={search}
+                      onChange={handleSearchChange}
+                      placeholder="Type to search… (Enter to select, Esc to close)"
+                      className={`border w-full h-8 text-sm px-2 rounded ${
+                        isInvalidInput ? "animate-shake border-red-400" : ""
+                      }`}
+                    />
+                  </div>
 
-                {/* Results */}
-                <div className="px-3 pb-3">
-                  <div className="border rounded overflow-hidden">
-                    <div className="max-h-[60vh] overflow-auto">
-                      <table
-                        ref={tableRef}
-                        className="w-full border-collapse text-[11px]"
-                      >
-                        <thead className="bg-gray-100 sticky top-0">
-                          <tr className="text-left text-[10px]">
-                            <th colSpan="3" className="border px-1 w-1/3">Name</th>
-                            <th className="border px-1">Pack Size</th>
-                            <th className="border px-1 font-bold">Quantity</th>
-                            <th className="border px-1">Pack Purchase</th>
-                            <th className="border px-1">Unit Purchase Price</th>
-                            <th className="border px-1">Pack Sale</th>
-                            <th className="border px-1">Unit Sale Price</th>
-                            <th className="border px-1">Supplier</th>
-                            <th className="border px-1">Brand</th>
-                            <th className="border px-1">Margin %</th>
-                            <th className="border px-1">Avg. Price</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {filtered.map((p, idx) => (
-                            <tr
-                              key={p.id}
-                              onClick={() => handleSelect(p)}
-                              className={`cursor-pointer ${
-                                idx === highlightIndex
-                                  ? "bg-green-600 text-white"
-                                  : ""
-                              }`}
-                              onMouseEnter={() => setHighlightIndex(idx)}
-                            >
-                              <td colSpan="3" className="border px-1 text-[13px] w-1/3">
-                                {p?.name}
-                              </td>
-                              <td className="border px-1">{getPackSize(p)}</td>
-                              <td className="border px-1 font-bold">{p?.quantity}</td>
-                              <td className="border px-1">{p?.pack_purchase_price}</td>
-                              <td className="border px-1">{p?.unit_purchase_price}</td>
-                              <td className="border px-1">{p?.pack_sale_price}</td>
-                              <td className="border px-1">{p?.unit_sale_price}</td>
-                              <td className="border px-1">{getSupplierName(p)}</td>
-                              <td className="border px-1">{getBrandName(p)}</td>
-                              <td className="border px-1">{getMargin(p)}</td>
-                              <td className="border px-1">{getAvgPrice(p)}</td>
+                  {/* Results */}
+                  <div className="px-3 pb-3 flex-1 overflow-auto">
+                    <div className="border rounded overflow-hidden h-full">
+                      <div className="max-h-full overflow-auto">
+                        <table ref={tableRef} className="w-full border-collapse text-[11px]">
+                          <thead className="bg-gray-100 sticky top-0">
+                            <tr className="text-left text-[10px]">
+                              <th colSpan="3" className="border px-1 w-1/3">
+                                Name
+                              </th>
+                              <th className="border px-1">Pack Size</th>
+                              <th className="border px-1 font-bold">Quantity</th>
+                              <th className="border px-1">Pack Purchase</th>
+                              <th className="border px-1">Unit Purchase Price</th>
+                              <th className="border px-1">Pack Sale</th>
+                              <th className="border px-1">Unit Sale Price</th>
+                              <th className="border px-1">Supplier</th>
+                              <th className="border px-1">Brand</th>
+                              <th className="border px-1">Margin %</th>
+                              <th className="border px-1">Avg. Price</th>
                             </tr>
-                          ))}
-                          {filtered.length === 0 && (
-                            <tr>
-                              <td colSpan={13} className="text-center py-6 text-gray-500">
-                                No products found
-                              </td>
-                            </tr>
-                          )}
-                        </tbody>
-                      </table>
+                          </thead>
+                          <tbody>
+                            {filtered.map((p, idx) => (
+                              <tr
+                                key={p.id}
+                                onClick={() => handleSelect(p)}
+                                className={`cursor-pointer ${
+                                  idx === highlightIndex
+                                    ? "bg-green-600 text-white"
+                                    : ""
+                                }`}
+                                onMouseEnter={() => setHighlightIndex(idx)}
+                              >
+                                <td colSpan="3" className="border px-1 text-[13px] w-1/3">
+                                  {p?.name}
+                                </td>
+                                <td className="border px-1">{getPackSize(p)}</td>
+                                <td className="border px-1 font-bold">{p?.quantity}</td>
+                                <td className="border px-1">{p?.pack_purchase_price}</td>
+                                <td className="border px-1">{p?.unit_purchase_price}</td>
+                                <td className="border px-1">{p?.pack_sale_price}</td>
+                                <td className="border px-1">{p?.unit_sale_price}</td>
+                                <td className="border px-1">{getSupplierName(p)}</td>
+                                <td className="border px-1">{getBrandName(p)}</td>
+                                <td className="border px-1">{getMargin(p)}</td>
+                                <td className="border px-1">{getAvgPrice(p)}</td>
+                              </tr>
+                            ))}
+                            {filtered.length === 0 && (
+                              <tr>
+                                <td
+                                  colSpan={13}
+                                  className="text-center py-6 text-gray-500"
+                                >
+                                  No products found
+                                </td>
+                              </tr>
+                            )}
+                          </tbody>
+                        </table>
+                      </div>
                     </div>
+                  </div>
+
+                  {/* Footer */}
+                  <div className="px-4 py-2 border-t text-[10px] text-gray-600">
+                    ↑/↓ to navigate • Enter to select • Esc to close
                   </div>
                 </div>
 
-                <div className="px-4 py-2 border-t text-[10px] text-gray-600">
-                  ↑/↓ to navigate • Enter to select • Esc to close
-                </div>
+                {/* Resize Handle */}
+                <div
+                  onMouseDown={startResize}
+                  className="absolute bottom-1 right-1 w-3 h-3 bg-gray-400 cursor-se-resize rounded-sm"
+                  title="Resize"
+                />
               </div>
             </div>,
             document.body
