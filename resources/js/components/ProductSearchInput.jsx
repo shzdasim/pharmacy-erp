@@ -10,14 +10,12 @@ import { createPortal } from "react-dom";
 
 const ProductSearchInput = forwardRef(
   ({ value, onChange, products, onRefreshProducts, onKeyDown: onKeyDownProp }, ref) => {
-    // Displayed text in the small cell input
     const [display, setDisplay] = useState("");
-    // Modal state
     const [isOpen, setIsOpen] = useState(false);
     const [search, setSearch] = useState("");
     const [highlightIndex, setHighlightIndex] = useState(0);
+    const [isInvalidInput, setIsInvalidInput] = useState(false);
 
-    // Refs
     const triggerRef = useRef(null);
     const searchRef = useRef(null);
     const tableRef = useRef(null);
@@ -25,19 +23,16 @@ const ProductSearchInput = forwardRef(
     const didRefreshRef = useRef(false);
     const debounceRef = useRef(null);
 
-    // Normalize products => array
     const items = useMemo(() => {
       if (Array.isArray(products)) return products;
       if (products && Array.isArray(products.data)) return products.data;
       return [];
     }, [products]);
 
-    // Keep highlight in bounds when list changes
     useEffect(() => {
       if (highlightIndex >= items.length) setHighlightIndex(0);
     }, [items.length, highlightIndex]);
 
-    // Sync display from value (works for id OR object)
     useEffect(() => {
       if (!value) {
         setDisplay("");
@@ -51,7 +46,6 @@ const ProductSearchInput = forwardRef(
       if (selected) setDisplay(selected.name || "");
     }, [value, items]);
 
-    // Expose methods to parent
     useImperativeHandle(ref, () => ({
       focus: () => triggerRef.current?.focus(),
       refresh: () => onRefreshProducts?.(search),
@@ -59,11 +53,9 @@ const ProductSearchInput = forwardRef(
       closeMenu: () => closeModal(),
     }));
 
-    // Open/Close helpers
     const openModal = (seedChar) => {
       setIsOpen(true);
       setHighlightIndex(0);
-      // Start with current display (easy refinement) or seed first typed char
       setSearch(
         typeof seedChar === "string" && seedChar.length === 1
           ? seedChar
@@ -72,25 +64,17 @@ const ProductSearchInput = forwardRef(
     };
     const closeModal = () => setIsOpen(false);
 
-    // Lock page scroll while modal open
     useEffect(() => {
       if (!isOpen) return;
       const prev = document.body.style.overflow;
       document.body.style.overflow = "hidden";
-      return () => {
-        document.body.style.overflow = prev;
-      };
+      return () => (document.body.style.overflow = prev);
     }, [isOpen]);
 
-    // Autofocus search input on open
     useEffect(() => {
-      if (isOpen) {
-        // small delay to ensure portal is attached
-        setTimeout(() => searchRef.current?.focus(), 0);
-      }
+      if (isOpen) setTimeout(() => searchRef.current?.focus(), 0);
     }, [isOpen]);
 
-    // Refresh once per open
     useEffect(() => {
       if (isOpen && onRefreshProducts && !didRefreshRef.current) {
         didRefreshRef.current = true;
@@ -99,14 +83,12 @@ const ProductSearchInput = forwardRef(
       if (!isOpen) didRefreshRef.current = false;
     }, [isOpen, onRefreshProducts, search]);
 
-    // Listen to "product:created" to refresh list
     useEffect(() => {
       const handler = () => onRefreshProducts?.(search);
       window.addEventListener("product:created", handler);
       return () => window.removeEventListener("product:created", handler);
     }, [onRefreshProducts, search]);
 
-    // Debounce remote typeahead while modal is open
     useEffect(() => {
       if (!onRefreshProducts || !isOpen) return;
       if (debounceRef.current) clearTimeout(debounceRef.current);
@@ -114,33 +96,44 @@ const ProductSearchInput = forwardRef(
       return () => clearTimeout(debounceRef.current);
     }, [search, onRefreshProducts, isOpen]);
 
-    // Local filter (fallback if remote not used)
+    // Local filter
     const filtered = useMemo(() => {
-  const q = (search || "").toLowerCase().trim();
-  if (!q) return items;
+      const q = (search || "").toLowerCase().trim();
+      if (!q) return items;
+      const starts = (val) => (val ?? "").toString().toLowerCase().startsWith(q);
+      return items.filter(
+        (p) => starts(p?.name) || starts(p?.product_code) || starts(p?.barcode)
+      );
+    }, [items, search]);
 
-  const starts = (val) => (val ?? "").toString().toLowerCase().startsWith(q);
-  return items.filter((p) =>
-    starts(p?.name) || starts(p?.product_code) || starts(p?.barcode)
-  );
-}, [items, search]);
+    // --- Infinite Scroll ---
+    useEffect(() => {
+      const container = tableRef.current?.parentElement;
+      if (!container) return;
+      const handleScroll = () => {
+        if (
+          container.scrollTop + container.clientHeight >=
+          container.scrollHeight - 50
+        ) {
+          onRefreshProducts?.(search);
+        }
+      };
+      container.addEventListener("scroll", handleScroll);
+      return () => container.removeEventListener("scroll", handleScroll);
+    }, [onRefreshProducts, search]);
 
-
-    // Helpers for columns
     const getPackSize = (p) => p?.pack_size ?? p?.packSize ?? p?.packsize ?? "";
     const getSupplierName = (p) => p?.supplier?.name || p?.supplier_name || "-";
     const getBrandName = (p) => p?.brand?.name || p?.brand_name || "-";
     const getMargin = (p) => p?.margin ?? p?.margin_percentage ?? p?.marginPercent ?? "-";
     const getAvgPrice = (p) => p?.avg_price ?? p?.average_price ?? p?.avgPrice ?? "-";
 
-    // Select handler
     const handleSelect = (product) => {
       setDisplay(product?.name || "");
-      onChange?.(product);     // parent will navigate to next field
+      onChange?.(product);
       closeModal();
     };
 
-    // Keep highlighted row visible
     useEffect(() => {
       if (!isOpen) return;
       const rows = tableRef.current?.querySelectorAll("tbody tr");
@@ -149,7 +142,6 @@ const ProductSearchInput = forwardRef(
       if (el) el.scrollIntoView({ block: "nearest" });
     }, [highlightIndex, isOpen, filtered.length]);
 
-    // Keyboard inside modal
     const handleModalKeyDown = (e) => {
       if (!isOpen) return;
       if (e.key === "Escape") {
@@ -167,9 +159,24 @@ const ProductSearchInput = forwardRef(
       }
     };
 
+    // --- Handle valid search input only ---
+    const handleSearchChange = (e) => {
+      const val = e.target.value;
+      // Allow only A-Z, a-z, 0-9 and space
+      const valid = /^[a-zA-Z0-9-\s]*$/;
+      if (!valid.test(val)) {
+        // Invalid input → reject + trigger "keyboard error"
+        setIsInvalidInput(true);
+        setTimeout(() => setIsInvalidInput(false), 200);
+        return;
+      }
+      setSearch(val);
+      setHighlightIndex(0);
+    };
+
     return (
       <>
-        {/* Trigger (small cell input) */}
+        {/* Trigger Input */}
         <input
           ref={triggerRef}
           type="text"
@@ -180,13 +187,7 @@ const ProductSearchInput = forwardRef(
           onFocus={() => openModal()}
           onClick={() => openModal()}
           onKeyDown={(e) => {
-            // If user starts typing, open modal and seed the first character
-            if (
-              !e.ctrlKey &&
-              !e.metaKey &&
-              !e.altKey &&
-              e.key.length === 1
-            ) {
+            if (!e.ctrlKey && !e.metaKey && !e.altKey && e.key.length === 1) {
               e.preventDefault();
               openModal(e.key);
               return;
@@ -196,7 +197,6 @@ const ProductSearchInput = forwardRef(
               openModal();
               return;
             }
-            // Allow parent to handle arrows/enter when modal isn't opening
             onKeyDownProp?.(e);
           }}
         />
@@ -209,10 +209,8 @@ const ProductSearchInput = forwardRef(
               onKeyDown={handleModalKeyDown}
             >
               {/* Backdrop */}
-              <div
-                className="absolute inset-0 bg-black/40"
-                onClick={closeModal}
-              />
+              <div className="absolute inset-0 bg-black/40" onClick={closeModal} />
+
               {/* Dialog */}
               <div className="relative bg-white w-[92vw] max-w-5xl rounded-xl shadow-2xl border">
                 {/* Header */}
@@ -222,7 +220,6 @@ const ProductSearchInput = forwardRef(
                     type="button"
                     onClick={closeModal}
                     className="text-xs px-2 py-1 rounded hover:bg-gray-100"
-                    aria-label="Close"
                   >
                     ✕
                   </button>
@@ -234,12 +231,11 @@ const ProductSearchInput = forwardRef(
                     ref={searchRef}
                     type="text"
                     value={search}
-                    onChange={(e) => {
-                      setSearch(e.target.value);
-                      setHighlightIndex(0);
-                    }}
+                    onChange={handleSearchChange}
                     placeholder="Type to search… (Enter to select, Esc to close)"
-                    className="border w-full h-8 text-sm px-2 rounded"
+                    className={`border w-full h-8 text-sm px-2 rounded ${
+                      isInvalidInput ? "animate-shake border-red-400" : ""
+                    }`}
                   />
                 </div>
 
@@ -247,14 +243,19 @@ const ProductSearchInput = forwardRef(
                 <div className="px-3 pb-3">
                   <div className="border rounded overflow-hidden">
                     <div className="max-h-[60vh] overflow-auto">
-                      <table ref={tableRef} className="w-full border-collapse text-[11px]">
+                      <table
+                        ref={tableRef}
+                        className="w-full border-collapse text-[11px]"
+                      >
                         <thead className="bg-gray-100 sticky top-0">
                           <tr className="text-left text-[10px]">
                             <th colSpan="3" className="border px-1 w-1/3">Name</th>
                             <th className="border px-1">Pack Size</th>
-                            <th className="border px-1">Quantity</th>
+                            <th className="border px-1 font-bold">Quantity</th>
                             <th className="border px-1">Pack Purchase</th>
+                            <th className="border px-1">Unit Purchase Price</th>
                             <th className="border px-1">Pack Sale</th>
+                            <th className="border px-1">Unit Sale Price</th>
                             <th className="border px-1">Supplier</th>
                             <th className="border px-1">Brand</th>
                             <th className="border px-1">Margin %</th>
@@ -267,15 +268,21 @@ const ProductSearchInput = forwardRef(
                               key={p.id}
                               onClick={() => handleSelect(p)}
                               className={`cursor-pointer ${
-                                idx === highlightIndex ? "bg-blue-100" : ""
+                                idx === highlightIndex
+                                  ? "bg-green-600 text-white"
+                                  : ""
                               }`}
                               onMouseEnter={() => setHighlightIndex(idx)}
                             >
-                              <td colSpan="3" className="border px-1 text-[15px] w-1/3">{p?.name}</td>
+                              <td colSpan="3" className="border px-1 text-[13px] w-1/3">
+                                {p?.name}
+                              </td>
                               <td className="border px-1">{getPackSize(p)}</td>
-                              <td className="border px-1">{p?.quantity}</td>
+                              <td className="border px-1 font-bold">{p?.quantity}</td>
                               <td className="border px-1">{p?.pack_purchase_price}</td>
+                              <td className="border px-1">{p?.unit_purchase_price}</td>
                               <td className="border px-1">{p?.pack_sale_price}</td>
+                              <td className="border px-1">{p?.unit_sale_price}</td>
                               <td className="border px-1">{getSupplierName(p)}</td>
                               <td className="border px-1">{getBrandName(p)}</td>
                               <td className="border px-1">{getMargin(p)}</td>
@@ -284,7 +291,7 @@ const ProductSearchInput = forwardRef(
                           ))}
                           {filtered.length === 0 && (
                             <tr>
-                              <td colSpan={11} className="text-center py-6 text-gray-500">
+                              <td colSpan={13} className="text-center py-6 text-gray-500">
                                 No products found
                               </td>
                             </tr>
@@ -295,7 +302,6 @@ const ProductSearchInput = forwardRef(
                   </div>
                 </div>
 
-                {/* Footer (tips) */}
                 <div className="px-4 py-2 border-t text-[10px] text-gray-600">
                   ↑/↓ to navigate • Enter to select • Esc to close
                 </div>
