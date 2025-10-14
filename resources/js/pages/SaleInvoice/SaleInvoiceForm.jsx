@@ -625,25 +625,46 @@ export default function SaleInvoiceForm({ saleId, onSuccess }) {
     }
   };
   const onKeyNav = (e, row, col) => {
-    if (col === "batch" && (e.key === "ArrowDown" || e.key === "ArrowUp")) return;
-    switch (e.key) {
-      case "ArrowDown":
-        e.preventDefault();
-        moveSameCol(row, col, 1);
-        break;
-      case "ArrowUp":
-        e.preventDefault();
-        moveSameCol(row, col, -1);
-        break;
-      case "Enter":
-        e.preventDefault();
-        if (col === "quantity") focusCell(row, "disc");
-        else moveNextCol(row, col);
-        break;
-      default:
-        break;
+  // Handle Ctrl + Tab for reverse navigation
+  if (e.shiftKey && e.key === "Tab") {
+    e.preventDefault();
+
+    const i = COLS.indexOf(col);
+    if (i > 0) {
+      // Go to previous editable field
+      focusCell(row, COLS[i - 1]);
+    } else if (i === 0 && row > 0) {
+      // If first column, go to previous row's last editable col
+      focusCell(row - 1, COLS[COLS.length - 1]);
     }
-  };
+    return;
+  }
+
+  if (col === "batch" && (e.key === "ArrowDown" || e.key === "ArrowUp")) return;
+
+  switch (e.key) {
+    case "ArrowDown":
+      e.preventDefault();
+      moveSameCol(row, col, 1);
+      break;
+    case "ArrowUp":
+      e.preventDefault();
+      moveSameCol(row, col, -1);
+      break;
+    case "Enter":
+      e.preventDefault();
+      // Existing logic for forward flow
+      if (col === "quantity") {
+        focusCell(row, "disc");
+      } else {
+        moveNextCol(row, col);
+      }
+      break;
+    default:
+      break;
+  }
+};
+
 
   /* ===================== R E N D E R ===================== */
   return (

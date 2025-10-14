@@ -21,7 +21,7 @@ const ProductSearchInput = forwardRef(
       if (saved) return JSON.parse(saved);
 
       // Default center
-      const width = 900;
+      const width = 1000;
       const height = 600;
       const x = (window.innerWidth - width) / 2;
       const y = (window.innerHeight - height) / 2;
