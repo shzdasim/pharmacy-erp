@@ -145,58 +145,64 @@ export default function ProductsIndex() {
     }
   };
 
-  const fetchProducts = useCallback(async (signal) => {
-    try {
-      setLoading(true);
-      const { data } = await axios.get("/api/products", {
-        params: {
-          page,
-          per_page: pageSize,
-          q_name: qName.trim(),
-          q_brand: qBrand.trim(),
-          q_supplier: qSupplier.trim(),
-        },
-        signal,
-      });
+// keep fetchProducts but pass filters as args
+const fetchProducts = useCallback(async (signal, opts = {}) => {
+  const { pageArg = page, pageSizeArg = pageSize, qNameArg = qName, qBrandArg = qBrand, qSupplierArg = qSupplier } = opts;
+  try {
+    setLoading(true);
+    const { data } = await axios.get("/api/products", {
+      params: {
+        page: pageArg,
+        per_page: pageSizeArg,
+        q_name: qNameArg.trim(),
+        q_brand: qBrandArg.trim(),
+        q_supplier: qSupplierArg.trim(),
+      },
+      signal,
+    });
 
-      const items = Array.isArray(data?.data) ? data.data : Array.isArray(data) ? data : [];
-      setRows(items);
-      setTotal(Number(data?.total ?? items.length ?? 0));
-      const lp = Number(data?.last_page ?? 1);
-      setLastPage(lp);
-      if (page > lp) setPage(lp || 1);
-    } catch (err) {
-      if (axios.isCancel?.(err)) return;
-      const status = err?.response?.status;
-      if (status === 403) toast.error("You don't have permission to view products.");
-      else toast.error("Failed to load products");
-    } finally {
-      setLoading(false);
-    }
-  }, [page, pageSize, qName, qBrand, qSupplier]);
+    const items = Array.isArray(data?.data) ? data.data : Array.isArray(data) ? data : [];
+    setRows(items);
+    setTotal(Number(data?.total ?? items.length ?? 0));
+    const lp = Number(data?.last_page ?? 1);
+    setLastPage(lp);
+    if (pageArg > lp) setPage(lp || 1);
+  } catch (err) {
+    if (axios.isCancel?.(err)) return;
+    const status = err?.response?.status;
+    if (status === 403) toast.error("You don't have permission to view products.");
+    else toast.error("Failed to load products");
+  } finally {
+    setLoading(false);
+  }
+}, [page, pageSize, qName, qBrand, qSupplier]);
 
-  // Initial + pager change (non-debounced)
-  useEffect(() => {
-    if (permsLoading || !can.view) return;
-    if (controllerRef.current) controllerRef.current.abort();
-    const ctrl = new AbortController();
+
+// Fetch when page or pageSize changes
+useEffect(() => {
+  if (permsLoading || !can.view) return;
+  const ctrl = new AbortController();
+  controllerRef.current = ctrl;
+  fetchProducts(ctrl.signal);
+  return () => ctrl.abort();
+}, [page, pageSize, permsLoading, can.view]);
+
+// Debounce only when filters change (reset to page 1)
+useEffect(() => {
+  if (permsLoading || !can.view) return;
+  const ctrl = new AbortController();
+  if (debounceRef.current) clearTimeout(debounceRef.current);
+  debounceRef.current = setTimeout(() => {
+    setPage(1);
     controllerRef.current = ctrl;
-    fetchProducts(ctrl.signal);
-  }, [permsLoading, can.view, page, pageSize, fetchProducts]);
+    fetchProducts(ctrl.signal, { pageArg: 1 });
+  }, 300);
+  return () => {
+    clearTimeout(debounceRef.current);
+    ctrl.abort();
+  };
+}, [qName, qBrand, qSupplier, permsLoading, can.view]);
 
-  // Debounce filters
-  useEffect(() => {
-    if (permsLoading || !can.view) return;
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => {
-      setPage(1);
-      if (controllerRef.current) controllerRef.current.abort();
-      const ctrl = new AbortController();
-      controllerRef.current = ctrl;
-      fetchProducts(ctrl.signal);
-    }, 300);
-    return () => clearTimeout(debounceRef.current);
-  }, [permsLoading, can.view, qName, qBrand, qSupplier, fetchProducts]);
 
   const start = rows.length ? (page - 1) * pageSize + 1 : 0;
   const end = rows.length ? start + rows.length - 1 : 0;
