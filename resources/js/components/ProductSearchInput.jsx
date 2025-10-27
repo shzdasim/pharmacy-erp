@@ -186,7 +186,7 @@ const ProductSearchInput = forwardRef(
 
     const handleSearchChange = (e) => {
       const val = e.target.value;
-      const valid = /^[a-zA-Z0-9-\s]*$/;
+      const valid = /^[a-zA-Z0-9-.()/\s]*$/;
       if (!valid.test(val)) {
         setIsInvalidInput(true);
         setTimeout(() => setIsInvalidInput(false), 200);

@@ -727,7 +727,25 @@ export default function PurchaseInvoiceForm({ invoiceId, onSuccess }) {
                   {...antiFill}
                 />
               </td>
-              <td className="border p-1 w-1/4">
+              <td className="border p-1 w-1/8">
+                <label className="block text-[10px]">Difference</label>
+                <input
+                  type="text"
+                  readOnly
+                  value={
+                    form.invoice_amount && form.total_amount
+                      ? (Number(form.invoice_amount) - Number(form.total_amount)).toFixed(2)
+                      : ""
+                  }
+                  className={`border rounded w-full p-1 h-7 text-xs font-bold text-center bg-gray-100 ${
+                    Number(form.invoice_amount) - Number(form.total_amount) !== 0
+                      ? "text-red-600"
+                      : "text-gray-700"
+                  }`}
+                  {...antiFill}
+                />
+              </td>
+              <td className="border p-1 w-1/6">
                 <label className="block text-[10px]">Remarks</label>
                 <input
                   type="text"
