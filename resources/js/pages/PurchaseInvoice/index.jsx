@@ -83,57 +83,78 @@ export default function PurchaseInvoicesIndex() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [navigate, can.create]);
 
-  const fetchInvoices = useCallback(async (signal) => {
-    try {
-      setLoading(true);
-      const { data } = await axios.get("/api/purchase-invoices", {
-        params: {
-          page,
-          per_page: pageSize,
-          q_posted: qPosted.trim(),
-          q_supplier: qSupplier.trim(),
-        },
-        signal,
-      });
+// stable fetcher — does not directly depend on qPosted/qSupplier
+const fetchInvoices = useCallback(async (signal, options = {}) => {
+  const {
+    pageArg = page,
+    pageSizeArg = pageSize,
+    qPostedArg = qPosted,
+    qSupplierArg = qSupplier,
+  } = options;
 
-      const items = Array.isArray(data?.data) ? data.data : Array.isArray(data) ? data : [];
-      setRows(items);
-      setTotal(Number(data?.total ?? items.length ?? 0));
-      const lp = Number(data?.last_page ?? 1);
-      setLastPage(lp);
-      if (page > lp) setPage(lp || 1);
-    } catch (err) {
-      if (axios.isCancel?.(err)) return;
-      const status = err?.response?.status;
-      if (status === 403) toast.error("You don't have permission to view purchase invoices.");
-      else toast.error("Failed to load purchase invoices");
-    } finally {
-      setLoading(false);
-    }
-  }, [page, pageSize, qPosted, qSupplier]);
+  try {
+    setLoading(true);
+    const { data } = await axios.get("/api/purchase-invoices", {
+      params: {
+        page: pageArg,
+        per_page: pageSizeArg,
+        posted: qPostedArg.trim(),
+        supplier: qSupplierArg.trim(),
+      },
+      signal,
+    });
 
-  // Initial + pager change
-  useEffect(() => {
-    if (permsLoading || !can.view) return;
-    if (controllerRef.current) controllerRef.current.abort();
-    const ctrl = new AbortController();
+    const items = Array.isArray(data?.data)
+      ? data.data
+      : Array.isArray(data)
+      ? data
+      : [];
+    setRows(items);
+    setTotal(Number(data?.total ?? items.length ?? 0));
+    const lp = Number(data?.last_page ?? 1);
+    setLastPage(lp);
+    if (pageArg > lp) setPage(lp || 1);
+  } catch (err) {
+    if (axios.isCancel?.(err)) return;
+    const status = err?.response?.status;
+    if (status === 403)
+      toast.error("You don't have permission to view purchase invoices.");
+    else toast.error("Failed to load purchase invoices");
+  } finally {
+    setLoading(false);
+  }
+}, [page, pageSize, qPosted, qSupplier]);
+
+
+// Fetch on page or pageSize change
+useEffect(() => {
+  if (permsLoading || !can.view) return;
+  const ctrl = new AbortController();
+  controllerRef.current = ctrl;
+  fetchInvoices(ctrl.signal);
+  return () => ctrl.abort();
+}, [page, pageSize, permsLoading, can.view]);
+
+// Debounce on filter change only
+useEffect(() => {
+  if (permsLoading || !can.view) return;
+  if (debounceRef.current) clearTimeout(debounceRef.current);
+  const ctrl = new AbortController();
+  debounceRef.current = setTimeout(() => {
+    setPage(1);
     controllerRef.current = ctrl;
-    fetchInvoices(ctrl.signal);
-  }, [permsLoading, can.view, page, pageSize, fetchInvoices]);
+    fetchInvoices(ctrl.signal, {
+      pageArg: 1,
+      qPostedArg: qPosted,
+      qSupplierArg: qSupplier,
+    });
+  }, 300);
+  return () => {
+    clearTimeout(debounceRef.current);
+    ctrl.abort();
+  };
+}, [qPosted, qSupplier, permsLoading, can.view]);
 
-  // Debounce filters
-  useEffect(() => {
-    if (permsLoading || !can.view) return;
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => {
-      setPage(1);
-      if (controllerRef.current) controllerRef.current.abort();
-      const ctrl = new AbortController();
-      controllerRef.current = ctrl;
-      fetchInvoices(ctrl.signal);
-    }, 300);
-    return () => clearTimeout(debounceRef.current);
-  }, [permsLoading, can.view, qPosted, qSupplier, fetchInvoices]);
 
   const start = rows.length ? (page - 1) * pageSize + 1 : 0;
   const end   = rows.length ? start + rows.length - 1 : 0;
