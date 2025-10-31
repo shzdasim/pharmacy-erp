@@ -21,9 +21,10 @@ import { ArrowPathIcon, ArrowDownOnSquareIcon } from "@heroicons/react/24/solid"
    Helpers
    ====================== */
 const todayStr = () => new Date().toISOString().split("T")[0];
-const firstDayOfMonthStr = () => {
+const yesterdayStr = () => {
   const d = new Date();
-  return new Date(d.getFullYear(), d.getMonth(), 1).toISOString().split("T")[0];
+  d.setDate(d.getDate() - 1);
+  return d.toISOString().split("T")[0];
 };
 const n = (v) => (isFinite(Number(v)) ? Number(v) : 0);
 const fmtCurrency = (v) =>
@@ -83,114 +84,83 @@ let warnedOnceProducts = false;
 let warnedOnceCustomers = false;
 
 export default function SaleDetailReport() {
-  // Dates
-  const [fromDate, setFromDate] = useState(firstDayOfMonthStr());
+  // ✅ Default date range: Yesterday → Today
+  const [fromDate, setFromDate] = useState(yesterdayStr());
   const [toDate, setToDate] = useState(todayStr());
 
-  // Selected filters
+  // Filters
   const [customerValue, setCustomerValue] = useState(null);
   const [customerId, setCustomerId] = useState("");
-
   const [productValue, setProductValue] = useState(null);
   const [productId, setProductId] = useState("");
 
-  // Data
-  const [data, setData] = useState([]); // array of sale invoices (each with items[])
+  // Data + States
+  const [data, setData] = useState([]);
   const [loading, setLoading] = useState(false);
   const [pdfLoading, setPdfLoading] = useState(false);
 
-  // Refs
-  const fromRef = useRef(null);
-  const toRef = useRef(null);
-  const customerRef = useRef(null);
-  const productRef = useRef(null);
-  const submitRef = useRef(null);
-
-  // --- Permissions (tri-state)
   const perms = usePermissions();
-  const hasFn = perms?.has;
-  const permsReady = typeof hasFn === "function";
-  const canView = permsReady ? !!hasFn("report.sale-detail.view") : null;
-  const canExport = permsReady ? !!hasFn("report.sale-detail.export") : null;
+  const canView = perms?.has?.("report.sale-detail.view");
+  const canExport = perms?.has?.("report.sale-detail.export");
 
-  /* ======================
-     Async loaders (promise-based)
-     ====================== */
-
-  // Customers: prefix-only search (your backend route may be /api/customers/search or /customers/search)
+  /* ============ Async loaders ============ */
   const loadCustomers = useMemo(
-    () =>
-      async (input) => {
-        const q = String(input || "").trim();
-        if (!q) return [{ value: "", label: "All Customers" }];
-
-        try {
-          const res = await tryEndpoints(
-            ["/api/customers/search", "/customers/search"],
-            { q, limit: 30, mode: "starts" }
-          );
-
-          const rows = Array.isArray(res.data?.data)
-            ? res.data.data
-            : Array.isArray(res.data)
-            ? res.data
-            : [];
-
-          const opts = rows.map((r) => ({
-            value: r.id ?? r.value,
-            label: r.name ?? r.label ?? r.title ?? `#${r.id}`,
-            _row: r,
-          }));
-
-          return opts.length ? opts : [{ value: "", label: "No matches" }];
-        } catch (e) {
-          if (!warnedOnceCustomers) {
-            warnedOnceCustomers = true;
-            toast.error("Customer search failed (check route/permissions).");
-          }
-          return [{ value: "", label: "No matches" }];
-        }
-      },
+    () => async (input) => {
+      const q = String(input || "").trim();
+      if (!q) return [{ value: "", label: "All Customers" }];
+      try {
+        const res = await tryEndpoints(
+          ["/api/customers/search", "/customers/search"],
+          { q, limit: 30 }
+        );
+        const rows = Array.isArray(res.data?.data)
+          ? res.data.data
+          : Array.isArray(res.data)
+          ? res.data
+          : [];
+        return rows.map((r) => ({
+          value: r.id,
+          label: r.name ?? r.label ?? `#${r.id}`,
+        }));
+      } catch {
+        toast.error("Customer search failed");
+        return [{ value: "", label: "No results" }];
+      }
+    },
     []
   );
 
-  // Products: uses your existing ProductController::search (q%)
   const loadProducts = useMemo(
-    () =>
-      async (input) => {
-        const q = String(input || "").trim();
-        if (!q) return [{ value: "", label: "All Products" }];
-
-        try {
-          const res = await tryEndpoints(
-            ["/api/products/search", "/products/search"],
-            { q, limit: 30 }
-          );
-
-          // Your controller returns an array of product rows
-          const rows = Array.isArray(res.data) ? res.data : [];
-          const opts = rows.map(mapProductToOption);
-
-          return opts.length ? opts : [{ value: "", label: "No matches" }];
-        } catch (e) {
-          if (!warnedOnceProducts) {
-            warnedOnceProducts = true;
-            toast.error("Product search failed (check route/permissions).");
-          }
-          return [{ value: "", label: "No matches" }];
-        }
-      },
+    () => async (input) => {
+      const q = String(input || "").trim();
+      if (!q) return [{ value: "", label: "All Products" }];
+      try {
+        const res = await tryEndpoints(
+          ["/api/products/search", "/products/search"],
+          { q, limit: 30 }
+        );
+        const rows = Array.isArray(res.data)
+          ? res.data
+          : Array.isArray(res.data?.data)
+          ? res.data.data
+          : [];
+        return rows.map((p) => ({
+          value: p.id,
+          label: p.name || p.product_code || `#${p.id}`,
+        }));
+      } catch {
+        toast.error("Product search failed");
+        return [{ value: "", label: "No results" }];
+      }
+    },
     []
   );
 
-  /* ======================
-     Fetch report
-     ====================== */
-  const fetchReport = async ({ silentDenied = false } = {}) => {
-    if (canView !== true) {
-      if (!silentDenied) toast.error("You don't have permission to view this report.");
-      return;
-    }
+  /* ============ Fetch report ============ */
+  const fetchReport = async () => {
+    if (!canView) return toast.error("You don’t have permission to view this report.");
+    if (fromDate > toDate) return toast.error("‘From’ date cannot be after ‘To’ date.");
+
     setLoading(true);
     try {
       const res = await axios.get("/api/reports/sale-detail", {
@@ -201,40 +171,31 @@ export default function SaleDetailReport() {
           product_id: productId || undefined,
         },
       });
-      const rows = Array.isArray(res.data) ? res.data : Array.isArray(res.data?.data) ? res.data.data : [];
+      const rows = Array.isArray(res.data)
+        ? res.data
+        : Array.isArray(res.data?.data)
+        ? res.data.data
+        : [];
       setData(rows);
-      if (!rows.length) toast("No results for selected filters.", { icon: "ℹ️" });
+      if (!rows.length) toast("No data found for selected range.", { icon: "ℹ️" });
     } catch (err) {
       console.error(err);
-      toast.error("Failed to load Sale Detail report");
+      toast.error("Failed to fetch Sale Detail report");
       setData([]);
     } finally {
       setLoading(false);
     }
   };
 
+  // Auto-load once permissions confirmed
   useEffect(() => {
-    if (canView === true) fetchReport({ silentDenied: true });
-  }, [canView]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [canView]);
 
-  // Submit handler
-  const handleSubmit = (e) => {
-    e.preventDefault();
-    if (!fromDate || !toDate) return toast.error("Please select both dates.");
-    if (fromDate > toDate) return toast.error("From Date cannot be after To Date.");
-    fetchReport({ silentDenied: false });
-  };
-
-  // PDF export (popup-safe)
+  /* ============ Export PDF ============ */
   const exportPdf = async () => {
-    if (canExport !== true) return toast.error("You don't have permission to export PDF.");
-    const win = window.open("", "_blank");
-    if (!win) {
-      toast.error("Please allow pop-ups for this site to view the PDF.");
-      return;
-    }
+    if (!canExport) return toast.error("You don’t have permission to export PDF.");
+    setPdfLoading(true);
     try {
-      setPdfLoading(true);
       const res = await axios.get("/api/reports/sale-detail/pdf", {
         params: {
           from: fromDate,
@@ -243,49 +204,18 @@ export default function SaleDetailReport() {
           product_id: productId || undefined,
         },
         responseType: "blob",
-        withCredentials: true,
       });
-
-      const contentType =
-        (res.headers && (res.headers["content-type"] || res.headers["Content-Type"])) || "";
-      if (!contentType.includes("application/pdf")) {
-        const text = typeof res.data?.text === "function" ? await res.data.text() : "";
-        win.close();
-        toast.error(text?.slice(0, 200) || "Failed to generate PDF.");
-        return;
-      }
-
       const blob = new Blob([res.data], { type: "application/pdf" });
       const url = URL.createObjectURL(blob);
-      win.location.href = url;
-
-      const cleanup = () => URL.revokeObjectURL(url);
-      const timer = setTimeout(cleanup, 60000);
-      const i = setInterval(() => {
-        if (win.closed) {
-          clearInterval(i);
-          clearTimeout(timer);
-          cleanup();
-        }
-      }, 3000);
+      window.open(url, "_blank");
+      URL.revokeObjectURL(url);
     } catch (e) {
       console.error(e);
-      try { win.close(); } catch {}
-      toast.error("Could not open PDF.");
+      toast.error("Failed to generate PDF");
     } finally {
       setPdfLoading(false);
     }
   };
-
-  // Keyboard flow
-  const nextFocus = (ref) => ref?.current?.focus?.();
-  const onKeyDownEnter = (e, next) => {
-    if (e.key === "Enter") {
-      e.preventDefault();
-      if (next) nextFocus(next);
-    }
-  };
-
   // tints (match other glass pages)
   const tintSlate =
     "bg-slate-900/80 text-white ring-1 ring-white/15 shadow-[0_6px_20px_-6px_rgba(15,23,42,0.45)] hover:bg-slate-900/90";
@@ -301,160 +231,160 @@ export default function SaleDetailReport() {
             <div className="flex gap-2">
               <GlassBtn
                 className={`h-9 ${tintGlass}`}
-                title="Reset to This Month"
                 onClick={() => {
-                  setFromDate(firstDayOfMonthStr());
+                  setFromDate(yesterdayStr());
                   setToDate(todayStr());
                   setCustomerValue(null);
                   setCustomerId("");
                   setProductValue(null);
                   setProductId("");
+                  setData([]);
                 }}
               >
                 Reset
               </GlassBtn>
               <GlassBtn
-                className={`h-9 ${tintSlate}`}
-                title="Load / Refresh"
-                onClick={() => fetchReport()}
-                disabled={canView !== true || loading}
+                className={`h-9 flex items-center gap-2 ${tintSlate}`}
+                onClick={fetchReport}
+                disabled={loading || !canView}
               >
-                <span className="inline-flex items-center gap-2">
-                  <ArrowPathIcon className="w-5 h-5" />
-                  {loading ? "Loading…" : "Load"}
-                </span>
+                <ArrowPathIcon className="w-5 h-5" />
+                {loading ? "Loading…" : "Load"}
               </GlassBtn>
             </div>
           }
         />
 
-        <form onSubmit={handleSubmit}>
+        {/* Filters */}
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            fetchReport();
+          }}
+        >
           <GlassToolbar className="grid grid-cols-1 md:grid-cols-12 gap-3">
             {/* Dates */}
             <div className="md:col-span-2">
               <label className="text-sm text-gray-700 mb-1 block">From</label>
               <GlassInput
-                ref={fromRef}
                 type="date"
                 value={fromDate}
                 onChange={(e) => setFromDate(e.target.value)}
-                onKeyDown={(e) => onKeyDownEnter(e, toRef)}
-                className="w-full"
               />
             </div>
 
             <div className="md:col-span-2">
               <label className="text-sm text-gray-700 mb-1 block">To</label>
               <GlassInput
-                ref={toRef}
                 type="date"
                 value={toDate}
                 onChange={(e) => setToDate(e.target.value)}
-                onKeyDown={(e) =>
-                  onKeyDownEnter(e, { current: customerRef.current?.inputRef })
-                }
-                className="w-full"
               />
             </div>
 
-            {/* Customer (Async, prefix-only) */}
+            {/* Keep your existing search filters */}
             <div className="md:col-span-4">
               <label className="text-sm text-gray-700 mb-1 block">Customer</label>
               <AsyncSelect
-                ref={customerRef}
-                classNamePrefix="rs"
                 cacheOptions
                 defaultOptions={[{ value: "", label: "All Customers" }]}
                 loadOptions={loadCustomers}
                 isClearable
-                menuPlacement="auto"
-                menuPortalTarget={typeof document !== "undefined" ? document.body : null}
-                placeholder="Type to search customers…"
-                styles={selectStyles}
-                filterOption={createFilter({ matchFrom: "start", ignoreAccents: false, trim: true })}
+                value={customerValue}
                 onChange={(opt) => {
                   setCustomerValue(opt);
-                  const id = opt?.value || "";
-                  setCustomerId(id);
-                  setTimeout(() => {
-                    productRef.current?.focus?.();
-                    productRef.current?.inputRef?.focus?.();
-                  }, 0);
+                  setCustomerId(opt?.value || "");
                 }}
-                noOptionsMessage={({ inputValue }) =>
-                  inputValue ? "No matches (prefix only)" : "Type at least 1 character…"
-                }
-                loadingMessage={() => "Searching…"}
+                styles={selectStyles}
+                menuPortalTarget={document.body} 
+                filterOption={createFilter({
+                  matchFrom: "start",
+                  trim: true,
+                })}
               />
             </div>
 
-            {/* Product (Async, prefix-only via your controller) */}
             <div className="md:col-span-4">
               <label className="text-sm text-gray-700 mb-1 block">Product</label>
               <AsyncSelect
-                ref={productRef}
-                classNamePrefix="rs"
                 cacheOptions
                 defaultOptions={[{ value: "", label: "All Products" }]}
                 loadOptions={loadProducts}
                 isClearable
-                menuPlacement="auto"
-                menuPortalTarget={typeof document !== "undefined" ? document.body : null}
-                placeholder="Type to search products…"
-                styles={selectStyles}
-                filterOption={createFilter({ matchFrom: "start", ignoreAccents: false, trim: true })}
+                value={productValue}
                 onChange={(opt) => {
                   setProductValue(opt);
                   setProductId(opt?.value || "");
-                  setTimeout(() => submitRef.current?.focus?.(), 0);
                 }}
-                noOptionsMessage={({ inputValue }) =>
-                  inputValue ? "No matches (prefix only)" : "Type at least 1 character…"
-                }
-                loadingMessage={() => "Searching…"}
+                styles={selectStyles}
+                menuPortalTarget={document.body}  // 🟢 Added
+                filterOption={createFilter({
+                  matchFrom: "start",
+                  trim: true,
+                })}
               />
             </div>
 
-            {/* Actions */}
+            {/* Buttons */}
             <div className="md:col-span-12 flex flex-wrap gap-2">
               <GlassBtn
-                ref={submitRef}
                 type="submit"
                 className={`h-9 min-w-[110px] ${tintSlate}`}
                 disabled={loading}
-                title="Submit"
               >
                 Apply
               </GlassBtn>
 
+              {/* ✅ Quick filters */}
               <GlassBtn
-                type="button"
+                className={`h-9 ${tintGlass}`}
                 onClick={() => {
                   const end = new Date();
-                  const start = new Date();
-                  start.setDate(end.getDate() - 6);
-                  setFromDate(start.toISOString().slice(0, 10));
-                  setToDate(end.toISOString().slice(0, 10));
+                const start = new Date();
+                start.setDate(end.getDate() - 1);
+                setFromDate(start.toISOString().slice(0, 10));
+                setToDate(end.toISOString().slice(0, 10));
+                  fetchReport();
                 }}
-                className={`h-9 ${tintGlass}`}
-                title="Last 7 Days"
               >
-                Last 7 Days
+                Today
               </GlassBtn>
 
               <GlassBtn
-                type="button"
-                onClick={exportPdf}
-                className={`h-9 ${
-                  canExport ? tintGlass : tintGlass + " opacity-60 cursor-not-allowed"
-                }`}
-                disabled={pdfLoading || !canExport}
-                title="Export PDF"
+                className={`h-9 ${tintGlass}`}
+                onClick={() => {
+                  const end = new Date();
+                  const start = new Date();
+                  start.setDate(end.getDate() - 3);
+                  setFromDate(start.toISOString().slice(0, 10));
+                  setToDate(end.toISOString().slice(0, 10));
+                  fetchReport();
+                }}
               >
-                <span className="inline-flex items-center gap-2">
-                  <ArrowDownOnSquareIcon className="w-5 h-5" />
-                  {pdfLoading ? "Generating…" : "Export PDF"}
-                </span>
+                3 Days
+              </GlassBtn>
+
+              <GlassBtn
+                className={`h-9 ${tintGlass}`}
+                onClick={() => {
+                  const end = new Date();
+                  const start = new Date();
+                  start.setDate(end.getDate() - 7);
+                  setFromDate(start.toISOString().slice(0, 10));
+                  setToDate(end.toISOString().slice(0, 10));
+                  fetchReport();
+                }}
+              >
+                7 Days
+              </GlassBtn>
+
+              <GlassBtn
+                className={`h-9 flex items-center gap-2 ${canExport ? tintGlass : "opacity-60"}`}
+                onClick={exportPdf}
+                disabled={pdfLoading || !canExport}
+              >
+                <ArrowDownOnSquareIcon className="w-5 h-5" />
+                {pdfLoading ? "Generating…" : "Export PDF"}
               </GlassBtn>
             </div>
           </GlassToolbar>

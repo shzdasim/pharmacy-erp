@@ -1,5 +1,5 @@
 // resources/js/pages/CostOfSaleReport.jsx
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import axios from "axios";
 import toast from "react-hot-toast";
 import { usePermissions } from "@/api/usePermissions";
@@ -12,11 +12,12 @@ import {
 } from "@/components/glass.jsx";
 import { ArrowPathIcon } from "@heroicons/react/24/solid";
 
-/* ========== Helpers (unchanged) ========== */
+/* ========== Helpers ========== */
 const todayStr = () => new Date().toISOString().split("T")[0];
-const firstDayOfMonthStr = () => {
+const yesterdayStr = () => {
   const d = new Date();
-  return new Date(d.getFullYear(), d.getMonth(), 1).toISOString().split("T")[0];
+  d.setDate(d.getDate() - 1);
+  return d.toISOString().split("T")[0];
 };
 const n = (v) => (isFinite(Number(v)) ? Number(v) : 0);
 const fmtCurrency = (v) =>
@@ -25,7 +26,8 @@ const fmtPct = (v) =>
   n(v).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + "%";
 
 export default function CostOfSaleReport() {
-  const [fromDate, setFromDate] = useState(firstDayOfMonthStr());
+  // ✅ Default from = yesterday, to = today
+  const [fromDate, setFromDate] = useState(yesterdayStr());
   const [toDate, setToDate] = useState(todayStr());
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -40,11 +42,15 @@ export default function CostOfSaleReport() {
     "bg-slate-900/80 text-white ring-1 ring-white/15 shadow-[0_6px_20px_-6px_rgba(15,23,42,0.45)] hover:bg-slate-900/90";
   const tintGhost = "bg-white/60 text-slate-700 ring-1 ring-white/30 hover:bg-white/75";
 
+  // === Fetch report only when user clicks Apply/Load ===
   const fetchReport = async ({ silentDenied = false } = {}) => {
     if (canView !== true) {
       if (!silentDenied) toast.error("You don't have permission to view this report.");
       return;
     }
+    if (!fromDate || !toDate) return toast.error("Please select both dates.");
+    if (fromDate > toDate) return toast.error("From Date cannot be after To Date.");
+
     setLoading(true);
     try {
       const res = await axios.get("/api/reports/cost-of-sale", {
@@ -76,9 +82,7 @@ export default function CostOfSaleReport() {
     }
   };
 
-  useEffect(() => {
-    if (canView === true) fetchReport({ silentDenied: true });
-  }, [canView]); // eslint-disable-line react-hooks/exhaustive-deps
+  // ✅ Remove auto-load effect on mount (no useEffect)
 
   const computed = useMemo(() => {
     const withDerived = rows.map((r) => {
@@ -119,8 +123,6 @@ export default function CostOfSaleReport() {
   }, [rows]);
 
   const applyRange = () => {
-    if (!fromDate || !toDate) return toast.error("Please select both dates.");
-    if (fromDate > toDate) return toast.error("From Date cannot be after To Date.");
     fetchReport({ silentDenied: false });
   };
 
@@ -134,10 +136,11 @@ export default function CostOfSaleReport() {
             <div className="flex gap-2">
               <GlassBtn
                 className={`h-9 ${tintGhost}`}
-                title="Reset to This Month"
+                title="Reset to Default (Yesterday → Today)"
                 onClick={() => {
-                  setFromDate(firstDayOfMonthStr());
+                  setFromDate(yesterdayStr());
                   setToDate(todayStr());
+                  setRows([]);
                 }}
               >
                 Reset
@@ -157,6 +160,7 @@ export default function CostOfSaleReport() {
           }
         />
 
+        {/* Filter toolbar */}
         <GlassToolbar className="grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-6 gap-3">
           <div className="sm:col-span-2 lg:col-span-2">
             <label className="text-sm text-gray-700 mb-1 block">From</label>
@@ -166,33 +170,61 @@ export default function CostOfSaleReport() {
             <label className="text-sm text-gray-700 mb-1 block">To</label>
             <GlassInput type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} className="w-full" />
           </div>
-          <div className="sm:col-span-1 lg:col-span-2 flex items-end gap-2">
+
+          <div className="sm:col-span-1 lg:col-span-2 flex flex-wrap items-end gap-2">
             <GlassBtn
-              className={`h-9 min-w-[110px] ${tintPrimary}`}
+              className={`h-9 min-w-[100px] ${tintPrimary}`}
               onClick={applyRange}
               title="Apply"
               disabled={canView !== true || loading}
             >
               Apply
             </GlassBtn>
+
+            {/* ✅ Quick date filters */}
             <GlassBtn
               className={`h-9 ${tintGhost}`}
               onClick={() => {
                 const end = new Date();
                 const start = new Date();
-                start.setDate(end.getDate() - 6);
+                start.setDate(end.getDate() - 1);
                 setFromDate(start.toISOString().slice(0, 10));
                 setToDate(end.toISOString().slice(0, 10));
               }}
-              title="Last 7 Days"
             >
-              Last 7 Days
+              Today
+            </GlassBtn>
+
+            <GlassBtn
+              className={`h-9 ${tintGhost}`}
+              onClick={() => {
+                const end = new Date();
+                const start = new Date();
+                start.setDate(end.getDate() - 3);
+                setFromDate(start.toISOString().slice(0, 10));
+                setToDate(end.toISOString().slice(0, 10));
+              }}
+            >
+              3 Days
+            </GlassBtn>
+
+            <GlassBtn
+              className={`h-9 ${tintGhost}`}
+              onClick={() => {
+                const end = new Date();
+                const start = new Date();
+                start.setDate(end.getDate() - 7);
+                setFromDate(start.toISOString().slice(0, 10));
+                setToDate(end.toISOString().slice(0, 10));
+              }}
+            >
+              7 Days
             </GlassBtn>
           </div>
         </GlassToolbar>
       </GlassCard>
 
-      {/* Permission states */}
+      {/* Permission & Data Views */}
       {canView === null && (
         <GlassCard>
           <div className="px-4 py-3 text-sm text-gray-700">Checking permissions…</div>
@@ -200,7 +232,9 @@ export default function CostOfSaleReport() {
       )}
       {canView === false && (
         <GlassCard>
-          <div className="px-4 py-3 text-sm text-gray-700">You don’t have permission to view this report.</div>
+          <div className="px-4 py-3 text-sm text-gray-700">
+            You don’t have permission to view this report.
+          </div>
         </GlassCard>
       )}
 
@@ -274,7 +308,7 @@ export default function CostOfSaleReport() {
             </div>
           </GlassCard>
 
-          {/* ⬇️ KPI SUMMARY MOVED BELOW THE TABLE with glassy iOS-like hover */}
+          {/* KPI Summary */}
           <GlassCard>
             <div className="px-4 py-3 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 text-sm">
               <Stat label="Net Sale" highlight value={fmtCurrency(computed.totals.net_sale)} />
@@ -300,17 +334,13 @@ export default function CostOfSaleReport() {
   );
 }
 
-/* ===== Glassy KPI tile with iOS-like hover =====
-   - default: subtle glass
-   - hover: deeper blur, brighter glass, gentle glow
-*/
+/* ===== KPI Tile ===== */
 function Stat({ label, value, highlight = false }) {
   return (
     <div
       className={[
         "group rounded-xl px-3 py-2 backdrop-blur-sm bg-white/55 ring-1 ring-white/30 shadow-sm",
         "transition-all duration-200",
-        // iOS-like glass on hover:
         "hover:bg-white/80 hover:backdrop-blur-md hover:shadow-[0_10px_30px_-10px_rgba(59,130,246,0.35)]",
         "hover:ring-white/40",
         highlight ? "outline outline-1 outline-blue-200/50" : "",
