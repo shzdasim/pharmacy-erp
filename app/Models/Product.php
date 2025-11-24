@@ -107,39 +107,14 @@ class Product extends Model
      * - quantity (units), avg_price
      */
     public function revertPurchaseFromItem($item): void
-    {
-        $qty     = (int) (is_array($item) ? ($item['quantity'] ?? 0) : $item->quantity);
-        $effCost = (float) (is_array($item)
-                    ? ($item['avg_price'] ?? $item['unit_purchase_price'] ?? 0.0)
-                    : ($item->avg_price ?? $item->unit_purchase_price ?? 0.0));
+{
+    $qty = (int) (is_array($item) ? ($item['quantity'] ?? 0) : $item->quantity);
 
-        $oldQty = (int) ($this->quantity ?? 0);
-        $oldAvg = (float) ($this->avg_price ?? 0.0);
+    // Only adjust quantity — allow negative inventory
+    $this->quantity = ((int) $this->quantity) - $qty;
 
-        if ($qty <= 0 || $oldQty <= 0) {
-            return;
-        }
+    // Do NOT modify avg_price here — controller recalculates it AFTER deleting invoice items
+    $this->save();
+}
 
-        $newQty = max(0, $oldQty - $qty);
-
-        // Inverse weighted-average:
-        // oldAvg*oldQty = newAvg*newQty + effCost*qty  => newAvg = (oldAvg*oldQty - effCost*qty) / newQty
-        $oldTotalCost = $oldAvg * $oldQty;
-        $newTotalCost = $oldTotalCost - ($effCost * $qty);
-        if ($newTotalCost < 0) {
-            $newTotalCost = 0.0; // rounding guard
-        }
-
-        $newAvg = $newQty > 0 ? ($newTotalCost / $newQty) : 0.0;
-
-        $this->quantity  = $newQty;
-        $this->avg_price = round($newAvg, 2);
-
-        // Keep current sale price; refresh margin
-        $this->margin = ($this->unit_sale_price > 0)
-            ? round((($this->unit_sale_price - $this->avg_price) / $this->unit_sale_price) * 100, 2)
-            : 0.0;
-
-        $this->save();
-    }
 }

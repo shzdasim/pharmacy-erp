@@ -90,12 +90,12 @@ class ProductController extends Controller
 
         if ($batch) {
             $record = \App\Models\Batch::where('product_id', $productId)
-                ->where('batch', $batch)
+                ->where('batch_number', $batch)
                 ->first();
-            $available = (int) ($record->available_quantity ?? $record->quantity ?? 0);
+            $available = (int) ($record->quantity ?? 0);
         } else {
             $product = \App\Models\Product::find($productId);
-            $available = (int) ($product->available_quantity ?? $product->quantity ?? 0);
+            $available = (int) ($product->quantity ?? 0);
         }
 
         return response()->json([

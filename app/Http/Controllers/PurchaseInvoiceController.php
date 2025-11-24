@@ -281,7 +281,7 @@ class PurchaseInvoiceController extends Controller
 
             $product = Product::find($item['product_id']);
             if ($product) {
-                $product->applyPurchaseFromItem($item); // uses avg_price
+                $product->applyPurchaseFromItem($item); 
             }
 
             if (!empty($item['batch']) && !empty($item['expiry'])) {
