@@ -511,22 +511,23 @@ export default function SaleReturnForm({ returnId, initialData, onSuccess }) {
     setForm((prev) => recalcFooter({ ...prev, items: newItems }));
 
     const batches = await fetchBatchesForOpenReturn(pid);
-    setRowBatches((prev) => {
-      const next = prev.slice();
-      next[row] = batches;
-      return next;
-    });
+      setRowBatches((prev) => {
+        const next = prev.slice();
+        next[row] = batches;
+        return next;
+      });
 
-    setTimeout(() => {
-      // If there are batches, move to batch; else go to qty
-      if ((rowBatches[row] || batches).length) {
-        const el = batchRefs.current[row];
-        const inp = el?.querySelector?.("input");
-        inp?.focus?.();
-      } else {
-        qtyRefs.current[row]?.focus?.();
-      }
-    }, 50);
+      // 🔥 DECIDE BASED ON ACTUAL FETCH RESULT (not state)
+      setTimeout(() => {
+        if (Array.isArray(batches) && batches.length > 0) {
+          // product has batches → jump to batch
+          const el = batchRefs.current[row];
+          el?.querySelector("input")?.focus?.();
+        } else {
+          // no batches → jump to return qty
+          qtyRefs.current[row]?.focus?.();
+        }
+      }, 60);
   };
 
   const handleBatchSelect = (row, batchVal) => {
