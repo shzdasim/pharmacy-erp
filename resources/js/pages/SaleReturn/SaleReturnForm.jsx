@@ -944,7 +944,9 @@ export default function SaleReturnForm({ returnId, initialData, onSuccess }) {
                       <div ref={(el) => (batchRefs.current[i] = el)}>
                         <BatchSearchInput
                           value={item.batch_number}
-                          batches={(rowBatches[i] || []).map((b) => ({ value: b.batch_number, label: b.batch_number }))}
+                          batches={(rowBatches[i] || []).map((b) => ({
+                            batch_number: b.batch_number,   // ✅ REQUIRED
+                          }))}
                           onChange={(v) => handleBatchSelect(i, v)}
                           onKeyDown={(e) => onKeyNav(e, i, "batch")}
                         />
