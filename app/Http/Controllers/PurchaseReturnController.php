@@ -157,7 +157,7 @@ public function index(Request $request)
             'items.*.batch'                         => 'nullable|string',
             'items.*.expiry'                        => 'nullable|string',
             'items.*.pack_purchased_quantity'       => 'nullable|integer',
-            'items.*.return_pack_quantity'          => 'nullable|integer',
+            'items.*.return_pack_quantity' => 'nullable|numeric|min:0',
             'items.*.return_unit_quantity'          => 'required|integer|min:0', // ← trust this
             'items.*.pack_purchase_price'           => 'nullable|numeric',
             'items.*.unit_purchase_price'           => 'nullable|numeric',
@@ -209,7 +209,7 @@ public function index(Request $request)
             'items.*.batch'                         => 'nullable|string',
             'items.*.expiry'                        => 'nullable|string',
             'items.*.pack_purchased_quantity'       => 'nullable|integer',
-            'items.*.return_pack_quantity'          => 'nullable|integer',
+            'items.*.return_pack_quantity' => 'nullable|numeric|min:0',
             'items.*.return_unit_quantity'          => 'required|integer|min:0', // ← trust this
             'items.*.pack_purchase_price'           => 'nullable|numeric',
             'items.*.unit_purchase_price'           => 'nullable|numeric',
