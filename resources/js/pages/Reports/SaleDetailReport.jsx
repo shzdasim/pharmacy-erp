@@ -1,5 +1,5 @@
-// resources/js/pages/SaleDetailReport.jsx
-import { useEffect, useMemo, useRef, useState } from "react";
+// resources/js/pages/Reports/SaleDetailReport.jsx
+import { useEffect, useMemo, useState } from "react";
 import axios from "axios";
 import AsyncSelect from "react-select/async";
 import { createFilter } from "react-select";
@@ -15,11 +15,13 @@ import {
   GlassBtn,
 } from "@/components/glass.jsx";
 
-import { ArrowPathIcon, ArrowDownOnSquareIcon } from "@heroicons/react/24/solid";
+import { ArrowDownOnSquareIcon, PencilSquareIcon, CheckCircleIcon, XCircleIcon } from "@heroicons/react/24/solid";
 
 /* ======================
    Helpers
    ====================== */
+
+
 const todayStr = () => new Date().toISOString().split("T")[0];
 const yesterdayStr = () => {
   const d = new Date();
@@ -58,13 +60,6 @@ const selectStyles = {
   }),
 };
 
-// map your /products/search rich row → react-select option
-const mapProductToOption = (p) => ({
-  value: p.id,
-  label: p.name ? p.name : p.product_code ? p.product_code : `#${p.id}`,
-  _row: p,
-});
-
 // helper to try /api/... then /...
 async function tryEndpoints(paths, params) {
   let lastErr;
@@ -79,9 +74,6 @@ async function tryEndpoints(paths, params) {
   }
   throw lastErr;
 }
-
-let warnedOnceProducts = false;
-let warnedOnceCustomers = false;
 
 export default function SaleDetailReport() {
   // ✅ Default date range: Yesterday → Today
@@ -99,9 +91,11 @@ export default function SaleDetailReport() {
   const [loading, setLoading] = useState(false);
   const [pdfLoading, setPdfLoading] = useState(false);
 
-  const perms = usePermissions();
-  const canView = perms?.has?.("report.sale-detail.view");
-  const canExport = perms?.has?.("report.sale-detail.export");
+const perms = usePermissions();
+const canView = perms?.has?.("report.sale-detail.view");
+const canExport = perms?.has?.("report.sale-detail.export");
+const canEdit = perms?.has?.("report.sale-detail.edit"); // ✅ ADD THIS
+
 
   /* ============ Async loaders ============ */
   const loadCustomers = useMemo(
@@ -191,6 +185,45 @@ export default function SaleDetailReport() {
   useEffect(() => {
   }, [canView]);
 
+
+const [editingInvoiceId, setEditingInvoiceId] = useState(null);
+const [editDoctor, setEditDoctor] = useState("");
+const [editPatient, setEditPatient] = useState("");
+const [saving, setSaving] = useState(false);
+
+const saveInvoiceMeta = (inv) => async () => {
+  setSaving(true);
+  try {
+    const res = await axios.put(
+      `/api/sale-invoices/${inv.id}/meta`,
+      {
+        doctor_name: editDoctor,
+        patient_name: editPatient,
+      }
+    );
+
+    setData((prev) =>
+      prev.map((x) =>
+        x.id === inv.id
+          ? {
+              ...x,
+              doctor_name: res.data.doctor_name,
+              patient_name: res.data.patient_name,
+            }
+          : x
+      )
+    );
+
+    toast.success("Updated");
+    setEditingInvoiceId(null);
+  } catch {
+    toast.error("Update failed");
+  } finally {
+    setSaving(false);
+  }
+};
+
+
   /* ============ Export PDF ============ */
   const exportPdf = async () => {
     if (!canExport) return toast.error("You don’t have permission to export PDF.");
@@ -231,25 +264,14 @@ export default function SaleDetailReport() {
             <div className="flex gap-2">
               <GlassBtn
                 className={`h-9 ${tintGlass}`}
+                title="Reset to Default (Yesterday → Today)"
                 onClick={() => {
                   setFromDate(yesterdayStr());
                   setToDate(todayStr());
-                  setCustomerValue(null);
-                  setCustomerId("");
-                  setProductValue(null);
-                  setProductId("");
                   setData([]);
                 }}
               >
                 Reset
-              </GlassBtn>
-              <GlassBtn
-                className={`h-9 flex items-center gap-2 ${tintSlate}`}
-                onClick={fetchReport}
-                disabled={loading || !canView}
-              >
-                <ArrowPathIcon className="w-5 h-5" />
-                {loading ? "Loading…" : "Load"}
               </GlassBtn>
             </div>
           }
@@ -427,9 +449,66 @@ export default function SaleDetailReport() {
                       <KV label="Date:" value={inv.invoice_date || "-"} />
                       <KV label="Customer:" value={inv.customer_name || "-"} />
                       <KV label="User:" value={inv.user_name || "-"} />
-                      <KV label="Doctor:" value={inv.doctor_name || "-"} />
-                      <KV label="Patient:" value={inv.patient_name || "-"} />
+                      {editingInvoiceId === inv.id ? (
+                        <>
+                          <GlassInput
+                            className="h-7"
+                            placeholder="Doctor"
+                            value={editDoctor}
+                            onChange={(e) => setEditDoctor(e.target.value)}
+                          />
+                          <GlassInput
+                            className="h-7"
+                            placeholder="Patient"
+                            value={editPatient}
+                            onChange={(e) => setEditPatient(e.target.value)}
+                          />
+                        </>
+                      ) : (
+                        <>
+                          <KV label="Doctor:" value={inv.doctor_name || "-"} />
+                          <KV label="Patient:" value={inv.patient_name || "-"} />
+                        </>
+                      )}
                     </div>
+                  }
+                  right={
+                    canEdit && (
+                      editingInvoiceId === inv.id ? (
+                        <div className="flex gap-1">
+                          {/* SAVE */}
+                          <GlassBtn
+                            className="h-8 px-2 bg-emerald-600/90 text-white hover:bg-emerald-600"
+                            disabled={saving}
+                            title="Save"
+                            onClick={saveInvoiceMeta(inv)}
+                          >
+                            <CheckCircleIcon className="w-5 h-5" />
+                          </GlassBtn>
+
+                          {/* CANCEL */}
+                          <GlassBtn
+                            className="h-8 px-2 bg-rose-500/90 text-white hover:bg-rose-500"
+                            title="Cancel"
+                            onClick={() => setEditingInvoiceId(null)}
+                          >
+                            <XCircleIcon className="w-5 h-5" />
+                          </GlassBtn>
+                        </div>
+                      ) : (
+                        <GlassBtn
+                          className="h-8 px-2 bg-sky-500/90 text-white hover:bg-sky-500"
+                          title="Edit Doctor / Patient"
+                          onClick={() => {
+                            setEditingInvoiceId(inv.id);
+                            setEditDoctor(inv.doctor_name || "");
+                            setEditPatient(inv.patient_name || "");
+                          }}
+                        >
+                          <PencilSquareIcon className="w-5 h-5" />
+                        </GlassBtn>
+                      )
+                    )
                   }
                 />
 

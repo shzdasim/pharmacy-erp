@@ -141,6 +141,8 @@ Route::middleware(['auth:sanctum', 'licensed'])->group(function () {
     Route::get('/reports/purchase-detail/pdf',    [ReportsController::class, 'purchaseDetailPdf']);
     Route::get('/reports/sale-detail',            [ReportsController::class, 'saleDetail']);
     Route::get('/reports/sale-detail/pdf',        [ReportsController::class, 'saleDetailPdf']);
+    Route::put('/sale-invoices/{saleInvoice}/meta',[SaleInvoiceController::class, 'updateMeta']);
+
 
     // Settings
     Route::get('/settings',                       [SettingController::class, 'show']);

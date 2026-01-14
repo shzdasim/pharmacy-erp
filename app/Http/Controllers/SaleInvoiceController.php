@@ -429,4 +429,32 @@ class SaleInvoiceController extends Controller
             'printGrandRemain' => $globalNet,
         ]);
     }
+
+
+    public function updateMeta(Request $request, SaleInvoice $saleInvoice)
+{
+    // Permission
+    if (! $request->user()->can('report.sale-detail.edit')) {
+        abort(403, 'Unauthorized');
+    }
+
+    // Safety: allow only doctor/patient
+    $data = $request->validate([
+        'doctor_name'  => 'nullable|string|max:255',
+        'patient_name' => 'nullable|string|max:255',
+    ]);
+
+    // Optional: prevent editing cancelled invoices
+    if ($saleInvoice->status === 'cancelled') {
+        abort(403, 'Cancelled invoice cannot be edited');
+    }
+
+    $saleInvoice->update($data);
+
+    return response()->json([
+        'success' => true,
+        'doctor_name'  => $saleInvoice->doctor_name,
+        'patient_name' => $saleInvoice->patient_name,
+    ]);
+}
 }

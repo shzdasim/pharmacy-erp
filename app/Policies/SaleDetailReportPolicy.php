@@ -15,4 +15,8 @@ class SaleDetailReportPolicy
     {
         return $user->can('report.sale-detail.export');
     }
+    public function edit(User $user): bool
+    {
+        return $user->can('report.sale-detail.edit');
+    }
 }
