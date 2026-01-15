@@ -34,6 +34,7 @@ const normalizeFormLoaded = (f) => {
         price: it?.price ?? "",
         item_discount_percentage: it?.item_discount_percentage ?? "",
         sub_total: it?.sub_total ?? "",
+        is_narcotic: it?.is_narcotic ?? it?.narcotic === "yes" ?? false,
       }))
     : [];
   return safe;
@@ -71,6 +72,7 @@ export default function SaleInvoiceForm({ saleId, onSuccess }) {
         price: "",
         item_discount_percentage: "",
         sub_total: "",
+        is_narcotic: false,
       },
     ],
   });
@@ -184,7 +186,7 @@ export default function SaleInvoiceForm({ saleId, onSuccess }) {
     try {
       const res = await axios.get(`/api/products/${productId}/batches`);
       const raw = Array.isArray(res.data) ? res.data : [];
-      const list = raw.map(normalizeBatch).filter((x) => x.batch_number);
+      const list = raw.map(normalizeBatch).filter((x) => x.batch_number && x.available_units > 0);
       setBatchesByProduct((m) => ({ ...m, [key]: list }));
       return list;
     } catch {
@@ -281,6 +283,7 @@ export default function SaleInvoiceForm({ saleId, onSuccess }) {
             price: "",
             item_discount_percentage: "",
             sub_total: "",
+            is_narcotic: false,
           },
         ],
       };
@@ -318,6 +321,7 @@ export default function SaleInvoiceForm({ saleId, onSuccess }) {
           quantity: "",
           sub_total: "",
           item_discount_percentage: "",
+          is_narcotic: false,
         },
         "revert_duplicate_product"
       );
@@ -348,6 +352,15 @@ export default function SaleInvoiceForm({ saleId, onSuccess }) {
       (typeof productIdOrObj === "object" ? productIdOrObj : {}) ||
       {};
 
+    // Ensure we have the narcotic field - fetch from API if not present
+    let isNarcotic = selected?.narcotic === "yes";
+    if (!selected?.hasOwnProperty("narcotic") && productId) {
+      try {
+        const { data } = await axios.get(`/api/products/${productId}`);
+        isNarcotic = data?.narcotic === "yes";
+      } catch {}
+    }
+
     const rawMargin = selected?.margin ?? selected?.margin_percentage ?? selected?.default_margin ?? "";
     setMarginPct(sanitizeNumberInput(String(rawMargin), true));
     const packSize = selected?.pack_size ?? "";
@@ -376,6 +389,7 @@ export default function SaleInvoiceForm({ saleId, onSuccess }) {
           quantity: presetQty,
           item_discount_percentage: "",
           sub_total: "",
+          is_narcotic: isNarcotic,
         },
         "product_select"
       );
@@ -489,6 +503,20 @@ export default function SaleInvoiceForm({ saleId, onSuccess }) {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+
+    // Check if any item has a narcotic product
+    const hasNarcoticProduct = form.items.some(item => item.is_narcotic === true);
+
+    // If any item is narcotic, require doctor and patient names
+    if (hasNarcoticProduct) {
+      if (!form.doctor_name || form.doctor_name.trim() === "") {
+        return toast.error("Doctor name is required for narcotic products");
+      }
+      if (!form.patient_name || form.patient_name.trim() === "") {
+        return toast.error("Patient name is required for narcotic products");
+      }
+    }
+
     for (let i = 0; i < form.items.length; i++) {
       const it = form.items[i];
       if (!it.product_id) return toast.error(`Row ${i + 1}: select a product`);
@@ -861,10 +889,12 @@ export default function SaleInvoiceForm({ saleId, onSuccess }) {
                         <BatchSearchInput
                           value={it.batch_number}
                           onChange={(val) => handleBatchSelect(i, val)}
-                          batches={(batchesByProduct[it.product_id] || []).map((b) => ({
-                            ...b,
-                            batch_number: b.batch_number || b.batch,
-                          }))}
+                          batches={(batchesByProduct[it.product_id] || [])
+                            .filter((b) => (b.available_units ?? 0) > 0)
+                            .map((b) => ({
+                              ...b,
+                              batch_number: b.batch_number || b.batch,
+                            }))}
                           usedBatches={form.items
                             .filter((row, idx) => idx !== i && row.product_id === it.product_id)
                             .map((row) => row.batch_number)

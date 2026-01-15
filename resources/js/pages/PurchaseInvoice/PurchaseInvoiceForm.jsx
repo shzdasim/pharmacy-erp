@@ -103,6 +103,7 @@ export default function PurchaseInvoiceForm({ invoiceId, onSuccess }) {
 
   // productSearchRefs will hold container DOM nodes (wrapping ProductSearchInput)
   const productSearchRefs = useRef([]);
+  const batchRefs = useRef([]);
   const packQuantityRefs = useRef([]);
   const packPurchasePriceRefs = useRef([]);
   const itemDiscountRefs = useRef([]);
@@ -148,6 +149,21 @@ export default function PurchaseInvoiceForm({ invoiceId, onSuccess }) {
   const fetchProducts = async (q = "") => {
     const { data } = await axios.get("/api/products/search", { params: { q, limit: 30 } });
     setProducts(data);
+  };
+
+  // Fetch batches for a product and return the most recent batch (sorted by expiry descending)
+  const fetchProductBatches = async (productId) => {
+    try {
+      const { data } = await axios.get(`/api/products/${productId}/batches`);
+      // Sort by expiry date descending to get the most recent/furthest expiring batch first
+      const sorted = Array.isArray(data) 
+        ? data.sort((a, b) => new Date(b.expiry_date || '1970-01-01') - new Date(a.expiry_date || '1970-01-01'))
+        : [];
+      return sorted.length > 0 ? sorted[0] : null;
+    } catch (err) {
+      console.error('Failed to fetch batches:', err);
+      return null;
+    }
   };
 
   const fetchInvoice = async () => {
@@ -359,6 +375,13 @@ export default function PurchaseInvoiceForm({ invoiceId, onSuccess }) {
   const focusOnField = (field, rowIndex) => {
     setTimeout(() => {
       switch (field) {
+        case "batch":
+          if (batchRefs.current[rowIndex]) {
+            focusAndSelect(batchRefs.current[rowIndex]);
+            setCurrentField("batch");
+            setCurrentRowIndex(rowIndex);
+          }
+          break;
         case "pack_quantity":
           if (packQuantityRefs.current[rowIndex]) {
             focusAndSelect(packQuantityRefs.current[rowIndex]);
@@ -420,6 +443,16 @@ export default function PurchaseInvoiceForm({ invoiceId, onSuccess }) {
           focusProductSearch(0);
           break;
         case "product":
+          // If batch field has ref and is visible, check if we should focus it
+          if (batchRefs.current[rowIndex]) {
+            batchRefs.current[rowIndex].focus();
+            setCurrentField("batch");
+          } else if (packQuantityRefs.current[rowIndex]) {
+            packQuantityRefs.current[rowIndex].focus();
+            setCurrentField("pack_quantity");
+          }
+          break;
+        case "batch":
           if (packQuantityRefs.current[rowIndex]) {
             packQuantityRefs.current[rowIndex].focus();
             setCurrentField("pack_quantity");
@@ -817,7 +850,7 @@ export default function PurchaseInvoiceForm({ invoiceId, onSuccess }) {
                   <div ref={(el) => (productSearchRefs.current[i] = el)}>
                     <ProductSearchInput
                       value={products.find(p => p.id === item.product_id) || item.product_id}
-                      onChange={(val) => {
+                      onChange={async (val) => {
                         const list = Array.isArray(products) ? products : (Array.isArray(products?.data) ? products.data : []);
                         const selectedProduct = (val && typeof val === "object") ? val : list.find((p) => p?.id === val);
                         if (!selectedProduct) return;
@@ -843,6 +876,11 @@ export default function PurchaseInvoiceForm({ invoiceId, onSuccess }) {
                         const margin = get(selectedProduct, ["margin","margin_percentage","marginPercent"], "");
                         const avg = get(selectedProduct, ["avg_price","average_price","avgPrice"], "");
 
+                        // Fetch batches for the selected product and auto-populate if exists
+                        const batchData = await fetchProductBatches(selectedProduct?.id);
+                        const batch = batchData?.batch_number || "";
+                        const expiry = batchData?.expiry_date || "";
+
                         const newItems = [...form.items];
                         const prepared = {
                           ...newItems[i],
@@ -852,7 +890,8 @@ export default function PurchaseInvoiceForm({ invoiceId, onSuccess }) {
                           unit_purchase_price: unitPurchase ?? "",
                           pack_sale_price: zeroToEmpty(packSale),
                           unit_sale_price: unitSale ?? "",
-                          batch: newItems[i].batch || "",
+                          batch: batch,
+                          expiry: expiry,
                           pack_quantity: "",
                           unit_quantity: "",
                           pack_bonus: "",
@@ -869,7 +908,20 @@ export default function PurchaseInvoiceForm({ invoiceId, onSuccess }) {
                         nextForm = recalcFooter(nextForm, "items");
                         if (!paidTouched) nextForm.total_paid = nextForm.total_amount ?? "";
                         setForm(nextForm);
-                        navigateToNextField("product", i);
+                        
+                        // Navigate to next field - if batch has data, focus on batch, otherwise go to pack_quantity
+                        if (batch) {
+                          navigateToNextField("product", i);
+                        } else {
+                          // No batch, navigate directly to pack_quantity
+                          setTimeout(() => {
+                            if (packQuantityRefs.current[i]) {
+                              packQuantityRefs.current[i].focus();
+                              setCurrentField("pack_quantity");
+                              setCurrentRowIndex(i);
+                            }
+                          }, 50);
+                        }
                       }}
                       onKeyDown={(e) => handleProductKeyDown(e, i)}
                       products={products}
@@ -892,6 +944,7 @@ export default function PurchaseInvoiceForm({ invoiceId, onSuccess }) {
                 {/* Batch */}
                 <td className="border w-16">
                   <input
+                    ref={(el) => (batchRefs.current[i] = el)}
                     type="text"
                     value={item.batch ?? ""}
                     onChange={(e) => {
@@ -918,6 +971,7 @@ export default function PurchaseInvoiceForm({ invoiceId, onSuccess }) {
                       newItems[i] = { ...newItems[i], batch: newBatch };
                       setForm({ ...form, items: newItems });
                     }}
+                    onKeyDown={(e) => handleKeyDown(e, "batch", i)}
                     className="border w-full h-6 text-[11px] px-1"
                     {...antiFill}
                   />
