@@ -28,6 +28,7 @@ export default function StockAdjustmentForm({ adjustmentId, onSuccess }){
   const noteRef = useRef(null);
   const productCellRefs = useRef([]); // wrapper cells; used to focus inner input
   const actualRefs = useRef([]);      // actual qty inputs
+  const batchInputRefs = useRef([]);  // batch input refs
 
   // ---------- Helpers ----------
   const to2 = (v) => {
@@ -101,6 +102,14 @@ export default function StockAdjustmentForm({ adjustmentId, onSuccess }){
     const el = actualRefs.current[rowIndex];
     el?.focus();
     el?.select?.();
+  };
+
+  const focusBatch = (rowIndex) => {
+    const el = batchInputRefs.current[rowIndex];
+    if (el) {
+      el.focus();
+      el.select?.();
+    }
   };
 
   const recalc = (state)=>{
@@ -286,8 +295,14 @@ export default function StockAdjustmentForm({ adjustmentId, onSuccess }){
     };
     setForm(prev=> recalc({ ...prev, items }));
 
-    await fetchBatches(p.id);
-    setTimeout(()=>focusActual(rowIndex), 0);
+    const batches = await fetchBatches(p.id);
+    
+    // If product has batches, focus batch field; otherwise focus actual qty
+    if (Array.isArray(batches) && batches.length > 0) {
+      setTimeout(()=>focusBatch(rowIndex), 0);
+    } else {
+      setTimeout(()=>focusActual(rowIndex), 0);
+    }
   };
 
   const onItemChange = (i, field, raw)=>{
@@ -312,6 +327,20 @@ export default function StockAdjustmentForm({ adjustmentId, onSuccess }){
     const row = form.items[i];
     const productId = row.product_id;
 
+    if (!batchNumber || batchNumber.trim() === "") {
+      // Clear batch fields when batch is cleared
+      const items=[...form.items];
+      items[i] = {
+        ...row,
+        batch_number: "",
+        expiry: "",
+        available_qty: row.available_qty ?? "",
+      };
+      setForm(prev=> recalc({ ...prev, items }));
+      setErrorFlag(i, "batch", false);
+      return;
+    }
+
     if (isBatchDuplicate(productId, batchNumber, i)) {
       setErrorFlag(i, "batch", true);
       toast.error(`Row ${i+1}: this batch is already used for the selected product`);
@@ -322,14 +351,45 @@ export default function StockAdjustmentForm({ adjustmentId, onSuccess }){
     const list = batchesFor(productId);
     const selected = list.find(b => b.batch_number === batchNumber);
 
+    // If batch not found in list (manually typed), don't save it yet - let user select from list
+    if (!selected) {
+      setErrorFlag(i, "batch", true);
+      toast.error(`Row ${i+1}: please select a batch from the dropdown list`);
+      const items=[...form.items];
+      items[i] = {
+        ...row,
+        batch_number: "",
+        expiry: "",
+      };
+      setForm(prev=> recalc({ ...prev, items }));
+      return;
+    }
+
+    // Format expiry date if it exists (ensure YYYY-MM-DD format for date input)
+    let expiryValue = selected?.expiry_date || "";
+    if (expiryValue) {
+      // If expiry is a date string, ensure it's in YYYY-MM-DD format
+      try {
+        const date = new Date(expiryValue);
+        if (!isNaN(date.getTime())) {
+          expiryValue = date.toISOString().slice(0, 10);
+        }
+      } catch (e) {
+        expiryValue = "";
+      }
+    }
+
     const items=[...form.items];
     items[i] = {
       ...row,
       batch_number: batchNumber || "",
-      expiry: selected?.expiry || row.expiry || "",
-      available_qty: (selected?.available_units ?? row.available_qty) ?? "",
+      expiry: expiryValue,
+      available_qty: (selected?.quantity ?? row.available_qty) ?? "",
     };
     setForm(prev=> recalc({ ...prev, items }));
+
+    // Focus actual quantity field after selecting batch for better UX
+    setTimeout(()=>focusActual(i), 0);
   };
 
   const addRow = ()=> {
@@ -409,6 +469,12 @@ export default function StockAdjustmentForm({ adjustmentId, onSuccess }){
         setErrorFlag(idx,"batch",true);
         return;
       }
+
+      // Validate expiry is set when batch is required
+      if (it.batch_number && (!it.expiry || it.expiry.trim() === "")) {
+        toast.error(`Row ${idx+1}: expiry date is required for batch ${it.batch_number}`);
+        return;
+      }
     }
 
     const payload = {
@@ -437,7 +503,8 @@ export default function StockAdjustmentForm({ adjustmentId, onSuccess }){
       }
       onSuccess?.();
     }catch(err){
-      toast.error(err?.response?.data?.message || 'Save failed');
+      console.error('Save error:', err.response?.data);
+      toast.error(err?.response?.data?.message || 'Save failed - check console for details');
     }
   };
 
@@ -528,6 +595,7 @@ export default function StockAdjustmentForm({ adjustmentId, onSuccess }){
                   title={batchCellError ? "Duplicate batch for this product not allowed" : ""}
                 >
                   <BatchSearchInput
+                    ref={el => (batchInputRefs.current[i] = el)}
                     value={it.batch_number}
                     onChange={(bn)=> onBatchChange(i, bn)}
                     batches={batchList}

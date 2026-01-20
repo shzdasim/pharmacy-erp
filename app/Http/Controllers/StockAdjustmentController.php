@@ -31,7 +31,7 @@ class StockAdjustmentController extends Controller
     protected function sumBatches(Product $p): float
     {
         // Sum all batches for product to keep product-level stock in sync
-        return (float) Batch::where('product_id', $p->id)->sum(DB::raw('COALESCE(available_units, 0)'));
+        return (float) Batch::where('product_id', $p->id)->sum(DB::raw('COALESCE(quantity, 0)'));
     }
 
     // ===== Endpoints =====
@@ -117,11 +117,11 @@ class StockAdjustmentController extends Controller
                         $batch = new Batch();
                         $batch->product_id = $product->id;
                         $batch->batch_number = $row['batch_number'];
-                        $batch->expiry = $row['expiry'] ?? null;
-                        $batch->available_units = 0;
+                        $batch->expiry_date = $row['expiry'] ?? null;
+                        $batch->quantity = 0;
                     }
 
-                    $previous = (float)($batch->available_units ?? 0);
+                    $previous = (float)($batch->quantity ?? 0);
                     $actual   = (float)$row['actual_qty'];
                     $diff     = $actual - $previous;
 
@@ -144,7 +144,7 @@ class StockAdjustmentController extends Controller
                     $totalWorth += $worth;
 
                     // Apply to batch
-                    $batch->available_units = $actual;
+                    $batch->quantity = $actual;
                     $batch->save();
 
                 } else {
@@ -211,7 +211,7 @@ class StockAdjustmentController extends Controller
                         ->where('batch_number', $old->batch_number)
                         ->first();
                     if ($batch) {
-                        $batch->available_units = $old->previous_qty;
+                        $batch->quantity = $old->previous_qty;
                         $batch->save();
                     }
                 } else {
@@ -235,10 +235,10 @@ class StockAdjustmentController extends Controller
                     $batch = Batch::query()->lockForUpdate()
                         ->firstOrCreate(
                             ['product_id' => $product->id, 'batch_number' => $row['batch_number']],
-                            ['expiry' => $row['expiry'] ?? null, 'available_units' => 0]
+                            ['expiry_date' => $row['expiry'] ?? null, 'quantity' => 0]
                         );
 
-                    $previous = (float)($batch->available_units ?? 0);
+                    $previous = (float)($batch->quantity ?? 0);
                     $actual   = (float)$row['actual_qty'];
                     $diff     = $actual - $previous;
 
@@ -259,7 +259,7 @@ class StockAdjustmentController extends Controller
                     ]);
 
                     $totalWorth += $worth;
-                    $batch->available_units = $actual;
+                    $batch->quantity = $actual;
                     $batch->save();
                 } else {
                     $previous = $this->getProductQty($product);
@@ -326,7 +326,7 @@ class StockAdjustmentController extends Controller
                         ->where('batch_number', $item->batch_number)
                         ->first();
                     if ($batch) {
-                        $batch->available_units = $item->previous_qty;
+                        $batch->quantity = $item->previous_qty;
                         $batch->save();
                     }
                 } else {

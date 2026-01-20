@@ -8,7 +8,7 @@ import React, {
 } from "react";
 
 const BatchSearchInput = forwardRef(
-  ({ value, onChange, batches, usedBatches = [], onKeyDown }, ref) => {
+  ({ value, onChange, batches, usedBatches = [], onKeyDown, placeholder = "Search batch..." }, ref) => {
     const [query, setQuery] = useState("");
     const [showDropdown, setShowDropdown] = useState(false);
     const [highlightIndex, setHighlightIndex] = useState(0);
@@ -18,6 +18,7 @@ const BatchSearchInput = forwardRef(
     // ✅ Expose API to parent
     useImperativeHandle(ref, () => ({
       focus: () => inputRef.current?.focus(),
+      select: () => inputRef.current?.select?.(),
       openMenu: () => setShowDropdown(true),
       closeMenu: () => setShowDropdown(false),
     }));
