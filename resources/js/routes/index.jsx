@@ -30,6 +30,7 @@ import Dashboard from "../pages/Dashboard.jsx";
 import CostOfSaleReport from "../pages/Reports/CostOfSaleReport.jsx";
 import PurchaseDetailReport from "../pages/Reports/PurchaseDetailReport.jsx";
 import SaleDetailReport from "../pages/Reports/SaleDetailReport.jsx";
+import CurrentStockReport from "../pages/Reports/CurrentStockReport.jsx";
 import Setting from "../pages/Setting.jsx";
 import StockAdjustmentsIndex from "../pages/stock-adjustments/index.jsx";
 import CreateStockAdjustment from "../pages/stock-adjustments/Create.jsx";
@@ -321,6 +322,16 @@ export default function AppRoutes() {
         <ProtectedRoute>
           <DashboardLayout>
             <SaleDetailReport />
+          </DashboardLayout>
+        </ProtectedRoute>
+      }
+      />
+      <Route
+      path="reports/current-stock"
+      element= {
+        <ProtectedRoute>
+          <DashboardLayout>
+            <CurrentStockReport />
           </DashboardLayout>
         </ProtectedRoute>
       }

@@ -3,8 +3,10 @@
 namespace App\Http\Controllers;
 
 use App\Authorizables\CostOfSaleReport;
+use App\Authorizables\CurrentStockReport;
 use App\Authorizables\PurchaseDetailReport;
 use App\Authorizables\SaleDetailReport;
+use App\Models\Product;
 use App\Models\PurchaseInvoice;
 use App\Models\SaleInvoice;
 use Barryvdh\DomPDF\Facade\Pdf;
@@ -479,5 +481,163 @@ class ReportsController extends Controller
 
         $filename = 'sale-detail-' . ($meta['from'] ?: 'start') . '-to-' . ($meta['to'] ?: 'today') . '.pdf';
         return $pdf->stream($filename);
+    }
+
+    /**
+     * GET /api/reports/current-stock
+     * Returns products with quantity > 0 (one row per product)
+     * Includes: name, pack_size, quantity, pack_purchase_price, pack_sale_price
+     * Also returns summary totals at the bottom
+     */
+    public function currentStock(Request $req)
+    {
+        $this->authorize('view', CurrentStockReport::class);
+
+        $categoryId = $req->query('category_id');
+        $brandId = $req->query('brand_id');
+        $supplierId = $req->query('supplier_id');
+
+        // Build query for products with quantity > 0
+        $products = Product::with(['category:id,name', 'brand:id,name', 'supplier:id,name'])
+            ->where('quantity', '>', 0)
+            ->when($categoryId, fn($q) => $q->where('category_id', $categoryId))
+            ->when($brandId, fn($q) => $q->where('brand_id', $brandId))
+            ->when($supplierId, fn($q) => $q->where('supplier_id', $supplierId))
+            ->orderBy('name', 'asc')
+            ->get();
+
+        // Transform data for frontend
+        $rows = $products->map(function ($p) {
+            $quantity = (int)($p->quantity ?? 0);
+            $packSize = (int)($p->pack_size ?? 1);
+            $packPurchasePrice = (float)($p->pack_purchase_price ?? 0);
+            $packSalePrice = (float)($p->pack_sale_price ?? 0);
+            $unitPurchasePrice = (float)($p->unit_purchase_price ?? 0);
+            $unitSalePrice = (float)($p->unit_sale_price ?? 0);
+            $avgPrice = (float)($p->avg_price ?? 0);
+
+            // Calculate values
+            $totalPurchaseValue = $quantity * $avgPrice; // At average cost
+            $totalSaleValue = $quantity * $unitSalePrice; // At retail price
+
+            return [
+                'id'                    => $p->id,
+                'product_code'          => $p->product_code,
+                'name'                  => $p->name,
+                'category_name'         => $p->category->name ?? null,
+                'brand_name'            => $p->brand->name ?? null,
+                'supplier_name'         => $p->supplier->name ?? null,
+                'pack_size'             => $packSize,
+                'quantity'              => $quantity,
+                'pack_purchase_price'   => $packPurchasePrice,
+                'pack_sale_price'       => $packSalePrice,
+                'unit_purchase_price'   => $unitPurchasePrice,
+                'unit_sale_price'       => $unitSalePrice,
+                'avg_price'             => $avgPrice,
+                'rack'                  => $p->rack ?? null,
+                // Calculated values for summary
+                'total_purchase_value'  => round($totalPurchaseValue, 2),
+                'total_sale_value'      => round($totalSaleValue, 2),
+            ];
+        })->values();
+
+        // Calculate summary totals
+        $summary = [
+            'total_items'           => $rows->count(),
+            'total_quantity'        => $rows->sum('quantity'),
+            'total_purchase_value'  => round($rows->sum('total_purchase_value'), 2),
+            'total_sale_value'      => round($rows->sum('total_sale_value'), 2),
+            'potential_profit'      => round($rows->sum('total_sale_value') - $rows->sum('total_purchase_value'), 2),
+        ];
+
+        return response()->json([
+            'rows'    => $rows,
+            'summary' => $summary,
+        ]);
+    }
+
+    /**
+     * GET /api/reports/current-stock/pdf
+     */
+    public function currentStockPdf(Request $req)
+    {
+        // Increase memory and execution time limits for large reports
+        ini_set('memory_limit', '2048M');
+        set_time_limit(300); // 5 minutes timeout
+
+        $this->authorize('export', CurrentStockReport::class);
+
+        $categoryId = $req->query('category_id');
+        $brandId = $req->query('brand_id');
+        $supplierId = $req->query('supplier_id');
+
+        // Build query for products with quantity > 0
+        $query = Product::with(['category:id,name', 'brand:id,name', 'supplier:id,name'])
+            ->where('quantity', '>', 0)
+            ->when($categoryId, fn($q) => $q->where('category_id', $categoryId))
+            ->when($brandId, fn($q) => $q->where('brand_id', $brandId))
+            ->when($supplierId, fn($q) => $q->where('supplier_id', $supplierId))
+            ->orderBy('name', 'asc');
+
+        // Use chunking for large datasets to reduce memory usage
+        $rows = [];
+        $totalQuantity = 0;
+        $totalPurchaseValue = 0;
+        $totalSaleValue = 0;
+        $itemCount = 0;
+
+        $query->chunk(500, function ($products) use (&$rows, &$totalQuantity, &$totalPurchaseValue, &$totalSaleValue, &$itemCount) {
+            foreach ($products as $p) {
+                $quantity = (int)($p->quantity ?? 0);
+                $packSize = (int)($p->pack_size ?? 1);
+                $packPurchasePrice = (float)($p->pack_purchase_price ?? 0);
+                $packSalePrice = (float)($p->pack_sale_price ?? 0);
+                $avgPrice = (float)($p->avg_price ?? 0);
+                $unitSalePrice = (float)($p->unit_sale_price ?? 0);
+
+                $rowTotalPurchase = round($quantity * $avgPrice, 2);
+                $rowTotalSale = round($quantity * $unitSalePrice, 2);
+
+                $rows[] = [
+                    'product_code'         => $p->product_code,
+                    'name'                 => $p->name,
+                    'pack_size'            => $packSize,
+                    'quantity'             => $quantity,
+                    'pack_purchase_price'  => $packPurchasePrice,
+                    'pack_sale_price'      => $packSalePrice,
+                    'avg_price'            => $avgPrice,
+                    'total_purchase_value' => $rowTotalPurchase,
+                    'total_sale_value'     => $rowTotalSale,
+                ];
+
+                $totalQuantity += $quantity;
+                $totalPurchaseValue += $rowTotalPurchase;
+                $totalSaleValue += $rowTotalSale;
+                $itemCount++;
+            }
+        });
+
+        $summary = [
+            'total_items'          => $itemCount,
+            'total_quantity'       => $totalQuantity,
+            'total_purchase_value' => round($totalPurchaseValue, 2),
+            'total_sale_value'     => round($totalSaleValue, 2),
+            'potential_profit'     => round($totalSaleValue - $totalPurchaseValue, 2),
+        ];
+
+        $meta = [
+            'generatedAt' => now()->format('Y-m-d H:i'),
+            'category_id' => $categoryId,
+            'brand_id'    => $brandId,
+            'supplier_id' => $supplierId,
+        ];
+
+        $pdf = Pdf::loadView('reports.current_stock_pdf', [
+            'rows'    => $rows,
+            'summary' => $summary,
+            'meta'    => $meta,
+        ])->setPaper('a4', 'landscape');
+
+        return $pdf->stream('current-stock-report.pdf');
     }
 }
