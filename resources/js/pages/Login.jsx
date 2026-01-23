@@ -22,9 +22,13 @@ export default function Login() {
 
       localStorage.setItem("token", data.token);
       axios.defaults.headers.common["Authorization"] = `Bearer ${data.token}`;
-      login(data.user, data.token);
+      login(data.user, data.token, { license_revoked: data.license_revoked });
 
-      navigate("/dashboard");
+      // If license was revoked, the login function will redirect to /activate
+      // Otherwise, navigate to dashboard
+      if (!data.license_revoked) {
+        navigate("/dashboard");
+      }
     } catch (err) {
       const msg =
         err?.response?.data?.message ||

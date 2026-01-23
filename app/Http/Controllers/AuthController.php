@@ -7,9 +7,17 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
+use App\Services\LicenseService;
 
 class AuthController extends Controller
 {
+    protected LicenseService $licenseService;
+
+    public function __construct(LicenseService $licenseService)
+    {
+        $this->licenseService = $licenseService;
+    }
+
     /**
      * Handle user login.
      *
@@ -30,13 +38,24 @@ class AuthController extends Controller
         /** @var User $user */
         $user = Auth::user();
 
+        // Check license and auto-revoke if machine changed (software copied to new device)
+        $licenseCleared = $this->licenseService->clearLicenseIfMachineChanged();
+
         // Generate API token (Sanctum)
         $token = $user->createToken('api_token')->plainTextToken;
 
-        return response()->json([
+        $response = [
             'token' => $token,
             'user'  => $user->load('roles'),
-        ]);
+        ];
+
+        // If license was cleared due to machine change, inform the client
+        if ($licenseCleared) {
+            $response['license_revoked'] = true;
+            $response['message'] = 'License was revoked because software was moved to a new device. Please activate a new license.';
+        }
+
+        return response()->json($response);
     }
 
     /**

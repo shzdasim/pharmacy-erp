@@ -46,6 +46,9 @@ Route::middleware('auth:sanctum')->post('/logout', [AuthController::class, 'logo
 |--------------------------------------------------------------------------
 */
 Route::middleware(['auth:sanctum'])->group(function () {
+    // Password verification (for license management in settings)
+    Route::post('/verify-password', [AuthController::class, 'confirmPassword']);
+
     // License endpoints
     Route::get('/license/status',     [LicenseController::class, 'status']);
     Route::post('/license/activate',  [LicenseController::class, 'activate']);

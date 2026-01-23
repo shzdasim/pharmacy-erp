@@ -95,4 +95,59 @@ class LicenseService
             'expires_at' => $payload['exp'] ?? null,
         ];
     }
+
+    /**
+     * Check license and auto-revoke if machine ID changed (software copied to new device)
+     * Returns: [bool valid, string|null reason, bool wasRevoked]
+     */
+    public function checkAndAutoRevokeOnMachineChange(): array
+    {
+        $rec = License::latest('id')->first();
+        if (!$rec) {
+            return [false, 'No license installed', false];
+        }
+
+        [$ok, $payload, $reason] = $this->verifyString(
+            $rec->license_key,
+            config('license.bind_to_machine') ? $this->computeMachineId() : null
+        );
+
+        // If license is invalid due to wrong machine, auto-revoke it
+        if (!$ok && $reason === 'Wrong machine') {
+            $rec->delete();
+            return [false, 'License revoked - software moved to new device', true];
+        }
+
+        return [$ok, $reason, false];
+    }
+
+    /**
+     * Clear license if machine ID doesn't match (for login-time check)
+     * Returns true if license was cleared
+     */
+    public function clearLicenseIfMachineChanged(): bool
+    {
+        $rec = License::latest('id')->first();
+        if (!$rec) {
+            return false;
+        }
+
+        // If machine binding is disabled, no need to check
+        if (!config('license.bind_to_machine')) {
+            return false;
+        }
+
+        [$ok, $payload, $reason] = $this->verifyString(
+            $rec->license_key,
+            $this->computeMachineId()
+        );
+
+        // If license is invalid due to wrong machine, delete it
+        if (!$ok && $reason === 'Wrong machine') {
+            $rec->delete();
+            return true;
+        }
+
+        return false;
+    }
 }

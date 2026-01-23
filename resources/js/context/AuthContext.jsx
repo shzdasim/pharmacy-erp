@@ -4,7 +4,21 @@ import axios from "axios";
 const AuthContext = createContext();
 
 export function AuthProvider({ children }) {
-  const [user, setUser] = useState(JSON.parse(localStorage.getItem("user")));
+  // Safely parse user from localStorage - handle null, undefined, or corrupted values
+  const getStoredUser = () => {
+    try {
+      const userData = localStorage.getItem("user");
+      if (!userData || userData === "undefined" || userData === "null") {
+        return null;
+      }
+      return JSON.parse(userData);
+    } catch (error) {
+      console.error("Error parsing user from localStorage:", error);
+      return null;
+    }
+  };
+
+  const [user, setUser] = useState(getStoredUser());
   const token = localStorage.getItem("token");
 
   useEffect(() => {
@@ -23,11 +37,19 @@ export function AuthProvider({ children }) {
     }
   }, [token]);
 
-  const login = (userData, tokenValue) => {
+  const login = (userData, tokenValue, additionalData = {}) => {
     localStorage.setItem("token", tokenValue);
     localStorage.setItem("user", JSON.stringify(userData));
     setUser(userData);
     axios.defaults.headers.common["Authorization"] = `Bearer ${tokenValue}`;
+
+    // If license was revoked (software moved to new device), redirect to activation
+    if (additionalData.license_revoked) {
+      // Clear any cached user data that might cause issues
+      localStorage.removeItem("user");
+      // Redirect to activation page
+      window.location.href = "/activate";
+    }
   };
 
   const logout = () => {
