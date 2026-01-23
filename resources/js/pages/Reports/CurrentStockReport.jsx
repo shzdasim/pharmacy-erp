@@ -187,8 +187,17 @@ export default function CurrentStockReport() {
       });
 
       const responseData = res.data || {};
-      const rows = Array.isArray(responseData.rows) ? responseData.rows : [];
-      const summary = responseData.summary || {};
+      // Client-side filter to ensure only products with quantity > 0 are displayed
+      const allRows = Array.isArray(responseData.rows) ? responseData.rows : [];
+      const rows = allRows.filter(row => (Number(row.quantity) || 0) > 0);
+      
+      // Recalculate summary based on filtered rows
+      const summary = {
+        total_items: rows.length,
+        total_quantity: rows.reduce((sum, row) => sum + (Number(row.quantity) || 0), 0),
+        total_purchase_value: rows.reduce((sum, row) => sum + (Number(row.total_purchase_value) || 0), 0),
+        total_sale_value: rows.reduce((sum, row) => sum + (Number(row.total_sale_value) || 0), 0),
+      };
 
       setData({ rows, summary });
       if (!rows.length) toast("No stock items found with quantity > 0.", { icon: "ℹ️" });

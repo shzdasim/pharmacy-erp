@@ -497,14 +497,16 @@ class ReportsController extends Controller
         $brandId = $req->query('brand_id');
         $supplierId = $req->query('supplier_id');
 
-        // Build query for products with quantity > 0
+        // Build query for all products (filtering done client-side for transparency)
         $products = Product::with(['category:id,name', 'brand:id,name', 'supplier:id,name'])
-            ->where('quantity', '>', 0)
             ->when($categoryId, fn($q) => $q->where('category_id', $categoryId))
             ->when($brandId, fn($q) => $q->where('brand_id', $brandId))
             ->when($supplierId, fn($q) => $q->where('supplier_id', $supplierId))
             ->orderBy('name', 'asc')
             ->get();
+
+        // Filter products with quantity > 0 client-side for display
+        $products = $products->filter(fn($p) => (int)($p->quantity ?? 0) > 0);
 
         // Transform data for frontend
         $rows = $products->map(function ($p) {
@@ -571,15 +573,15 @@ class ReportsController extends Controller
         $brandId = $req->query('brand_id');
         $supplierId = $req->query('supplier_id');
 
-        // Build query for products with quantity > 0
+        // Build query for all products (filtering done for products with quantity > 0)
         $query = Product::with(['category:id,name', 'brand:id,name', 'supplier:id,name'])
-            ->where('quantity', '>', 0)
             ->when($categoryId, fn($q) => $q->where('category_id', $categoryId))
             ->when($brandId, fn($q) => $q->where('brand_id', $brandId))
             ->when($supplierId, fn($q) => $q->where('supplier_id', $supplierId))
             ->orderBy('name', 'asc');
 
         // Use chunking for large datasets to reduce memory usage
+        // Only include products with quantity > 0
         $rows = [];
         $totalQuantity = 0;
         $totalPurchaseValue = 0;
@@ -589,6 +591,10 @@ class ReportsController extends Controller
         $query->chunk(500, function ($products) use (&$rows, &$totalQuantity, &$totalPurchaseValue, &$totalSaleValue, &$itemCount) {
             foreach ($products as $p) {
                 $quantity = (int)($p->quantity ?? 0);
+                
+                // Only include products with quantity > 0
+                if ($quantity <= 0) continue;
+                
                 $packSize = (int)($p->pack_size ?? 1);
                 $packPurchasePrice = (float)($p->pack_purchase_price ?? 0);
                 $packSalePrice = (float)($p->pack_sale_price ?? 0);
