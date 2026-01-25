@@ -378,16 +378,22 @@ export default function SaleInvoiceForm({ saleId, onSuccess }) {
     const productId = resolveId(productIdOrObj);
     if (!productId && productId !== 0) return;
 
-    const dupIndex = form.items.findIndex(
-      (row, idx) => idx !== rowIndex && eqId(row.product_id, productId)
-    );
-    if (dupIndex !== -1) {
-      toast.error(`Product already used in row ${dupIndex + 1}. Each product can be added only once.`);
-      resetRow(rowIndex);
-      setTimeout(() => {
-        productRefs.current[rowIndex]?.querySelector?.("input")?.focus?.();
-      }, 40);
-      return;
+    const currentRowProductId = form.items[rowIndex]?.product_id;
+    
+    // Only check for duplicate if the product is different from current row's product
+    // This allows re-selecting the same product on the same row (for editing)
+    if (!eqId(currentRowProductId, productId)) {
+      const dupIndex = form.items.findIndex(
+        (row, idx) => idx !== rowIndex && eqId(row.product_id, productId)
+      );
+      if (dupIndex !== -1) {
+        toast.error(`Product already used in row ${dupIndex + 1}. Each product can be added only once.`);
+        resetRow(rowIndex);
+        setTimeout(() => {
+          productRefs.current[rowIndex]?.querySelector?.("input")?.focus?.();
+        }, 40);
+        return;
+      }
     }
 
     const selected =
@@ -407,31 +413,64 @@ export default function SaleInvoiceForm({ saleId, onSuccess }) {
     const rawMargin = selected?.margin ?? selected?.margin_percentage ?? selected?.default_margin ?? "";
     setMarginPct(sanitizeNumberInput(String(rawMargin), true));
     const packSize = selected?.pack_size ?? "";
-    const available = selected?.quantity ?? selected?.available_units ?? 0;
+    const baseAvailable = selected?.quantity ?? selected?.available_units ?? 0;
     const price = selected?.unit_sale_price ?? selected?.unit_purchase_price ?? "";
 
     const batchList = await fetchBatches(productId);
     const hasBatches = Array.isArray(batchList) && batchList.length > 0;
 
+    // Calculate existing quantity of this product in OTHER rows (for edit scenario)
+    // When editing, the existing quantity is not yet consumed, so add it back to available
+    const existingQtyInOtherRows = form.items.reduce((sum, item, idx) => {
+      if (idx !== rowIndex && eqId(item.product_id, productId)) {
+        return sum + Number(item.quantity || 0);
+      }
+      return sum;
+    }, 0);
+
+    // The actual available quantity to show:
+    // When editing: base available + existing quantity (since it's not consumed yet)
+    // When new row: base available (no existing quantities to add back)
+    // Also add back current row's existing quantity so user can increase it
+    const currentRowExistingQty = eqId(currentRowProductId, productId) 
+      ? Number(form.items[rowIndex]?.quantity || 0) 
+      : 0;
+    const available = Number(baseAvailable) + existingQtyInOtherRows + currentRowExistingQty;
+
+    // Preserve existing values if re-selecting the same product
+    const existingBatchNumber = eqId(currentRowProductId, productId)
+      ? form.items[rowIndex]?.batch_number
+      : "";
+    const existingExpiry = eqId(currentRowProductId, productId)
+      ? form.items[rowIndex]?.expiry
+      : "";
+
     setForm((prev) => {
       const items = [...prev.items];
-      // If quantity is empty, preset it to 1
-      const presetQty =
-       items[rowIndex]?.quantity === "" || items[rowIndex]?.quantity == null
-       ? "1"
-       : items[rowIndex].quantity;
+      
+      // If quantity is empty (new product selection), preset it to 1
+      // If re-selecting same product, keep the existing quantity
+      const presetQty = eqId(currentRowProductId, productId)
+        ? items[rowIndex].quantity
+        : (items[rowIndex]?.quantity === "" || items[rowIndex]?.quantity == null
+           ? "1"
+           : items[rowIndex].quantity);
+      
+      // When re-selecting same product, preserve batch and expiry if they exist
+      const shouldPreserveBatch = eqId(currentRowProductId, productId) && existingBatchNumber;
+      
       items[rowIndex] = recalcItem(
         {
           ...items[rowIndex],
           product_id: productId,
           pack_size: packSize,
           price,
-          batch_number: "",
-          expiry: "",
-          current_quantity: available.toString(),
+          batch_number: shouldPreserveBatch ? existingBatchNumber : "",
+          expiry: shouldPreserveBatch ? existingExpiry : "",
+          current_quantity: available.toString(), // Always use recalculated available
           quantity: presetQty,
-          item_discount_percentage: "",
-          sub_total: "",
+          item_discount_percentage: items[rowIndex]?.item_discount_percentage ?? "",
+          sub_total: items[rowIndex]?.sub_total ?? "",
           is_narcotic: isNarcotic,
         },
         "product_select"
@@ -454,40 +493,68 @@ export default function SaleInvoiceForm({ saleId, onSuccess }) {
 
   const handleBatchSelect = async (rowIndex, batchNum) => {
     const row0 = form.items[rowIndex];
+    if (!row0.product_id || !batchNum) return;
+    
     try {
       const batches = await fetchBatches(row0.product_id);
       const b = (batches || []).find((x) => String(x.batch_number) === String(batchNum));
+      
+      // Calculate existing quantity of this same batch in OTHER rows (for edit scenario)
+      // When editing, existing quantities are not yet consumed, so add them back
+      const existingQtyInOtherRows = form.items.reduce((sum, item, idx) => {
+        if (idx !== rowIndex && String(item.batch_number) === String(batchNum)) {
+          return sum + Number(item.quantity || 0);
+        }
+        return sum;
+      }, 0);
+      
+      const baseAvailable = Number(b?.available_units ?? 0);
+      const available = baseAvailable + existingQtyInOtherRows;
+      
       const params = new URLSearchParams({
         product_id: row0.product_id || "",
         batch: batchNum || "",
       }).toString();
-      let available = Number(b?.available_units ?? 0);
+      
       try {
         const res = await axios.get(`/api/products/available-quantity?${params}`);
-        available = Number(
-          res?.data?.available ?? res?.data?.available_units ?? res?.data?.quantity ?? available ?? 0
+        const apiAvailable = Number(
+          res?.data?.available_units ?? res?.data?.available ?? res?.data?.quantity ?? 0
         );
+        // Use API value if valid, otherwise use local calculation
+        if (apiAvailable > 0) {
+          // Calculate adjusted available with existing quantities from other rows
+          return handleBatchSelectWithCalculatedAvailable(rowIndex, batchNum, apiAvailable, existingQtyInOtherRows);
+        }
       } catch {}
-      const exp = asISODate(b?.expiry || "");
-      setForm((prev) => {
-        const items = [...prev.items];
-        const updated = {
-          ...items[rowIndex],
-          batch_number: batchNum,
-          current_quantity: String(available),
-        };
-        if (exp) updated.expiry = exp;
-        items[rowIndex] = recalcItem(updated, "batch_select");
-        let next = recalcFooter({ ...prev, items }, "items");
-        // For credit sales, total_receive stays at 0; for debit, auto-fill if not touched
-        if (!receiveTouched && prev.invoice_type !== "credit") next.total_receive = next.total ?? "";
-        if (prev.invoice_type === "credit") next.total_receive = "";
-        return next;
-      });
-      setTimeout(() => {
-        qtyRefs.current[rowIndex]?.focus?.();
-      }, 40);
+      
+      // Use local calculation with batch data
+      handleBatchSelectWithCalculatedAvailable(rowIndex, batchNum, baseAvailable, existingQtyInOtherRows);
     } catch {}
+  };
+
+  const handleBatchSelectWithCalculatedAvailable = (rowIndex, batchNum, baseAvailable, existingQtyInOtherRows) => {
+    const available = Number(baseAvailable) + Number(existingQtyInOtherRows);
+    const exp = asISODate(form.items[rowIndex]?.expiry || "");
+    
+    setForm((prev) => {
+      const items = [...prev.items];
+      const updated = {
+        ...items[rowIndex],
+        batch_number: batchNum,
+        current_quantity: String(available),
+      };
+      if (exp) updated.expiry = exp;
+      items[rowIndex] = recalcItem(updated, "batch_select");
+      let next = recalcFooter({ ...prev, items }, "items");
+      // For credit sales, total_receive stays at 0; for debit, auto-fill if not touched
+      if (!receiveTouched && prev.invoice_type !== "credit") next.total_receive = next.total ?? "";
+      if (prev.invoice_type === "credit") next.total_receive = "";
+      return next;
+    });
+    setTimeout(() => {
+      qtyRefs.current[rowIndex]?.focus?.();
+    }, 40);
   };
 
   const upsertProducts = (list) => {
@@ -1173,6 +1240,7 @@ export default function SaleInvoiceForm({ saleId, onSuccess }) {
                   type="text"
                   name="total_receive"
                   inputMode="numeric"
+                  readOnly={form.invoice_type === "debit"}
                   value={form.total_receive ?? ""}
                   onChange={(e) => {
                     const v = sanitizeNumberInput(e.target.value, true, false);
@@ -1186,7 +1254,9 @@ export default function SaleInvoiceForm({ saleId, onSuccess }) {
                     }));
                   }}
                   autoComplete="off"
-                  className="h-7 border-2 border-black rounded px-1"
+                  className={`h-7 border-2 border-black rounded px-1 ${
+                    form.invoice_type === "debit" ? "bg-gray-100 cursor-not-allowed" : ""
+                  }`}
                 />
 
                 <label className="text-[13px] font-bold self-center">Remaining</label>
@@ -1197,7 +1267,7 @@ export default function SaleInvoiceForm({ saleId, onSuccess }) {
                     Math.round(Number(form.total || 0)) - Math.round(Number(form.total_receive || 0))
                   )}
                   autoComplete="off"
-                  className="h-7 border-2 border-black rounded px-1 bg-gray-100"
+                  className="h-7 border-2 border-black rounded px-1 bg-gray-100 cursor-not-allowed"
                 />
               </div>
 
