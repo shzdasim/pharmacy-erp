@@ -18,7 +18,7 @@ import EditPurchaseInvoice from "../pages/PurchaseInvoice/Edit.jsx";
 import PurchaseReturnsIndex from "../pages/PurchaseReturn/index.jsx";
 import CreatePurchaseReturn from "../pages/PurchaseReturn/Create.jsx";
 import EditPurchaseReturn from "../pages/PurchaseReturn/Edit.jsx";
-import IndexSaleInvoice from "../pages/SaleInvoice/index.jsx";
+import IndexSaleInvoice from "../pages/SaleInvoice/Index.jsx";
 import CreateSaleInvoice from "../pages/SaleInvoice/Create.jsx";
 import EditSaleInvoice from "../pages/SaleInvoice/Edit.jsx";
 import ShowSaleInvoice from "../pages/SaleInvoice/Show.jsx";
@@ -31,6 +31,7 @@ import CostOfSaleReport from "../pages/Reports/CostOfSaleReport.jsx";
 import PurchaseDetailReport from "../pages/Reports/PurchaseDetailReport.jsx";
 import SaleDetailReport from "../pages/Reports/SaleDetailReport.jsx";
 import CurrentStockReport from "../pages/Reports/CurrentStockReport.jsx";
+import StockAdjustmentReport from "../pages/Reports/StockAdjustmentReport.jsx";
 import Setting from "../pages/Setting.jsx";
 import StockAdjustmentsIndex from "../pages/stock-adjustments/index.jsx";
 import CreateStockAdjustment from "../pages/stock-adjustments/Create.jsx";
@@ -332,6 +333,16 @@ export default function AppRoutes() {
         <ProtectedRoute>
           <DashboardLayout>
             <CurrentStockReport />
+          </DashboardLayout>
+        </ProtectedRoute>
+      }
+      />
+      <Route
+      path="reports/stock-adjustment"
+      element= {
+        <ProtectedRoute>
+          <DashboardLayout>
+            <StockAdjustmentReport />
           </DashboardLayout>
         </ProtectedRoute>
       }

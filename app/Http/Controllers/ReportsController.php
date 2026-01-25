@@ -6,9 +6,12 @@ use App\Authorizables\CostOfSaleReport;
 use App\Authorizables\CurrentStockReport;
 use App\Authorizables\PurchaseDetailReport;
 use App\Authorizables\SaleDetailReport;
+use App\Authorizables\StockAdjustmentReport;
 use App\Models\Product;
 use App\Models\PurchaseInvoice;
 use App\Models\SaleInvoice;
+use App\Models\StockAdjustment;
+use App\Models\StockAdjustmentItem;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -669,5 +672,168 @@ class ReportsController extends Controller
         ])->setPaper('a4', 'landscape');
 
         return $pdf->stream('current-stock-report.pdf');
+    }
+
+    /**
+     * GET /api/reports/stock-adjustment
+     * Returns stock adjustments with items for the given date range
+     */
+    public function stockAdjustment(Request $req)
+    {
+        $this->authorize('view', StockAdjustmentReport::class);
+
+        $from = $req->query('from');
+        $to   = $req->query('to');
+
+        // Defaults: current month
+        $fromDate = $from ? Carbon::parse($from)->startOfDay() : Carbon::now()->startOfMonth();
+        $toDate   = $to   ? Carbon::parse($to)->endOfDay()   : Carbon::now()->endOfDay();
+        if ($fromDate->gt($toDate)) {
+            [$fromDate, $toDate] = [$toDate->copy()->startOfDay(), $fromDate->copy()->endOfDay()];
+        }
+
+        $adjustments = StockAdjustment::with([
+                'user:id,name',
+                'items' => function ($q) {
+                    $q->with('product:id,name,product_code')
+                      ->select([
+                          'id','stock_adjustment_id','product_id',
+                          'batch_number','expiry','pack_size',
+                          'previous_qty','actual_qty','diff_qty',
+                          'unit_purchase_price','worth_adjusted',
+                      ]);
+                },
+            ])
+            ->whereBetween('posted_date', [$fromDate, $toDate])
+            ->orderBy('posted_date', 'asc')
+            ->orderBy('id', 'asc')
+            ->get();
+
+        $rows = $adjustments->map(function ($adj) {
+            return [
+                'id'            => $adj->id,
+                'posted_number' => $adj->posted_number ?? null,
+                'posted_date'   => optional($adj->posted_date)->format('Y-m-d')
+                                  ?? (is_string($adj->posted_date) ? substr($adj->posted_date,0,10) : null),
+                'note'          => $adj->note ?? null,
+                'total_worth'   => (float)($adj->total_worth ?? 0),
+                'user_name'     => $adj->user->name ?? null,
+                'items'         => ($adj->items ?? collect())->map(function ($item) {
+                    return [
+                        'id'                  => $item->id,
+                        'product_id'          => $item->product_id,
+                        'product_code'        => $item->product->product_code ?? null,
+                        'product_name'        => $item->product->name ?? null,
+                        'batch_number'        => $item->batch_number,
+                        'expiry'              => $item->expiry ? $item->expiry->format('Y-m-d') : null,
+                        'pack_size'            => (float)($item->pack_size ?? 0),
+                        'previous_qty'         => (float)($item->previous_qty ?? 0),
+                        'actual_qty'           => (float)($item->actual_qty ?? 0),
+                        'diff_qty'             => (float)($item->diff_qty ?? 0),
+                        'unit_purchase_price'  => (float)($item->unit_purchase_price ?? 0),
+                        'worth_adjusted'       => (float)($item->worth_adjusted ?? 0),
+                    ];
+                })->values(),
+            ];
+        })->values();
+
+        // Calculate summary totals
+        $totalAdjustments = $rows->count();
+        $totalItems = $rows->sum(fn($row) => count($row['items']));
+        $totalWorthAdjusted = $rows->sum(fn($row) => $row['total_worth']);
+        $positiveAdjustments = $rows->sum(fn($row) => collect($row['items'])->sum(fn($item) => $item['diff_qty'] > 0 ? $item['diff_qty'] : 0));
+        $negativeAdjustments = $rows->sum(fn($row) => collect($row['items'])->sum(fn($item) => $item['diff_qty'] < 0 ? abs($item['diff_qty']) : 0));
+
+        $summary = [
+            'total_adjustments'    => $totalAdjustments,
+            'total_items'          => $totalItems,
+            'total_worth_adjusted' => round($totalWorthAdjusted, 2),
+            'positive_adjustments' => round($positiveAdjustments, 3),
+            'negative_adjustments' => round($negativeAdjustments, 3),
+        ];
+
+        return response()->json([
+            'rows'    => $rows,
+            'summary' => $summary,
+        ]);
+    }
+
+    /**
+     * GET /api/reports/stock-adjustment/pdf
+     */
+    public function stockAdjustmentPdf(Request $req)
+    {
+        $this->authorize('export', StockAdjustmentReport::class);
+
+        $from = $req->query('from');
+        $to   = $req->query('to');
+
+        $fromDate = $from ? Carbon::parse($from)->startOfDay() : Carbon::now()->startOfMonth();
+        $toDate   = $to   ? Carbon::parse($to)->endOfDay()   : Carbon::now()->endOfDay();
+        if ($fromDate->gt($toDate)) {
+            [$fromDate, $toDate] = [$toDate->copy()->startOfDay(), $fromDate->copy()->endOfDay()];
+        }
+
+        $adjustments = StockAdjustment::with([
+                'user:id,name',
+                'items' => function ($q) {
+                    $q->with('product:id,name,product_code')
+                      ->select([
+                          'id','stock_adjustment_id','product_id',
+                          'batch_number','expiry','pack_size',
+                          'previous_qty','actual_qty','diff_qty',
+                          'unit_purchase_price','worth_adjusted',
+                      ]);
+                },
+            ])
+            ->whereBetween('posted_date', [$fromDate, $toDate])
+            ->orderBy('posted_date', 'asc')
+            ->orderBy('id', 'asc')
+            ->get();
+
+        $rows = $adjustments->map(function ($adj) {
+            return [
+                'posted_number' => $adj->posted_number ?? null,
+                'posted_date'   => optional($adj->posted_date)->format('Y-m-d')
+                                  ?? (is_string($adj->posted_date) ? substr($adj->posted_date,0,10) : null),
+                'note'          => $adj->note ?? null,
+                'user_name'     => $adj->user->name ?? null,
+                'total_worth'   => (float)($adj->total_worth ?? 0),
+                'items'         => ($adj->items ?? collect())->map(function ($item) {
+                    return [
+                        'product_code'       => $item->product->product_code ?? null,
+                        'product_name'       => $item->product->name ?? null,
+                        'batch_number'       => $item->batch_number,
+                        'expiry'             => $item->expiry ? $item->expiry->format('Y-m-d') : null,
+                        'previous_qty'       => (float)($item->previous_qty ?? 0),
+                        'actual_qty'         => (float)($item->actual_qty ?? 0),
+                        'diff_qty'           => (float)($item->diff_qty ?? 0),
+                        'unit_purchase_price'=> (float)($item->unit_purchase_price ?? 0),
+                        'worth_adjusted'     => (float)($item->worth_adjusted ?? 0),
+                    ];
+                })->values(),
+            ];
+        })->values();
+
+        $summary = [
+            'total_adjustments'    => $rows->count(),
+            'total_items'          => $rows->sum(fn($row) => count($row['items'])),
+            'total_worth_adjusted' => round($rows->sum(fn($row) => $row['total_worth']), 2),
+        ];
+
+        $meta = [
+            'from'        => $from,
+            'to'          => $to,
+            'generatedAt' => now()->format('Y-m-d H:i'),
+        ];
+
+        $pdf = Pdf::loadView('reports.stock_adjustment_pdf', [
+            'rows'    => $rows,
+            'summary' => $summary,
+            'meta'    => $meta,
+        ])->setPaper('a4', 'landscape');
+
+        $filename = 'stock-adjustment-' . ($from ?: 'start') . '-to-' . ($to ?: 'today') . '.pdf';
+        return $pdf->stream($filename);
     }
 }

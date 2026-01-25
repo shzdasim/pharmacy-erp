@@ -39,6 +39,7 @@ class RolesAndPermissionsSeeder extends Seeder
             'report.purchase-detail.view', 'report.purchase-detail.export',
             'report.sale-detail.view', 'report.sale-detail.export', 'report.sale-detail.edit',
             'report.current-stock.view', 'report.current-stock.export',
+            'report.stock-adjustment.view', 'report.stock-adjustment.export',
         ];
 
         // ---- Domain modules & standard actions ----
