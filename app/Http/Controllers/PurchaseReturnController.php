@@ -139,7 +139,6 @@ public function index(Request $request)
         $this->authorize('create', PurchaseReturn::class);
         $data = $request->validate([
             'supplier_id'           => 'required|exists:suppliers,id',
-            'posted_number'         => 'required|string',
             'date'                  => 'required|date',
             'purchase_invoice_id'   => 'nullable|exists:purchase_invoices,id',
             'remarks'               => 'nullable|string',
@@ -166,9 +165,14 @@ public function index(Request $request)
         ]);
 
         return DB::transaction(function () use ($data) {
+            // Generate posted_number server-side (concurrency-safe)
+            $last = PurchaseReturn::lockForUpdate()->orderByDesc('id')->first();
+            $next = $last ? ($last->id + 1) : 1;
+            $posted = 'PRRET-' . str_pad((string)$next, 4, '0', STR_PAD_LEFT);
+
             $pr = PurchaseReturn::create([
                 'supplier_id'         => $data['supplier_id'],
-                'posted_number'       => $data['posted_number'],
+                'posted_number'       => $posted, // assigned on save
                 'date'                => $data['date'],
                 'purchase_invoice_id' => $data['purchase_invoice_id'] ?? null,
                 'remarks'             => $data['remarks'] ?? null,

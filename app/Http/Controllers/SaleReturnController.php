@@ -148,7 +148,6 @@ class SaleReturnController extends Controller
 
         $data = $request->validate([
             'customer_id'         => 'required|exists:customers,id',
-            'posted_number'       => 'required|string',
             'date'                => 'required|date',
             'sale_invoice_id'     => 'nullable|exists:sale_invoices,id',
             'remarks'             => 'nullable|string',
@@ -177,19 +176,24 @@ class SaleReturnController extends Controller
         }
 
         return DB::transaction(function () use ($data, $userId) {
+            // Generate posted_number server-side (concurrency-safe)
+            $last = SaleReturn::lockForUpdate()->orderByDesc('id')->first();
+            $next = $last ? ($last->id + 1) : 1;
+            $posted = 'SLRET-' . str_pad((string)$next, 4, '0', STR_PAD_LEFT);
+
             $sr = SaleReturn::create([
                 'user_id'            => $userId,
-                'customer_id'         => $data['customer_id'],
-                'sale_invoice_id'     => $data['sale_invoice_id'] ?? null,
-                'posted_number'       => $data['posted_number'],
-                'date'                => $data['date'],
-                'remarks'             => $data['remarks'] ?? null,
-                'gross_total'         => $this->f($data['gross_total'] ?? 0),
-                'discount_percentage' => $this->f($data['discount_percentage'] ?? 0),
-                'discount_amount'     => $this->f($data['discount_amount'] ?? 0),
-                'tax_percentage'      => $this->f($data['tax_percentage'] ?? 0),
-                'tax_amount'          => $this->f($data['tax_amount'] ?? 0),
-                'total'               => $this->f($data['total'] ?? 0),
+                'customer_id'        => $data['customer_id'],
+                'sale_invoice_id'    => $data['sale_invoice_id'] ?? null,
+                'posted_number'      => $posted, // assigned on save
+                'date'               => $data['date'],
+                'remarks'            => $data['remarks'] ?? null,
+                'gross_total'        => $this->f($data['gross_total'] ?? 0),
+                'discount_percentage'=> $this->f($data['discount_percentage'] ?? 0),
+                'discount_amount'    => $this->f($data['discount_amount'] ?? 0),
+                'tax_percentage'     => $this->f($data['tax_percentage'] ?? 0),
+                'tax_amount'         => $this->f($data['tax_amount'] ?? 0),
+                'total'              => $this->f($data['total'] ?? 0),
             ]);
 
             $this->createItemsAndIncrease($sr, $data['items']);

@@ -681,39 +681,71 @@ export default function SaleReturnForm({ returnId, initialData, onSuccess }) {
         }
       }
 
-      const payload = {
-        posted_number: form.posted_number,
-        date: form.date,
-        customer_id: form.customer_id,
-        sale_invoice_id: form.sale_invoice_id || null,
-        discount_percentage: toNum(form.discount_percentage),
-        discount_amount: toNum(form.discount_amount),
-        tax_percentage: toNum(form.tax_percentage),
-        tax_amount: toNum(form.tax_amount),
-        gross_total: toNum(form.gross_total),
-        total: toNum(form.total),
-        items: form.items
-          .filter((it) => it.product_id)
-          .map((it) => ({
-            product_id: it.product_id,
-            batch_number: it.batch_number || null,
-            expiry: it.expiry || null,
-            unit_sale_quantity: toNum(it.unit_sale_quantity),
-            unit_sale_price: toNum(it.unit_sale_price),
-            unit_return_quantity: toNum(it.unit_return_quantity),
-            item_discount_percentage: toNum(it.item_discount_percentage),
-            sub_total: toNum(it.sub_total),
-          })),
-      };
+      // Build payload - on CREATE: don't send posted_number (let server generate)
+      // On UPDATE: send posted_number (preserve existing)
+      const payloadToSend = returnId
+        ? {
+            posted_number: form.posted_number,
+            date: form.date,
+            customer_id: form.customer_id,
+            sale_invoice_id: form.sale_invoice_id || null,
+            discount_percentage: toNum(form.discount_percentage),
+            discount_amount: toNum(form.discount_amount),
+            tax_percentage: toNum(form.tax_percentage),
+            tax_amount: toNum(form.tax_amount),
+            gross_total: toNum(form.gross_total),
+            total: toNum(form.total),
+            items: form.items
+              .filter((it) => it.product_id)
+              .map((it) => ({
+                product_id: it.product_id,
+                batch_number: it.batch_number || null,
+                expiry: it.expiry || null,
+                unit_sale_quantity: toNum(it.unit_sale_quantity),
+                unit_sale_price: toNum(it.unit_sale_price),
+                unit_return_quantity: toNum(it.unit_return_quantity),
+                item_discount_percentage: toNum(it.item_discount_percentage),
+                sub_total: toNum(it.sub_total),
+              })),
+          }
+        : {
+            // Exclude posted_number on create - let server assign it
+            date: form.date,
+            customer_id: form.customer_id,
+            sale_invoice_id: form.sale_invoice_id || null,
+            discount_percentage: toNum(form.discount_percentage),
+            discount_amount: toNum(form.discount_amount),
+            tax_percentage: toNum(form.tax_percentage),
+            tax_amount: toNum(form.tax_amount),
+            gross_total: toNum(form.gross_total),
+            total: toNum(form.total),
+            items: form.items
+              .filter((it) => it.product_id)
+              .map((it) => ({
+                product_id: it.product_id,
+                batch_number: it.batch_number || null,
+                expiry: it.expiry || null,
+                unit_sale_quantity: toNum(it.unit_sale_quantity),
+                unit_sale_price: toNum(it.unit_sale_price),
+                unit_return_quantity: toNum(it.unit_return_quantity),
+                item_discount_percentage: toNum(it.item_discount_percentage),
+                sub_total: toNum(it.sub_total),
+              })),
+          };
 
       if (returnId) {
-        await axios.put(`/api/sale-returns/${returnId}`, payload);
+        await axios.put(`/api/sale-returns/${returnId}`, payloadToSend);
         toast.success("Sale return updated");
       } else {
-        await axios.post(`/api/sale-returns`, payload);
-        toast.success("Sale return created");
+        const { data: saved } = await axios.post(`/api/sale-returns`, payloadToSend);
+        setForm((prev) => ({ ...prev, posted_number: saved?.posted_number || prev.posted_number }));
+        toast.success(`Sale return created: ${saved?.posted_number || ""}`);
+        if (saved?.id) {
+          onSuccess?.(saved.id);
+        } else {
+          onSuccess?.();
+        }
       }
-      onSuccess?.();
     } catch (e) {
       console.error(e);
       toast.error("Failed to save sale return");

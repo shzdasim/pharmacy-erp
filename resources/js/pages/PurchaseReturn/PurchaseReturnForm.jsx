@@ -1099,35 +1099,72 @@ export default function PurchaseReturnForm({ returnId, initialData, onSuccess })
       }
 
       // Build payload and save
-      const payload = {
-        ...form,
-        purchase_invoice_id:
-          form.purchase_invoice_id && String(form.purchase_invoice_id).trim() !== "" ? form.purchase_invoice_id : null,
-        items: form.items
-          .filter((it) => it.product_id)
-          .map((it) => ({
-            ...it,
-            pack_size: toNum(it.pack_size),
-            pack_purchased_quantity: toNum(it.pack_purchased_quantity),
-            available_units: toNum(it.available_units),
-            return_pack_quantity: toNum(it.return_pack_quantity),
-            return_unit_quantity: toNum(it.return_unit_quantity),
-            pack_purchase_price: toNum(it.pack_purchase_price),
-            unit_purchase_price: toNum(it.unit_purchase_price),
-            item_discount_percentage: toNum(it.item_discount_percentage),
-            sub_total: toNum(it.sub_total),
-          })),
-      };
+      // On CREATE: don't send posted_number (let server generate)
+      // On UPDATE: send posted_number (preserve existing)
+      const payloadToSend = returnId
+        ? {
+            ...form,
+            purchase_invoice_id:
+              form.purchase_invoice_id && String(form.purchase_invoice_id).trim() !== "" ? form.purchase_invoice_id : null,
+            items: form.items
+              .filter((it) => it.product_id)
+              .map((it) => ({
+                ...it,
+                pack_size: toNum(it.pack_size),
+                pack_purchased_quantity: toNum(it.pack_purchased_quantity),
+                available_units: toNum(it.available_units),
+                return_pack_quantity: toNum(it.return_pack_quantity),
+                return_unit_quantity: toNum(it.return_unit_quantity),
+                pack_purchase_price: toNum(it.pack_purchase_price),
+                unit_purchase_price: toNum(it.unit_purchase_price),
+                item_discount_percentage: toNum(it.item_discount_percentage),
+                sub_total: toNum(it.sub_total),
+              })),
+          }
+        : {
+            // Exclude posted_number on create - let server assign it
+            date: form.date,
+            supplier_id: form.supplier_id,
+            purchase_invoice_id:
+              form.purchase_invoice_id && String(form.purchase_invoice_id).trim() !== "" ? form.purchase_invoice_id : null,
+            remarks: form.remarks,
+            gross_total: form.gross_total,
+            discount_percentage: form.discount_percentage,
+            discount_amount: form.discount_amount,
+            tax_percentage: form.tax_percentage,
+            tax_amount: form.tax_amount,
+            total: form.total,
+            items: form.items
+              .filter((it) => it.product_id)
+              .map((it) => ({
+                product_id: it.product_id,
+                batch: it.batch,
+                expiry: it.expiry,
+                pack_size: toNum(it.pack_size),
+                pack_purchased_quantity: toNum(it.pack_purchased_quantity),
+                available_units: toNum(it.available_units),
+                return_pack_quantity: toNum(it.return_pack_quantity),
+                return_unit_quantity: toNum(it.return_unit_quantity),
+                pack_purchase_price: toNum(it.pack_purchase_price),
+                unit_purchase_price: toNum(it.unit_purchase_price),
+                item_discount_percentage: toNum(it.item_discount_percentage),
+                sub_total: toNum(it.sub_total),
+              })),
+          };
 
       if (returnId) {
-        await axios.put(`/api/purchase-returns/${returnId}`, payload);
+        await axios.put(`/api/purchase-returns/${returnId}`, payloadToSend);
         toast.success("Purchase return updated");
       } else {
-        await axios.post(`/api/purchase-returns`, payload);
-        toast.success("Purchase return created");
+        const { data: saved } = await axios.post(`/api/purchase-returns`, payloadToSend);
+        setForm((prev) => ({ ...prev, posted_number: saved?.posted_number || prev.posted_number }));
+        toast.success(`Purchase return created: ${saved?.posted_number || ""}`);
+        if (saved?.id) {
+          onSuccess?.(saved.id);
+        } else {
+          onSuccess?.();
+        }
       }
-
-      onSuccess?.();
     } catch (err) {
       console.error(err);
       toast.error("Failed to save purchase return");
