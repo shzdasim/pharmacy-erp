@@ -34,6 +34,7 @@ function showAxiosError(err) {
 
 export default function PurchaseInvoiceForm({ invoiceId, onSuccess }) {
   const [form, setForm] = useState({
+    invoice_type: "debit", // "debit" = pay now, "credit" = pay later
     supplier_id: "",
     posted_number: "", // (auto on save, stays empty until saved)
     posted_date: new Date().toISOString().split("T")[0],
@@ -69,6 +70,9 @@ export default function PurchaseInvoiceForm({ invoiceId, onSuccess }) {
     ],
   });
 
+  // Track if user has manually edited total_paid
+  const [paidTouched, setPaidTouched] = useState(false);
+
   // only allow numbers (and optionally decimals)
   // allow decimals for price/percentage fields + Pack.Q and PBonus
   const sanitizeNumberInput = (value, allowDecimal = false) => {
@@ -91,7 +95,6 @@ export default function PurchaseInvoiceForm({ invoiceId, onSuccess }) {
   const [products, setProducts] = useState([]);
   const [currentField, setCurrentField] = useState("supplier");
   const [currentRowIndex, setCurrentRowIndex] = useState(0);
-  const [paidTouched, setPaidTouched] = useState(false);
 
   // Refs for navigation
   const supplierRef = useRef(null);
@@ -208,6 +211,24 @@ export default function PurchaseInvoiceForm({ invoiceId, onSuccess }) {
 
   const handleSelectChange = (field, value) => {
     setForm({ ...form, [field]: value?.value || "" });
+  };
+
+  // Handle invoice type change (debit = pay now, credit = pay later)
+  const handleInvoiceTypeChange = (type) => {
+    setForm((prev) => {
+      const next = { ...prev, invoice_type: type };
+      // When switching to credit, set total_paid to empty (we owe full amount)
+      if (type === "credit") {
+        next.total_paid = "";
+        setPaidTouched(true); // Mark as touched so it stays at 0
+      } else {
+        // Debit - auto-fill total_paid with total if not touched
+        if (!paidTouched) {
+          next.total_paid = next.total_amount ?? "";
+        }
+      }
+      return next;
+    });
   };
 
   function handleItemChange(index, field, rawValue) {
@@ -554,6 +575,11 @@ export default function PurchaseInvoiceForm({ invoiceId, onSuccess }) {
   const handleSubmit = async (e) => {
     e.preventDefault();
 
+    // Validate supplier selection for credit invoices
+    if (form.invoice_type === "credit" && !form.supplier_id) {
+      return toast.error("Please select a supplier for credit purchase");
+    }
+
     // 0) Block if any selected product has margin <= 0 (or not a number)
     const badItem = form.items.find((item) => {
       if (!item.product_id) return false;
@@ -656,9 +682,38 @@ export default function PurchaseInvoiceForm({ invoiceId, onSuccess }) {
     >
       {/* ================= HEADER SECTION ================= */}
       <div className="sticky top-0 bg-white shadow p-2 z-10" autoComplete="off">
-        <h2 className="text-sm font-bold mb-2">
-          Purchase Invoice (Use Enter to navigate, Alt+S to save)
-        </h2>
+        <div className="flex items-center justify-between mb-2">
+          <h2 className="text-sm font-bold">
+            Purchase Invoice (Use Enter to navigate, Alt+S to save)
+          </h2>
+          
+          {/* Invoice Type Radio Buttons */}
+          <div className="flex items-center gap-3 bg-gray-50 px-3 py-1.5 rounded border">
+            <label className="flex items-center gap-1 cursor-pointer">
+              <input
+                type="radio"
+                name="invoice_type"
+                value="debit"
+                checked={form.invoice_type === "debit"}
+                onChange={() => handleInvoiceTypeChange("debit")}
+                className="cursor-pointer"
+              />
+              <span className="text-xs font-medium text-gray-700">Debit</span>
+            </label>
+            <label className="flex items-center gap-1 cursor-pointer">
+              <input
+                type="radio"
+                name="invoice_type"
+                value="credit"
+                checked={form.invoice_type === "credit"}
+                onChange={() => handleInvoiceTypeChange("credit")}
+                className="cursor-pointer"
+              />
+              <span className="text-xs font-medium text-gray-700">Credit</span>
+            </label>
+          </div>
+        </div>
+        
         <table className="w-full border-collapse text-xs">
           <tbody>
             <tr>
