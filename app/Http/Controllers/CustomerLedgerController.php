@@ -64,8 +64,10 @@ class CustomerLedgerController extends Controller
             ->get();
 
         // ---- Invoice rows (read-through from sale_invoices) ----
+        // Only include credit invoices in the ledger
         $invoices = SaleInvoice::query()
             ->where('customer_id', $customerId)
+            ->where('invoice_type', 'credit')
             ->when($from, fn($q)=>$q->whereDate('invoice_date','>=',$from))
             ->when($to,   fn($q)=>$q->whereDate('invoice_date','<=',$to))
             ->orderBy('invoice_date')->orderBy('id')
@@ -80,7 +82,7 @@ class CustomerLedgerController extends Controller
             ]);
 
         $invoiceRows = $invoices->map(function ($inv) use ($customerId) {
-            // (3) Invoice Total – pick the first that exists on your model
+            // Invoice Total - pick the first that exists on your model
             $invoiceTotal = $this->num(
                 $inv->invoice_total ?? null,
                 $inv->total ?? null,
@@ -90,7 +92,7 @@ class CustomerLedgerController extends Controller
                 $inv->sub_total ?? null
             );
 
-            // (4) Received on Invoice – robust to spelling/alt columns
+            // Received on Invoice - robust to spelling/alt columns
             $receivedOnInv = $this->num(
                 $inv->total_receive ?? null,
                 $inv->total_recieve ?? null,
@@ -98,28 +100,25 @@ class CustomerLedgerController extends Controller
                 $inv->amount_received ?? null
             );
 
-            $balanceRemain = max($invoiceTotal - $receivedOnInv, 0);
+            // Balance remaining for this invoice (what's still owed)
+            $balanceRemaining = max($invoiceTotal - $receivedOnInv, 0);
 
             return [
-                'id'                => $inv->id, // invoice id (read-only row)
+                'id'                => $inv->id,
                 'customer_id'       => $customerId,
                 'sale_invoice_id'   => $inv->id,
                 'entry_type'        => 'invoice',
                 'is_manual'         => false,
                 'entry_date'        => optional($inv->invoice_date)->format('Y-m-d'),
-                // (1) Posted #
                 'posted_number'     => $this->str($inv->posted_number),
-                // Invoice # removed from UI
-                // (3) Invoice Total
                 'invoice_total'     => $invoiceTotal,
-                // (4) Received on Invoice
                 'total_received'    => $receivedOnInv,
-                // (5) Received Payment (only for payments / manual)
-                'credited_amount'   => 0,
+                // Payment (Credit) shows the remaining balance for this invoice
+                'credited_amount'   => $balanceRemaining,
                 'payment_ref'       => '',
-                // (6) Balance Remaining
-                'balance_remaining' => round($balanceRemain, 2),
-                'description'       => $this->str($inv->invoice_no ? ('Invoice #'.$inv->invoice_no) : null),
+                // Balance Remaining is the same as credited_amount for invoice rows
+                'balance_remaining' => round($balanceRemaining, 2),
+                'description'       => 'Sale Invoice ' . $this->str($inv->posted_number),
             ];
         });
 
@@ -149,11 +148,29 @@ class CustomerLedgerController extends Controller
             ];
         });
 
-        // ---- Merge & sort ----
+        // ---- Merge & sort by date, then by id ----
         $all = collect()->merge($invoiceRows)->merge($mp)
-            ->sortBy([['entry_date','asc'],['id','asc']])
+            ->sortBy([['entry_date','asc'], ['id','asc']], SORT_STRING, [false, false])
             ->values()
             ->all();
+
+        // ---- Calculate running balance ----
+        // Running balance = Previous balance + Invoice remaining - Payments
+        $runningBalance = 0.0;
+        foreach ($all as &$row) {
+            $type = $row['entry_type'];
+            
+            if ($type === 'invoice' || $type === 'manual') {
+                // Add the remaining balance (what customer owes) to running balance
+                $runningBalance += (float)$row['balance_remaining'];
+            } elseif ($type === 'payment') {
+                // Subtract the payment from running balance
+                $runningBalance -= (float)$row['credited_amount'];
+            }
+            
+            $row['running_balance'] = round($runningBalance, 2);
+        }
+        unset($row); // Break reference
 
         // ---- Summary cards ----
         $totalInvoiced = 0.0;
@@ -170,6 +187,8 @@ class CustomerLedgerController extends Controller
             }
         }
 
+        // Net Balance = Total Invoiced - Received on Invoice - Payments
+        // This is the total amount still owed by the customer
         $net = ($totalInvoiced - $receivedOnInv) - $paymentsCred;
 
         return response()->json([
@@ -301,11 +320,14 @@ class CustomerLedgerController extends Controller
         $customerId = (int)$request->customer_id;
 
         DB::transaction(function () use ($customerId) {
-            $invoices = SaleInvoice::where('customer_id', $customerId)->get([
-                'id','invoice_no','posted_number','invoice_date',
-                'invoice_total','total','grand_total','net_total','gross_amount','sub_total',
-                'total_receive','total_recieve','received','amount_received',
-            ]);
+            // Only rebuild credit invoices
+            $invoices = SaleInvoice::where('customer_id', $customerId)
+                ->where('invoice_type', 'credit')
+                ->get([
+                    'id','invoice_no','posted_number','invoice_date',
+                    'invoice_total','total','grand_total','net_total','gross_amount','sub_total',
+                    'total_receive','total_recieve','received','amount_received',
+                ]);
 
             foreach ($invoices as $inv) {
                 $invTotal = $this->num(
@@ -408,8 +430,10 @@ class CustomerLedgerController extends Controller
     if ($hasInvoiceNo)   $selectCols[] = 'invoice_no';
 
     // -------- 1) Read-through INVOICE rows from sale_invoices --------
+    // Only include credit invoices in the ledger
     $invoices = \App\Models\SaleInvoice::query()
         ->where('customer_id', $customer->id)
+        ->where('invoice_type', 'credit')
         ->when($from, fn($q) => $q->whereDate($dateColumn, '>=', $from))
         ->when($to,   fn($q) => $q->whereDate($dateColumn, '<=', $to))
         ->orderBy($dateColumn)

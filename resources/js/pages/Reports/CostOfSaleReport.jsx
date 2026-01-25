@@ -29,6 +29,7 @@ export default function CostOfSaleReport() {
   // ✅ Default from = yesterday, to = today
   const [fromDate, setFromDate] = useState(yesterdayStr());
   const [toDate, setToDate] = useState(todayStr());
+  const [invoiceType, setInvoiceType] = useState("all"); // all, credit, debit
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(false);
 
@@ -54,7 +55,7 @@ export default function CostOfSaleReport() {
     setLoading(true);
     try {
       const res = await axios.get("/api/reports/cost-of-sale", {
-        params: { from: fromDate, to: toDate },
+        params: { from: fromDate, to: toDate, invoice_type: invoiceType },
       });
       const data = Array.isArray(res.data)
         ? res.data
@@ -161,14 +162,36 @@ export default function CostOfSaleReport() {
         />
 
         {/* Filter toolbar */}
-        <GlassToolbar className="grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-          <div className="sm:col-span-2 lg:col-span-2">
+        <GlassToolbar className="grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-8 gap-3">
+          <div className="sm:col-span-1 lg:col-span-2">
             <label className="text-sm text-gray-700 mb-1 block">From</label>
             <GlassInput type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} className="w-full" />
           </div>
-          <div className="sm:col-span-2 lg:col-span-2">
+          <div className="sm:col-span-1 lg:col-span-2">
             <label className="text-sm text-gray-700 mb-1 block">To</label>
             <GlassInput type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} className="w-full" />
+          </div>
+          
+          {/* Invoice Type Filter - Dropdown */}
+          <div className="sm:col-span-1 lg:col-span-2">
+            <label className="text-sm text-gray-700 mb-1 block">Sale Type</label>
+            <div className="relative">
+              <select
+                value={invoiceType}
+                onChange={(e) => setInvoiceType(e.target.value)}
+                className="w-full h-9 px-3 pr-8 text-sm border-2 border-gray-200 rounded-lg appearance-none bg-white focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 cursor-pointer transition-all duration-200"
+              >
+                <option value="all">All Sales</option>
+                <option value="credit">Credit Sales</option>
+                <option value="debit">Debit Sales</option>
+              </select>
+              {/* Custom dropdown arrow */}
+              <div className="absolute inset-y-0 right-0 flex items-center px-2 pointer-events-none">
+                <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+              </div>
+            </div>
           </div>
 
           <div className="sm:col-span-1 lg:col-span-2 flex flex-wrap items-end gap-2">

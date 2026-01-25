@@ -11,6 +11,7 @@ import { recalcItem, recalcFooter } from "../../Formula/SaleInvoice.js";
 /* -------- utils (unchanged) -------- */
 const normalizeFormLoaded = (f) => {
   const safe = { ...f };
+  safe.invoice_type = safe.invoice_type ?? "debit";
   safe.remarks = safe.remarks ?? "";
   safe.doctor_name = safe.doctor_name ?? "";
   safe.patient_name = safe.patient_name ?? "";
@@ -47,6 +48,7 @@ const btnRoseGlass = "bg-rose-500/85 text-white ring-1 ring-white/20 backdrop-bl
 export default function SaleInvoiceForm({ saleId, onSuccess }) {
   /* -------- state -------- */
   const [form, setForm] = useState({
+    invoice_type: "debit",
     customer_id: "",
     posted_number: "", // ⚠️ now left empty; server assigns at save
     date: new Date().toISOString().split("T")[0],
@@ -208,6 +210,30 @@ export default function SaleInvoiceForm({ saleId, onSuccess }) {
   };
 
   /* -------- handlers -------- */
+  const handleInvoiceTypeChange = (type) => {
+    setForm((prev) => {
+      const next = { ...prev, invoice_type: type };
+      // When switching to credit, clear customer_id to force selection
+      // and set total_receive to 0 (true credit sale)
+      if (type === "credit") {
+        next.customer_id = "";
+        next.total_receive = "";
+        setReceiveTouched(true); // Mark as touched so it stays at 0
+      } else {
+        // Debit - auto-select lowest ID customer if none selected
+        if (!next.customer_id && customers.length > 0) {
+          const sortedCustomers = [...customers].sort((a, b) => (a?.id ?? 0) - (b?.id ?? 0));
+          next.customer_id = sortedCustomers[0].id;
+        }
+        // For debit, auto-fill total_receive with total
+        if (!receiveTouched) {
+          next.total_receive = next.total ?? "";
+        }
+      }
+      return next;
+    });
+  };
+
   const handleHeaderChange = (e) => {
     const { name, value } = e.target;
     // allow negatives for these summary fields
@@ -230,7 +256,9 @@ export default function SaleInvoiceForm({ saleId, onSuccess }) {
     const tmp = { ...form, [name]: v };
     let next = recalcFooter(tmp, name);
     next[name] = v;
-    if (!receiveTouched) next.total_receive = next.total ?? "";
+    // For credit sales, total_receive stays at 0; for debit, auto-fill if not touched
+    if (!receiveTouched && form.invoice_type !== "credit") next.total_receive = next.total ?? "";
+    if (form.invoice_type === "credit") next.total_receive = "";
     setForm(next);
   };
 
@@ -262,7 +290,9 @@ export default function SaleInvoiceForm({ saleId, onSuccess }) {
       if (field === "item_discount_percentage") row.item_discount_percentage = value;
       items[index] = row;
       let updated = recalcFooter({ ...prev, items }, "items");
-      if (!receiveTouched) updated.total_receive = updated.total ?? "";
+      // For credit sales, total_receive stays at 0; for debit, auto-fill if not touched
+      if (!receiveTouched && prev.invoice_type !== "credit") updated.total_receive = updated.total ?? "";
+      if (prev.invoice_type === "credit") updated.total_receive = "";
       return updated;
     });
   }
@@ -289,8 +319,17 @@ export default function SaleInvoiceForm({ saleId, onSuccess }) {
       };
       if (!receiveTouched) {
         const afterFooter = recalcFooter(next, "items");
-        afterFooter.total_receive = afterFooter.total ?? "";
+        // For credit sales, total_receive stays at 0; for debit, auto-fill if not touched
+        if (prev.invoice_type !== "credit") {
+          afterFooter.total_receive = afterFooter.total ?? "";
+        } else {
+          afterFooter.total_receive = "";
+        }
         return afterFooter;
+      }
+      // For credit sales, ensure total_receive stays at 0
+      if (prev.invoice_type === "credit") {
+        next.total_receive = "";
       }
       return next;
     });
@@ -300,7 +339,9 @@ export default function SaleInvoiceForm({ saleId, onSuccess }) {
     if (form.items.length <= 1) return;
     const items = form.items.filter((_, idx) => idx !== i);
     let next = recalcFooter({ ...form, items }, "items");
-    if (!receiveTouched) next.total_receive = next.total ?? "";
+    // For credit sales, total_receive stays at 0; for debit, auto-fill if not touched
+    if (!receiveTouched && form.invoice_type !== "credit") next.total_receive = next.total ?? "";
+    if (form.invoice_type === "credit") next.total_receive = "";
     setForm(next);
   };
 
@@ -326,7 +367,9 @@ export default function SaleInvoiceForm({ saleId, onSuccess }) {
         "revert_duplicate_product"
       );
       let next = recalcFooter({ ...prev, items: items2 }, "items");
-      if (!receiveTouched) next.total_receive = next.total ?? "";
+      // For credit sales, total_receive stays at 0; for debit, auto-fill if not touched
+      if (!receiveTouched && prev.invoice_type !== "credit") next.total_receive = next.total ?? "";
+      if (prev.invoice_type === "credit") next.total_receive = "";
       return next;
     });
   };
@@ -394,7 +437,9 @@ export default function SaleInvoiceForm({ saleId, onSuccess }) {
         "product_select"
       );
       let next = recalcFooter({ ...prev, items }, "items");
-      if (!receiveTouched) next.total_receive = next.total ?? "";
+      // For credit sales, total_receive stays at 0; for debit, auto-fill if not touched
+      if (!receiveTouched && prev.invoice_type !== "credit") next.total_receive = next.total ?? "";
+      if (prev.invoice_type === "credit") next.total_receive = "";
       return next;
     });
 
@@ -434,7 +479,9 @@ export default function SaleInvoiceForm({ saleId, onSuccess }) {
         if (exp) updated.expiry = exp;
         items[rowIndex] = recalcItem(updated, "batch_select");
         let next = recalcFooter({ ...prev, items }, "items");
-        if (!receiveTouched) next.total_receive = next.total ?? "";
+        // For credit sales, total_receive stays at 0; for debit, auto-fill if not touched
+        if (!receiveTouched && prev.invoice_type !== "credit") next.total_receive = next.total ?? "";
+        if (prev.invoice_type === "credit") next.total_receive = "";
         return next;
       });
       setTimeout(() => {
@@ -504,6 +551,11 @@ export default function SaleInvoiceForm({ saleId, onSuccess }) {
   const handleSubmit = async (e) => {
     e.preventDefault();
 
+    // Validate customer selection for credit invoices
+    if (form.invoice_type === "credit" && !form.customer_id) {
+      return toast.error("Please select a customer for credit sale");
+    }
+
     // Check if any item has a narcotic product
     const hasNarcoticProduct = form.items.some(item => item.is_narcotic === true);
 
@@ -556,6 +608,7 @@ export default function SaleInvoiceForm({ saleId, onSuccess }) {
     // Let backend assign posted_number; we send whatever is present.
     const payload = {
       ...form,
+      invoice_type: form.invoice_type ?? "debit",
       discount_percentage:
         form.discount_percentage === "-" || form.discount_percentage === "-."
           ? "-0"
@@ -706,6 +759,32 @@ export default function SaleInvoiceForm({ saleId, onSuccess }) {
           <div className="text-xs font-semibold">Sale Invoice</div>
 
           <div className="ml-auto flex items-center gap-2">
+            {/* Invoice Type Radio Buttons */}
+            <div className="flex items-center gap-2 mr-2 bg-gray-50 px-2 py-1 rounded border">
+              <label className="flex items-center gap-1 cursor-pointer">
+                <input
+                  type="radio"
+                  name="invoice_type"
+                  value="debit"
+                  checked={form.invoice_type === "debit"}
+                  onChange={() => handleInvoiceTypeChange("debit")}
+                  className="cursor-pointer"
+                />
+                <span className="text-[10px] font-medium text-gray-700">Debit</span>
+              </label>
+              <label className="flex items-center gap-1 cursor-pointer">
+                <input
+                  type="radio"
+                  name="invoice_type"
+                  value="credit"
+                  checked={form.invoice_type === "credit"}
+                  onChange={() => handleInvoiceTypeChange("credit")}
+                  className="cursor-pointer"
+                />
+                <span className="text-[10px] font-medium text-gray-700">Credit</span>
+              </label>
+            </div>
+
             <div className="hidden sm:flex items-center gap-2 text-[10px] text-gray-600">
               <span className="inline-flex items-center gap-1">
                 <span className="px-1 py-0.5 border rounded bg-gray-50">Alt</span>

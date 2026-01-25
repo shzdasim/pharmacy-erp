@@ -9,6 +9,7 @@ class SaleInvoice extends Model
     protected $fillable = [
         'user_id',
         'customer_id',
+        'invoice_type',
         'posted_number',
         'date',
         'remarks',

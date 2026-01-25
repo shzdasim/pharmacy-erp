@@ -153,6 +153,7 @@ class SaleInvoiceController extends Controller
         // ⬇️ posted_number is NOT provided by client anymore (server assigns)
         $data = $request->validate([
             'customer_id'         => 'required|exists:customers,id',
+            'invoice_type'        => 'nullable|string|in:credit,debit,default:debit',
             'date'                => 'required|date',
             'remarks'             => 'nullable|string',
             'doctor_name'         => 'nullable|string',
@@ -189,6 +190,7 @@ class SaleInvoiceController extends Controller
             $invoice = SaleInvoice::create([
                 'user_id'            => $request->user()->id,
                 'customer_id'        => $data['customer_id'],
+                'invoice_type'       => $data['invoice_type'] ?? 'debit',
                 'posted_number'      => $posted, // assigned on save
                 'date'               => $data['date'],
                 'remarks'            => $data['remarks'] ?? null,
@@ -206,6 +208,26 @@ class SaleInvoiceController extends Controller
 
             $this->createItemsAndReduce($invoice, $data['items']);
 
+            // Create customer ledger entry ONLY for credit sales
+            $invoiceType = $data['invoice_type'] ?? 'debit';
+            if ($invoiceType === 'credit') {
+                $ledger = new CustomerLedger();
+                $ledger->customer_id       = $data['customer_id'];
+                $ledger->sale_invoice_id   = $invoice->id;
+                $ledger->entry_type        = 'invoice';
+                $ledger->is_manual         = false;
+                $ledger->entry_date        = $data['date'];
+                $ledger->posted_number     = $posted;
+                $ledger->invoice_total     = $data['total'];
+                $ledger->total_received    = $data['total_receive'] ?? 0;
+                $ledger->balance_remaining = max((float)$data['total'] - (float)($data['total_receive'] ?? 0), 0);
+                $ledger->credited_amount   = 0;
+                $ledger->payment_ref       = null;
+                $ledger->description       = 'Sale invoice ' . $posted;
+                $ledger->created_by        = $request->user()->id;
+                $ledger->save();
+            }
+
             return response()->json(['message' => 'Sale Invoice created', 'id' => $invoice->id], 201);
         });
     }
@@ -218,6 +240,7 @@ class SaleInvoiceController extends Controller
         // keep posted_number unique on update (user may not change it)
         $data = $request->validate([
             'customer_id'         => 'required|exists:customers,id',
+            'invoice_type'        => 'nullable|string|in:credit,debit',
             'posted_number'       => 'required|string|unique:sale_invoices,posted_number,' . $invoice->id,
             'date'                => 'required|date',
             'remarks'             => 'nullable|string',
@@ -251,8 +274,13 @@ class SaleInvoiceController extends Controller
             $this->revertItems($invoice);
             $invoice->items()->delete();
 
+            // Store old invoice type before update
+            $oldInvoiceType = $invoice->invoice_type ?? 'debit';
+            $newInvoiceType = $data['invoice_type'] ?? $oldInvoiceType;
+
             $invoice->update([
                 'customer_id'        => $data['customer_id'],
+                'invoice_type'       => $newInvoiceType,
                 'posted_number'      => $data['posted_number'], // keep whatever is on the record
                 'date'               => $data['date'],
                 'remarks'            => $data['remarks'] ?? null,
@@ -269,6 +297,47 @@ class SaleInvoiceController extends Controller
             ]);
 
             $this->createItemsAndReduce($invoice, $data['items']);
+
+            // Handle customer ledger entries
+            // If invoice was previously credit but is now debit, delete the ledger entry
+            if ($oldInvoiceType === 'credit' && $newInvoiceType !== 'credit') {
+                // Remove existing ledger entry for this invoice
+                CustomerLedger::where('sale_invoice_id', $invoice->id)->delete();
+            }
+            // If invoice is now credit, create or update ledger entry
+            elseif ($newInvoiceType === 'credit') {
+                // Check if a ledger entry already exists for this invoice
+                $existingLedger = CustomerLedger::where('sale_invoice_id', $invoice->id)->first();
+                
+                if ($existingLedger) {
+                    // Update existing ledger entry
+                    $existingLedger->update([
+                        'customer_id'       => $data['customer_id'],
+                        'entry_date'        => $data['date'],
+                        'invoice_total'     => $data['total'],
+                        'total_received'    => $data['total_receive'] ?? 0,
+                        'balance_remaining' => max((float)$data['total'] - (float)($data['total_receive'] ?? 0), 0),
+                        'description'       => 'Sale invoice ' . $data['posted_number'],
+                    ]);
+                } else {
+                    // Create new ledger entry
+                    $ledger = new CustomerLedger();
+                    $ledger->customer_id       = $data['customer_id'];
+                    $ledger->sale_invoice_id   = $invoice->id;
+                    $ledger->entry_type        = 'invoice';
+                    $ledger->is_manual         = false;
+                    $ledger->entry_date        = $data['date'];
+                    $ledger->posted_number     = $data['posted_number'];
+                    $ledger->invoice_total     = $data['total'];
+                    $ledger->total_received    = $data['total_receive'] ?? 0;
+                    $ledger->balance_remaining = max((float)$data['total'] - (float)($data['total_receive'] ?? 0), 0);
+                    $ledger->credited_amount   = 0;
+                    $ledger->payment_ref       = null;
+                    $ledger->description       = 'Sale invoice ' . $data['posted_number'];
+                    $ledger->created_by        = optional(Auth::user())->id;
+                    $ledger->save();
+                }
+            }
 
             return response()->json(['message' => 'Sale Invoice updated', 'id' => $invoice->id]);
         });

@@ -17,7 +17,7 @@ use Carbon\Carbon;
 class ReportsController extends Controller
 {
     /**
-     * GET /api/reports/cost-of-sale?from=YYYY-MM-DD&to=YYYY-MM-DD
+     * GET /api/reports/cost-of-sale?from=YYYY-MM-DD&to=YYYY-MM-DD&invoice_type=credit|debit|all
      * Returns rows: sale_date, gross_sale, item_discount, discount_amount, tax_amount,
      * total_sales, sale_return, cost_of_sales
      *
@@ -32,6 +32,7 @@ class ReportsController extends Controller
         try {
             $from = $req->query('from');
             $to   = $req->query('to');
+            $invoiceType = $req->query('invoice_type', 'all'); // all, credit, or debit
 
             // Defaults: current month
             $fromDate = $from ? Carbon::parse($from)->startOfDay() : Carbon::now()->startOfMonth();
@@ -40,10 +41,24 @@ class ReportsController extends Controller
                 [$fromDate, $toDate] = [$toDate->copy()->startOfDay(), $fromDate->copy()->endOfDay()];
             }
 
+            // Validate invoice_type
+            $validInvoiceTypes = ['all', 'credit', 'debit'];
+            if (!in_array($invoiceType, $validInvoiceTypes)) {
+                $invoiceType = 'all';
+            }
+
+            // Build base query for sale_invoices
+            $saleQuery = DB::table('sale_invoices as si')
+                ->whereBetween('si.date', [$fromDate, $toDate]);
+
+            // Apply invoice_type filter if not 'all'
+            if ($invoiceType !== 'all') {
+                $saleQuery->where('si.invoice_type', $invoiceType);
+            }
+
             // ===== Sales header sums (per day) =====
             // sale_invoices has: date, gross_amount, item_discount, discount_amount, tax_amount, total
-            $sales = DB::table('sale_invoices as si')
-                ->whereBetween('si.date', [$fromDate, $toDate])
+            $sales = $saleQuery
                 ->selectRaw('DATE(si.date) as sale_date')
                 ->selectRaw('SUM(COALESCE(si.gross_amount, 0))      as gross_sale')
                 ->selectRaw('SUM(COALESCE(si.item_discount, 0))     as item_discount')
@@ -56,6 +71,7 @@ class ReportsController extends Controller
 
             // ===== Sale returns header sums (per day) =====
             // sale_returns has: date, total (also gross_total but we need total for NetSale)
+            // Note: Sale returns are not filtered by invoice_type as they are always linked to original invoices
             $returns = DB::table('sale_returns as sr')
                 ->whereBetween('sr.date', [$fromDate, $toDate])
                 ->selectRaw('DATE(sr.date) as sale_date')
@@ -64,12 +80,20 @@ class ReportsController extends Controller
                 ->get()
                 ->keyBy('sale_date');
 
-            // ===== COGS on sales (per day) =====
-            // Approximate cost using products.avg_price * sale_invoice_items.quantity
-            $cogsSales = DB::table('sale_invoice_items as sii')
+            // Build base query for COGS (sale_invoice_items joined with sale_invoices)
+            $cogsQuery = DB::table('sale_invoice_items as sii')
                 ->join('sale_invoices as si', 'si.id', '=', 'sii.sale_invoice_id')
                 ->join('products as p', 'p.id', '=', 'sii.product_id')
-                ->whereBetween('si.date', [$fromDate, $toDate])
+                ->whereBetween('si.date', [$fromDate, $toDate]);
+
+            // Apply invoice_type filter if not 'all'
+            if ($invoiceType !== 'all') {
+                $cogsQuery->where('si.invoice_type', $invoiceType);
+            }
+
+            // ===== COGS on sales (per day) =====
+            // Approximate cost using products.avg_price * sale_invoice_items.quantity
+            $cogsSales = $cogsQuery
                 ->selectRaw('DATE(si.date) as sale_date')
                 ->selectRaw('SUM(COALESCE(sii.quantity, 0) * COALESCE(p.avg_price, 0)) as cogs_sales')
                 ->groupBy('sale_date')
@@ -77,7 +101,7 @@ class ReportsController extends Controller
                 ->keyBy('sale_date');
 
             // ===== COGS reversed on returns (per day) =====
-            // Approximate cost using products.avg_price * sale_return_items.unit_return_quantity
+            // Note: Returns are not filtered by invoice_type as they relate to original sale invoices
             $cogsReturns = DB::table('sale_return_items as sri')
                 ->join('sale_returns as sr', 'sr.id', '=', 'sri.sale_return_id')
                 ->join('products as p', 'p.id', '=', 'sri.product_id')
