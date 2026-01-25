@@ -80,7 +80,7 @@ export default function SaleInvoiceShow() {
     () => Math.max(invTotal - invReceived, 0),
     [invTotal, invReceived]
   );
-  const needsChoice = (invReceived > 0) || (Math.abs(invRemaining) > 0.0001);
+  const needsChoice = invReceived > 0;
 
   // After delete, go to previous or index
   const goToPrevOrIndex = async (deletedId) => {

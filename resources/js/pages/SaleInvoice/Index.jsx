@@ -108,7 +108,7 @@ export default function SaleInvoicesIndex() {
   const invRemaining = Math.max(invTotal - invReceived, 0);
 
   const [deleteMode, setDeleteMode] = useState("none"); // 'credit' | 'refund' | 'none'
-  const needsChoice = !!selectedInvoice && (invReceived > 0 || Math.abs(invRemaining) > 0.0001);
+  const needsChoice = !!selectedInvoice && invReceived > 0;
 
   const openDeleteModal = (id) => {
     if (!can.delete) return toast.error("You don't have permission to delete sale invoices.");
