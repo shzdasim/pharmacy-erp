@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Authorizables\CostOfSaleReport;
 use App\Authorizables\CurrentStockReport;
+use App\Authorizables\ProductComprehensiveReport;
 use App\Authorizables\PurchaseDetailReport;
 use App\Authorizables\SaleDetailReport;
 use App\Authorizables\StockAdjustmentReport;
@@ -835,5 +836,467 @@ class ReportsController extends Controller
 
         $filename = 'stock-adjustment-' . ($from ?: 'start') . '-to-' . ($to ?: 'today') . '.pdf';
         return $pdf->stream($filename);
+    }
+
+    /**
+     * GET /api/reports/product-comprehensive
+     * Returns a comprehensive report of purchase and sale history for a specific product
+     */
+    public function productComprehensive(Request $req)
+    {
+        $this->authorize('view', ProductComprehensiveReport::class);
+
+        $from = $req->query('from');
+        $to   = $req->query('to');
+        $productId = $req->query('product_id');
+
+        // Validate product_id
+        if (!$productId) {
+            return response()->json([
+                'message' => 'Product ID is required',
+            ], 400);
+        }
+
+        // Get product details
+        $product = Product::find($productId);
+        if (!$product) {
+            return response()->json([
+                'message' => 'Product not found',
+            ], 404);
+        }
+
+        // Defaults: current month
+        $fromDate = $from ? Carbon::parse($from)->startOfDay() : Carbon::now()->startOfMonth();
+        $toDate   = $to   ? Carbon::parse($to)->endOfDay()   : Carbon::now()->endOfDay();
+        if ($fromDate->gt($toDate)) {
+            [$fromDate, $toDate] = [$toDate->copy()->startOfDay(), $fromDate->copy()->endOfDay()];
+        }
+
+        // Get product with related data
+        $productData = [
+            'id' => $product->id,
+            'product_code' => $product->product_code,
+            'name' => $product->name,
+            'pack_size' => (int)($product->pack_size ?? 1),
+            'current_quantity' => (int)($product->quantity ?? 0),
+            'category_name' => $product->category->name ?? null,
+            'brand_name' => $product->brand->name ?? null,
+        ];
+
+        // ===== Purchase Invoices =====
+        $purchases = DB::table('purchase_invoice_items as pii')
+            ->join('purchase_invoices as pi', 'pi.id', '=', 'pii.purchase_invoice_id')
+            ->join('suppliers as s', 's.id', '=', 'pi.supplier_id')
+            ->where('pii.product_id', $productId)
+            ->whereBetween('pi.posted_date', [$fromDate, $toDate])
+            ->select([
+                'pi.posted_date as date',
+                'pi.posted_number as reference_number',
+                'pi.invoice_number',
+                's.name as counter_party',
+                'pii.batch',
+                'pii.expiry',
+                'pii.unit_quantity as quantity',
+                'pii.unit_purchase_price as unit_price',
+                'pii.sub_total',
+            ])
+            ->orderBy('date', 'asc')
+            ->get()
+            ->map(function ($item) {
+                return [
+                    'date' => $item->date instanceof \Carbon\Carbon ? $item->date->format('Y-m-d') : (is_string($item->date) ? substr($item->date, 0, 10) : $item->date),
+                    'reference_number' => $item->reference_number,
+                    'type' => 'purchase',
+                    'type_label' => 'Purchase',
+                    'counter_party' => $item->counter_party,
+                    'batch' => $item->batch,
+                    'expiry' => $item->expiry ? (($item->expiry instanceof \Carbon\Carbon) ? $item->expiry->format('Y-m-d') : (is_string($item->expiry) ? substr($item->expiry, 0, 10) : $item->expiry)) : null,
+                    'quantity_in' => (int)($item->quantity ?? 0),
+                    'quantity_out' => 0,
+                    'unit_price' => (float)($item->unit_price ?? 0),
+                    'sub_total' => (float)($item->sub_total ?? 0),
+                ];
+            });
+
+        // ===== Purchase Returns =====
+        $purchaseReturns = DB::table('purchase_return_items as pri')
+            ->join('purchase_returns as pr', 'pr.id', '=', 'pri.purchase_return_id')
+            ->join('suppliers as s', 's.id', '=', 'pr.supplier_id')
+            ->where('pri.product_id', $productId)
+            ->whereBetween('pr.date', [$fromDate, $toDate])
+            ->select([
+                'pr.date',
+                'pr.posted_number as reference_number',
+                's.name as counter_party',
+                'pri.batch',
+                'pri.expiry',
+                'pri.return_unit_quantity as quantity',
+                'pri.unit_purchase_price as unit_price',
+                'pri.sub_total',
+            ])
+            ->orderBy('date', 'asc')
+            ->get()
+            ->map(function ($item) {
+                return [
+                    'date' => $item->date instanceof \Carbon\Carbon ? $item->date->format('Y-m-d') : (is_string($item->date) ? substr($item->date, 0, 10) : $item->date),
+                    'reference_number' => $item->reference_number,
+                    'type' => 'purchase_return',
+                    'type_label' => 'Purchase Return',
+                    'counter_party' => $item->counter_party,
+                    'batch' => $item->batch,
+                    'expiry' => $item->expiry ? (($item->expiry instanceof \Carbon\Carbon) ? $item->expiry->format('Y-m-d') : (is_string($item->expiry) ? substr($item->expiry, 0, 10) : $item->expiry)) : null,
+                    'quantity_in' => 0,
+                    'quantity_out' => (int)($item->quantity ?? 0),
+                    'unit_price' => (float)($item->unit_price ?? 0),
+                    'sub_total' => (float)($item->sub_total ?? 0),
+                ];
+            });
+
+        // ===== Sale Invoices =====
+        $sales = DB::table('sale_invoice_items as sii')
+            ->join('sale_invoices as si', 'si.id', '=', 'sii.sale_invoice_id')
+            ->join('customers as c', 'c.id', '=', 'si.customer_id')
+            ->where('sii.product_id', $productId)
+            ->whereBetween('si.date', [$fromDate, $toDate])
+            ->select([
+                'si.date',
+                'si.posted_number as reference_number',
+                'c.name as counter_party',
+                'sii.batch_number as batch',
+                'sii.expiry',
+                'sii.quantity',
+                'sii.price as unit_price',
+                'sii.sub_total',
+            ])
+            ->orderBy('date', 'asc')
+            ->get()
+            ->map(function ($item) {
+                return [
+                    'date' => $item->date instanceof \Carbon\Carbon ? $item->date->format('Y-m-d') : (is_string($item->date) ? substr($item->date, 0, 10) : $item->date),
+                    'reference_number' => $item->reference_number,
+                    'type' => 'sale',
+                    'type_label' => 'Sale',
+                    'counter_party' => $item->counter_party,
+                    'batch' => $item->batch,
+                    'expiry' => $item->expiry ? (($item->expiry instanceof \Carbon\Carbon) ? $item->expiry->format('Y-m-d') : (is_string($item->expiry) ? substr($item->expiry, 0, 10) : $item->expiry)) : null,
+                    'quantity_in' => 0,
+                    'quantity_out' => (int)($item->quantity ?? 0),
+                    'unit_price' => (float)($item->unit_price ?? 0),
+                    'sub_total' => (float)($item->sub_total ?? 0),
+                ];
+            });
+
+        // ===== Sale Returns =====
+        $saleReturns = DB::table('sale_return_items as sri')
+            ->join('sale_returns as sr', 'sr.id', '=', 'sri.sale_return_id')
+            ->join('customers as c', 'c.id', '=', 'sr.customer_id')
+            ->where('sri.product_id', $productId)
+            ->whereBetween('sr.date', [$fromDate, $toDate])
+            ->select([
+                'sr.date',
+                'sr.posted_number as reference_number',
+                'c.name as counter_party',
+                'sri.batch_number as batch',
+                'sri.expiry',
+                'sri.unit_return_quantity as quantity',
+                'sri.unit_sale_price as unit_price',
+                'sri.sub_total',
+            ])
+            ->orderBy('date', 'asc')
+            ->get()
+            ->map(function ($item) {
+                return [
+                    'date' => $item->date instanceof \Carbon\Carbon ? $item->date->format('Y-m-d') : (is_string($item->date) ? substr($item->date, 0, 10) : $item->date),
+                    'reference_number' => $item->reference_number,
+                    'type' => 'sale_return',
+                    'type_label' => 'Sale Return',
+                    'counter_party' => $item->counter_party,
+                    'batch' => $item->batch,
+                    'expiry' => $item->expiry ? (($item->expiry instanceof \Carbon\Carbon) ? $item->expiry->format('Y-m-d') : (is_string($item->expiry) ? substr($item->expiry, 0, 10) : $item->expiry)) : null,
+                    'quantity_in' => (int)($item->quantity ?? 0),
+                    'quantity_out' => 0,
+                    'unit_price' => (float)($item->unit_price ?? 0),
+                    'sub_total' => (float)($item->sub_total ?? 0),
+                ];
+            });
+
+        // Merge all transactions and sort by date
+        $allTransactions = $purchases
+            ->concat($purchaseReturns)
+            ->concat($sales)
+            ->concat($saleReturns)
+            ->sortBy('date')
+            ->values();
+
+        // Calculate summary
+        $totalPurchases = $purchases->sum('sub_total');
+        $totalPurchaseReturns = $purchaseReturns->sum('sub_total');
+        $totalSales = $sales->sum('sub_total');
+        $totalSaleReturns = $saleReturns->sum('sub_total');
+        $totalQuantityIn = $purchases->sum('quantity_in') + $purchaseReturns->sum('quantity_in') + $saleReturns->sum('quantity_in');
+        $totalQuantityOut = $sales->sum('quantity_out') + $purchaseReturns->sum('quantity_out');
+
+        $summary = [
+            'total_purchases' => round($totalPurchases, 2),
+            'total_purchase_returns' => round($totalPurchaseReturns, 2),
+            'net_purchases' => round($totalPurchases - $totalPurchaseReturns, 2),
+            'total_sales' => round($totalSales, 2),
+            'total_sale_returns' => round($totalSaleReturns, 2),
+            'net_sales' => round($totalSales - $totalSaleReturns, 2),
+            'total_quantity_in' => $totalQuantityIn,
+            'total_quantity_out' => $totalQuantityOut,
+            'current_quantity' => $productData['current_quantity'],
+        ];
+
+        return response()->json([
+            'product' => $productData,
+            'date_range' => [
+                'from' => $fromDate->format('Y-m-d'),
+                'to' => $toDate->format('Y-m-d'),
+            ],
+            'transactions' => $allTransactions,
+            'summary' => $summary,
+        ]);
+    }
+
+    /**
+     * GET /api/reports/product-comprehensive/pdf
+     */
+    public function productComprehensivePdf(Request $req)
+    {
+        $this->authorize('export', ProductComprehensiveReport::class);
+
+        $rows = $this->buildProductComprehensiveRows(
+            $req->query('from'),
+            $req->query('to'),
+            $req->query('product_id'),
+        );
+
+        $meta = [
+            'from' => $req->query('from'),
+            'to' => $req->query('to'),
+            'generatedAt' => now()->format('Y-m-d H:i'),
+        ];
+
+        $pdf = Pdf::loadView('reports.product_comprehensive_pdf', [
+            'product' => $rows['product'],
+            'transactions' => $rows['transactions'],
+            'summary' => $rows['summary'],
+            'meta' => $meta,
+        ])->setPaper('a4', 'landscape');
+
+        $filename = 'product-comprehensive-' . ($rows['product']['product_code'] ?? 'product') . '.pdf';
+        return $pdf->stream($filename);
+    }
+
+    private function buildProductComprehensiveRows($from, $to, $productId)
+    {
+        // Validate product_id
+        if (!$productId) {
+            return [
+                'product' => null,
+                'transactions' => [],
+                'summary' => [],
+            ];
+        }
+
+        // Get product details
+        $product = Product::find($productId);
+        if (!$product) {
+            return [
+                'product' => null,
+                'transactions' => [],
+                'summary' => [],
+            ];
+        }
+
+        // Defaults: current month
+        $fromDate = $from ? Carbon::parse($from)->startOfDay() : Carbon::now()->startOfMonth();
+        $toDate = $to ? Carbon::parse($to)->endOfDay() : Carbon::now()->endOfDay();
+        if ($fromDate->gt($toDate)) {
+            [$fromDate, $toDate] = [$toDate->copy()->startOfDay(), $fromDate->copy()->endOfDay()];
+        }
+
+        // Get product with related data
+        $productData = [
+            'id' => $product->id,
+            'product_code' => $product->product_code,
+            'name' => $product->name,
+            'pack_size' => (int)($product->pack_size ?? 1),
+            'current_quantity' => (int)($product->quantity ?? 0),
+            'category_name' => $product->category->name ?? null,
+            'brand_name' => $product->brand->name ?? null,
+        ];
+
+        // ===== Purchase Invoices =====
+        $purchases = DB::table('purchase_invoice_items as pii')
+            ->join('purchase_invoices as pi', 'pi.id', '=', 'pii.purchase_invoice_id')
+            ->join('suppliers as s', 's.id', '=', 'pi.supplier_id')
+            ->where('pii.product_id', $productId)
+            ->whereBetween('pi.posted_date', [$fromDate, $toDate])
+            ->select([
+                'pi.posted_date as date',
+                'pi.posted_number as reference_number',
+                'pi.invoice_number',
+                's.name as counter_party',
+                'pii.batch',
+                'pii.expiry',
+                'pii.unit_quantity as quantity',
+                'pii.unit_purchase_price as unit_price',
+                'pii.sub_total',
+            ])
+            ->orderBy('date', 'asc')
+            ->get()
+            ->map(function ($item) {
+                return [
+                    'date' => $item->date instanceof \Carbon\Carbon ? $item->date->format('Y-m-d') : (is_string($item->date) ? substr($item->date, 0, 10) : $item->date),
+                    'reference_number' => $item->reference_number,
+                    'type' => 'purchase',
+                    'type_label' => 'Purchase',
+                    'counter_party' => $item->counter_party,
+                    'batch' => $item->batch,
+                    'expiry' => $item->expiry ? (($item->expiry instanceof \Carbon\Carbon) ? $item->expiry->format('Y-m-d') : (is_string($item->expiry) ? substr($item->expiry, 0, 10) : $item->expiry)) : null,
+                    'quantity_in' => (int)($item->quantity ?? 0),
+                    'quantity_out' => 0,
+                    'unit_price' => (float)($item->unit_price ?? 0),
+                    'sub_total' => (float)($item->sub_total ?? 0),
+                ];
+            });
+
+        // ===== Purchase Returns =====
+        $purchaseReturns = DB::table('purchase_return_items as pri')
+            ->join('purchase_returns as pr', 'pr.id', '=', 'pri.purchase_return_id')
+            ->join('suppliers as s', 's.id', '=', 'pr.supplier_id')
+            ->where('pri.product_id', $productId)
+            ->whereBetween('pr.date', [$fromDate, $toDate])
+            ->select([
+                'pr.date',
+                'pr.posted_number as reference_number',
+                's.name as counter_party',
+                'pri.batch',
+                'pri.expiry',
+                'pri.return_unit_quantity as quantity',
+                'pri.unit_purchase_price as unit_price',
+                'pri.sub_total',
+            ])
+            ->orderBy('date', 'asc')
+            ->get()
+            ->map(function ($item) {
+                return [
+                    'date' => $item->date instanceof \Carbon\Carbon ? $item->date->format('Y-m-d') : (is_string($item->date) ? substr($item->date, 0, 10) : $item->date),
+                    'reference_number' => $item->reference_number,
+                    'type' => 'purchase_return',
+                    'type_label' => 'Purchase Return',
+                    'counter_party' => $item->counter_party,
+                    'batch' => $item->batch,
+                    'expiry' => $item->expiry ? (($item->expiry instanceof \Carbon\Carbon) ? $item->expiry->format('Y-m-d') : (is_string($item->expiry) ? substr($item->expiry, 0, 10) : $item->expiry)) : null,
+                    'quantity_in' => 0,
+                    'quantity_out' => (int)($item->quantity ?? 0),
+                    'unit_price' => (float)($item->unit_price ?? 0),
+                    'sub_total' => (float)($item->sub_total ?? 0),
+                ];
+            });
+
+        // ===== Sale Invoices =====
+        $sales = DB::table('sale_invoice_items as sii')
+            ->join('sale_invoices as si', 'si.id', '=', 'sii.sale_invoice_id')
+            ->join('customers as c', 'c.id', '=', 'si.customer_id')
+            ->where('sii.product_id', $productId)
+            ->whereBetween('si.date', [$fromDate, $toDate])
+            ->select([
+                'si.date',
+                'si.posted_number as reference_number',
+                'c.name as counter_party',
+                'sii.batch_number as batch',
+                'sii.expiry',
+                'sii.quantity',
+                'sii.price as unit_price',
+                'sii.sub_total',
+            ])
+            ->orderBy('date', 'asc')
+            ->get()
+            ->map(function ($item) {
+                return [
+                    'date' => $item->date instanceof \Carbon\Carbon ? $item->date->format('Y-m-d') : (is_string($item->date) ? substr($item->date, 0, 10) : $item->date),
+                    'reference_number' => $item->reference_number,
+                    'type' => 'sale',
+                    'type_label' => 'Sale',
+                    'counter_party' => $item->counter_party,
+                    'batch' => $item->batch,
+                    'expiry' => $item->expiry ? (($item->expiry instanceof \Carbon\Carbon) ? $item->expiry->format('Y-m-d') : (is_string($item->expiry) ? substr($item->expiry, 0, 10) : $item->expiry)) : null,
+                    'quantity_in' => 0,
+                    'quantity_out' => (int)($item->quantity ?? 0),
+                    'unit_price' => (float)($item->unit_price ?? 0),
+                    'sub_total' => (float)($item->sub_total ?? 0),
+                ];
+            });
+
+        // ===== Sale Returns =====
+        $saleReturns = DB::table('sale_return_items as sri')
+            ->join('sale_returns as sr', 'sr.id', '=', 'sri.sale_return_id')
+            ->join('customers as c', 'c.id', '=', 'sr.customer_id')
+            ->where('sri.product_id', $productId)
+            ->whereBetween('sr.date', [$fromDate, $toDate])
+            ->select([
+                'sr.date',
+                'sr.posted_number as reference_number',
+                'c.name as counter_party',
+                'sri.batch_number as batch',
+                'sri.expiry',
+                'sri.unit_return_quantity as quantity',
+                'sri.unit_sale_price as unit_price',
+                'sri.sub_total',
+            ])
+            ->orderBy('date', 'asc')
+            ->get()
+            ->map(function ($item) {
+                return [
+                    'date' => $item->date instanceof \Carbon\Carbon ? $item->date->format('Y-m-d') : (is_string($item->date) ? substr($item->date, 0, 10) : $item->date),
+                    'reference_number' => $item->reference_number,
+                    'type' => 'sale_return',
+                    'type_label' => 'Sale Return',
+                    'counter_party' => $item->counter_party,
+                    'batch' => $item->batch,
+                    'expiry' => $item->expiry ? (($item->expiry instanceof \Carbon\Carbon) ? $item->expiry->format('Y-m-d') : (is_string($item->expiry) ? substr($item->expiry, 0, 10) : $item->expiry)) : null,
+                    'quantity_in' => (int)($item->quantity ?? 0),
+                    'quantity_out' => 0,
+                    'unit_price' => (float)($item->unit_price ?? 0),
+                    'sub_total' => (float)($item->sub_total ?? 0),
+                ];
+            });
+
+        // Merge all transactions and sort by date
+        $allTransactions = $purchases
+            ->concat($purchaseReturns)
+            ->concat($sales)
+            ->concat($saleReturns)
+            ->sortBy('date')
+            ->values();
+
+        // Calculate summary
+        $totalPurchases = $purchases->sum('sub_total');
+        $totalPurchaseReturns = $purchaseReturns->sum('sub_total');
+        $totalSales = $sales->sum('sub_total');
+        $totalSaleReturns = $saleReturns->sum('sub_total');
+        $totalQuantityIn = $purchases->sum('quantity_in') + $purchaseReturns->sum('quantity_in') + $saleReturns->sum('quantity_in');
+        $totalQuantityOut = $sales->sum('quantity_out') + $purchaseReturns->sum('quantity_out');
+
+        $summary = [
+            'total_purchases' => round($totalPurchases, 2),
+            'total_purchase_returns' => round($totalPurchaseReturns, 2),
+            'net_purchases' => round($totalPurchases - $totalPurchaseReturns, 2),
+            'total_sales' => round($totalSales, 2),
+            'total_sale_returns' => round($totalSaleReturns, 2),
+            'net_sales' => round($totalSales - $totalSaleReturns, 2),
+            'total_quantity_in' => $totalQuantityIn,
+            'total_quantity_out' => $totalQuantityOut,
+            'current_quantity' => $productData['current_quantity'],
+        ];
+
+        return [
+            'product' => $productData,
+            'transactions' => $allTransactions,
+            'summary' => $summary,
+        ];
     }
 }

@@ -1,0 +1,587 @@
+import { useEffect, useMemo, useState } from "react";
+import axios from "axios";
+import AsyncSelect from "react-select/async";
+import { createFilter } from "react-select";
+import toast from "react-hot-toast";
+import { usePermissions } from "@/api/usePermissions";
+
+// 🧊 glass primitives
+import {
+  GlassCard,
+  GlassSectionHeader,
+  GlassToolbar,
+  GlassInput,
+  GlassBtn,
+} from "@/components/glass.jsx";
+
+import { ArrowDownOnSquareIcon, ArrowPathIcon } from "@heroicons/react/24/solid";
+
+/* ======================
+   Helpers
+   ====================== */
+
+const n = (v) => (isFinite(Number(v)) ? Number(v) : 0);
+const fmtCurrency = (v) =>
+  n(v).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const fmtNumber = (v) =>
+  n(v).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+const fmtDate = (v) => {
+  if (!v) return "-";
+  if (typeof v === "string") {
+    if (/^\d{4}-\d{2}-\d{2}$/.test(v)) return v;
+    const d = new Date(v);
+    return isNaN(d.getTime()) ? v : d.toISOString().split("T")[0];
+  }
+  if (v instanceof Date) {
+    return v.toISOString().split("T")[0];
+  }
+  return v;
+};
+
+/* react-select → glassy control */
+const selectStyles = {
+  control: (base) => ({
+    ...base,
+    minHeight: 36,
+    height: 36,
+    borderColor: "rgba(229,231,235,0.8)",
+    backgroundColor: "rgba(255,255,255,0.7)",
+    backdropFilter: "blur(6px)",
+    boxShadow: "0 1px 2px rgba(15,23,42,0.06)",
+    borderRadius: 12,
+    transition: "all .2s ease",
+    "&:hover": { borderColor: "rgba(148,163,184,0.9)", backgroundColor: "rgba(255,255,255,0.85)" },
+  }),
+  valueContainer: (base) => ({ ...base, height: 36, padding: "0 10px" }),
+  indicatorsContainer: (base) => ({ ...base, height: 36 }),
+  input: (base) => ({ ...base, margin: 0, padding: 0 }),
+  menuPortal: (base) => ({ ...base, zIndex: 9999 }),
+  menu: (base) => ({
+    ...base,
+    borderRadius: 12,
+    overflow: "hidden",
+    backgroundColor: "rgba(255,255,255,0.9)",
+    backdropFilter: "blur(10px)",
+    boxShadow: "0 10px 30px -10px rgba(30,64,175,0.18)",
+  }),
+};
+
+// helper to try /api/... then /...
+async function tryEndpoints(paths, params) {
+  let lastErr;
+  for (const path of paths) {
+    try {
+      const res = await axios.get(path, { params, withCredentials: true });
+      return res;
+    } catch (e) {
+      lastErr = e;
+    }
+  }
+  throw lastErr;
+}
+
+export default function ProductComprehensiveReport() {
+  // Filters
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
+  const [productValue, setProductValue] = useState(null);
+  const [productId, setProductId] = useState("");
+
+  // Data + States
+  const [data, setData] = useState({ product: null, transactions: [], summary: {} });
+  const [loading, setLoading] = useState(false);
+  const [pdfLoading, setPdfLoading] = useState(false);
+
+  const perms = usePermissions();
+  const canView = perms?.has?.("report.product-comprehensive.view");
+  const canExport = perms?.has?.("report.product-comprehensive.export");
+
+  // tints
+  const tintPrimary =
+    "bg-slate-900/80 text-white ring-1 ring-white/15 shadow-[0_6px_20px_-6px_rgba(15,23,42,0.45)] hover:bg-slate-900/90";
+  const tintGhost = "bg-white/60 text-slate-700 ring-1 ring-white/30 hover:bg-white/75";
+
+  /* ============ Set default date range on mount ============ */
+  useEffect(() => {
+    const now = new Date();
+    const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
+    const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+
+    const formatYMD = (date) => date.toISOString().split("T")[0];
+
+    if (!fromDate) setFromDate(formatYMD(firstDay));
+    if (!toDate) setToDate(formatYMD(lastDay));
+  }, []);
+
+  /* ============ Async product loader ============ */
+  const loadProducts = useMemo(
+    () => async (input) => {
+      const q = String(input || "").trim();
+      if (!q) return [{ value: "", label: "Search products..." }];
+      try {
+        const res = await tryEndpoints(
+          ["/api/products/search", "/products/search"],
+          { q, limit: 30 }
+        );
+        const rows = Array.isArray(res.data?.data)
+          ? res.data.data
+          : Array.isArray(res.data)
+          ? res.data
+          : [];
+        return rows.map((r) => ({
+          value: r.id,
+          label: r.name ?? r.label ?? `#${r.id}`,
+          product_code: r.product_code,
+        }));
+      } catch {
+        toast.error("Product search failed");
+        return [{ value: "", label: "No results" }];
+      }
+    },
+    []
+  );
+
+  /* ============ Fetch report ============ */
+  const fetchReport = async () => {
+    if (!canView) return toast.error("You don't have permission to view this report.");
+
+    if (!productId) {
+      return toast.error("Please select a product first.");
+    }
+
+    setLoading(true);
+    try {
+      const res = await axios.get("/api/reports/product-comprehensive", {
+        params: {
+          from: fromDate || undefined,
+          to: toDate || undefined,
+          product_id: productId,
+        },
+      });
+
+      const responseData = res.data || {};
+      setData({
+        product: responseData.product || null,
+        transactions: Array.isArray(responseData.transactions) ? responseData.transactions : [],
+        summary: responseData.summary || {},
+      });
+
+      if (!responseData.transactions?.length) {
+        toast("No transactions found for this product.", { icon: "ℹ️" });
+      }
+    } catch (err) {
+      console.error(err);
+      const msg = err.response?.data?.message || "Failed to fetch Product Comprehensive report";
+      toast.error(msg);
+      setData({ product: null, transactions: [], summary: {} });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  /* ============ Export PDF ============ */
+  const exportPdf = async () => {
+    if (!canExport) return toast.error("You don't have permission to export PDF.");
+    if (!productId) return toast.error("Please select a product first.");
+
+    setPdfLoading(true);
+    try {
+      const res = await axios.get("/api/reports/product-comprehensive/pdf", {
+        params: {
+          from: fromDate || undefined,
+          to: toDate || undefined,
+          product_id: productId,
+        },
+        responseType: "blob",
+      });
+      const blob = new Blob([res.data], { type: "application/pdf" });
+      const url = URL.createObjectURL(blob);
+      window.open(url, "_blank");
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      console.error(e);
+      toast.error("Failed to generate PDF");
+    } finally {
+      setPdfLoading(false);
+    }
+  };
+
+  /* ============ Reset filters ============ */
+  const resetFilters = () => {
+    const now = new Date();
+    const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
+    const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+    const formatYMD = (date) => date.toISOString().split("T")[0];
+
+    setFromDate(formatYMD(firstDay));
+    setToDate(formatYMD(lastDay));
+    setProductValue(null);
+    setProductId("");
+    setData({ product: null, transactions: [], summary: {} });
+  };
+
+  // Computed values
+  const { product, transactions, summary } = data;
+
+  // Row type classes
+  const getRowClass = (type) => {
+    switch (type) {
+      case "purchase":
+        return "bg-green-50/80";
+      case "sale":
+        return "bg-red-50/80";
+      case "purchase_return":
+        return "bg-amber-50/80";
+      case "sale_return":
+        return "bg-purple-50/80";
+      default:
+        return "";
+    }
+  };
+
+  const getTypeBadge = (type) => {
+    switch (type) {
+      case "purchase":
+        return <span className="px-2 py-0.5 rounded text-xs font-semibold bg-green-200 text-green-800">PURCHASE</span>;
+      case "sale":
+        return <span className="px-2 py-0.5 rounded text-xs font-semibold bg-red-200 text-red-800">SALE</span>;
+      case "purchase_return":
+        return <span className="px-2 py-0.5 rounded text-xs font-semibold bg-amber-200 text-amber-800">P.RETURN</span>;
+      case "sale_return":
+        return <span className="px-2 py-0.5 rounded text-xs font-semibold bg-purple-200 text-purple-800">S.RETURN</span>;
+      default:
+        return null;
+    }
+  };
+
+  return (
+    <div className="p-4 md:p-6 space-y-4">
+      {/* ===== Header + Filters ===== */}
+      <GlassCard>
+        <GlassSectionHeader
+          title={<span className="font-semibold">Product Comprehensive Report</span>}
+          right={
+            <div className="flex gap-2">
+              <GlassBtn
+                className={`h-9 ${tintGhost}`}
+                title="Reset Filters"
+                onClick={resetFilters}
+              >
+                Reset
+              </GlassBtn>
+            </div>
+          }
+        />
+
+        {/* Filters */}
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            fetchReport();
+          }}
+        >
+          <GlassToolbar className="grid grid-cols-1 md:grid-cols-12 gap-3">
+            {/* From Date */}
+            <div className="md:col-span-3">
+              <label className="text-sm text-gray-700 mb-1 block">From Date</label>
+              <input
+                type="date"
+                value={fromDate}
+                onChange={(e) => setFromDate(e.target.value)}
+                className="w-full h-9 px-3 rounded-xl border border-gray-200/70 bg-white/60 backdrop-blur-sm focus:outline-none focus:ring-2 focus:ring-blue-400/60 text-sm"
+              />
+            </div>
+
+            {/* To Date */}
+            <div className="md:col-span-3">
+              <label className="text-sm text-gray-700 mb-1 block">To Date</label>
+              <input
+                type="date"
+                value={toDate}
+                onChange={(e) => setToDate(e.target.value)}
+                className="w-full h-9 px-3 rounded-xl border border-gray-200/70 bg-white/60 backdrop-blur-sm focus:outline-none focus:ring-2 focus:ring-blue-400/60 text-sm"
+              />
+            </div>
+
+            {/* Product Selector */}
+            <div className="md:col-span-4">
+              <label className="text-sm text-gray-700 mb-1 block">Product</label>
+              <AsyncSelect
+                cacheOptions
+                loadOptions={loadProducts}
+                isClearable
+                value={productValue}
+                onChange={(opt) => {
+                  setProductValue(opt);
+                  setProductId(opt?.value || "");
+                }}
+                styles={selectStyles}
+                menuPortalTarget={document.body}
+                filterOption={createFilter({
+                  matchFrom: "start",
+                  trim: true,
+                })}
+                placeholder="Search product by name..."
+              />
+            </div>
+
+            {/* Buttons */}
+            <div className="md:col-span-2 flex flex-wrap gap-2 items-end">
+              <GlassBtn
+                type="submit"
+                className={`h-9 min-w-[100px] ${tintPrimary}`}
+                disabled={loading}
+              >
+                {loading ? (
+                  <span className="inline-flex items-center gap-2">
+                    <ArrowPathIcon className="w-5 h-5 animate-spin" />
+                    Loading…
+                  </span>
+                ) : (
+                  "Load"
+                )}
+              </GlassBtn>
+
+              <GlassBtn
+                className={`h-9 flex items-center gap-2 ${canExport ? tintGhost : "opacity-60"}`}
+                onClick={exportPdf}
+                disabled={pdfLoading || !canExport || transactions.length === 0}
+              >
+                <ArrowDownOnSquareIcon className="w-5 h-5" />
+                {pdfLoading ? "..." : "PDF"}
+              </GlassBtn>
+            </div>
+          </GlassToolbar>
+        </form>
+      </GlassCard>
+
+      {/* ===== Permission states ===== */}
+      {canView === null && (
+        <GlassCard>
+          <div className="px-4 py-3 text-sm text-gray-700">Checking permissions…</div>
+        </GlassCard>
+      )}
+      {canView === false && (
+        <GlassCard>
+          <div className="px-4 py-3 text-sm text-gray-700">You don't have permission to view this report.</div>
+        </GlassCard>
+      )}
+
+      {/* ===== Results ===== */}
+      {canView === true && (
+        <>
+          {/* Product Info Card */}
+          {product && (
+            <GlassCard>
+              <div className="flex flex-wrap items-center gap-4 p-4 bg-blue-50/80 rounded-xl border border-blue-200/60">
+                <div className="flex-1">
+                  <h3 className="text-lg font-semibold text-blue-900">{product.name}</h3>
+                  <div className="flex flex-wrap gap-4 mt-1 text-sm text-blue-800">
+                    {product.product_code && <span>Code: <strong>{product.product_code}</strong></span>}
+                    {product.category_name && <span>Category: <strong>{product.category_name}</strong></span>}
+                    {product.brand_name && <span>Brand: <strong>{product.brand_name}</strong></span>}
+                    {product.pack_size && <span>Pack Size: <strong>{product.pack_size}</strong></span>}
+                  </div>
+                </div>
+                <div className="text-center px-6 py-3 bg-white/80 rounded-xl border border-blue-200 shadow-sm">
+                  <div className="text-xs text-blue-600 uppercase tracking-wide">Current Stock</div>
+                  <div className="text-2xl font-bold text-blue-900">{fmtNumber(product.current_quantity)}</div>
+                </div>
+              </div>
+            </GlassCard>
+          )}
+
+          {transactions.length === 0 && !loading && (
+            <GlassCard>
+              <div className="px-4 py-4 text-sm text-gray-600">
+                {product ? "No transactions found for this product in the selected date range." : "Select a product and click Load to view the report."}
+              </div>
+            </GlassCard>
+          )}
+
+          {transactions.length > 0 && (
+            <>
+              {/* ===== Summary KPI Cards ===== */}
+              <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
+                <KpiCard
+                  label="Total Purchase Price"
+                  value={fmtCurrency(summary.total_purchases)}
+                  icon="📥"
+                />
+                <KpiCard
+                  label="Purchase Returns Price"
+                  value={fmtCurrency(summary.total_purchase_returns)}
+                  icon="📤"
+                />
+                <KpiCard
+                  label="Net Purchase Price"
+                  value={fmtCurrency(summary.net_purchases)}
+                  icon="💰"
+                  highlight={true}
+                />
+                <KpiCard
+                  label="Total Sale Price"
+                  value={fmtCurrency(summary.total_sales)}
+                  icon="📤"
+                />
+                <KpiCard
+                  label="Sale Returns Price"
+                  value={fmtCurrency(summary.total_sale_returns)}
+                  icon="📥"
+                />
+                <KpiCard
+                  label="Net Sale Price"
+                  value={fmtCurrency(summary.net_sales)}
+                  icon="💰"
+                  highlight={true}
+                />
+              </div>
+
+              {/* ===== Quantity Summary ===== */}
+              <GlassCard>
+                <div className="flex justify-around py-3">
+                  <div className="text-center">
+                    <div className="text-xs text-gray-500 uppercase">Total In</div>
+                    <div className="text-xl font-bold text-green-600">{fmtNumber(summary.total_quantity_in)}</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-xs text-gray-500 uppercase">Total Out</div>
+                    <div className="text-xl font-bold text-red-600">{fmtNumber(summary.total_quantity_out)}</div>
+                  </div>
+                </div>
+              </GlassCard>
+
+              {/* ===== Data Table ===== */}
+              <GlassCard className="relative z-10">
+                <div className="max-h-[70vh] overflow-auto rounded-b-2xl">
+                  <table className="min-w-[1200px] w-full text-sm text-gray-900">
+                    <thead className="sticky top-0 bg-white/90 backdrop-blur-sm z-10 border-b border-gray-200/70">
+                      <tr className="text-left bg-gray-50/80">
+                        <Th>#</Th>
+                        <Th>Date</Th>
+                        <Th>Type</Th>
+                        <Th>Ref #</Th>
+                        <Th>Supplier/Customer</Th>
+                        <Th>Batch</Th>
+                        <Th>Expiry</Th>
+                        <Th align="right">Qty In</Th>
+                        <Th align="right">Qty Out</Th>
+                        <Th align="right">Unit Price</Th>
+                        <Th align="right">Subtotal</Th>
+                      </tr>
+                    </thead>
+
+                    <tbody className="tabular-nums">
+                      {transactions.map((txn, idx) => (
+                        <tr
+                          key={idx}
+                          className={`transition-all duration-150 hover:bg-white/80 ${getRowClass(txn.type)}`}
+                        >
+                          <Td>{idx + 1}</Td>
+                          <Td>{fmtDate(txn.date)}</Td>
+                          <Td>{getTypeBadge(txn.type)}</Td>
+                          <Td className="font-medium">{txn.reference_number || "-"}</Td>
+                          <Td>{txn.counter_party || "-"}</Td>
+                          <Td>{txn.batch || "-"}</Td>
+                          <Td>{fmtDate(txn.expiry)}</Td>
+                          <Td align="right" className="text-green-700 font-medium">
+                            {txn.quantity_in > 0 ? fmtNumber(txn.quantity_in) : "-"}
+                          </Td>
+                          <Td align="right" className="text-red-700 font-medium">
+                            {txn.quantity_out > 0 ? fmtNumber(txn.quantity_out) : "-"}
+                          </Td>
+                          <Td align="right">{fmtCurrency(txn.unit_price)}</Td>
+                          <Td align="right" className="font-medium">
+                            {fmtCurrency(txn.sub_total)}
+                          </Td>
+                        </tr>
+                      ))}
+
+                      {transactions.length === 0 && (
+                        <tr>
+                          <td colSpan={11} className="px-3 py-6 text-center text-gray-500">
+                            No transactions found.
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+
+                    <tfoot className="border-t-2 border-gray-300 bg-white/80 backdrop-blur-sm font-semibold">
+                      <tr className="bg-gray-50">
+                        <Td colSpan={7} align="right" strong>TOTALS</Td>
+                        <Td align="right" className="text-green-800">
+                          {fmtNumber(summary.total_quantity_in)}
+                        </Td>
+                        <Td align="right" className="text-red-800">
+                          {fmtNumber(summary.total_quantity_out)}
+                        </Td>
+                        <Td align="right">-</Td>
+                        <Td align="right">-</Td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+              </GlassCard>
+            </>
+          )}
+        </>
+      )}
+
+      <style>{`
+        .tabular-nums { font-variant-numeric: tabular-nums; }
+        @media print {
+          input, button, select, [role="button"], .rs__control { display: none !important; }
+          table { font-size: 10px; }
+          thead { position: sticky; top: 0; }
+        }
+      `}</style>
+    </div>
+  );
+}
+
+/* ===== KPI Card Component ===== */
+function KpiCard({ label, value, icon, highlight = false }) {
+  return (
+    <div
+      className={[
+        "group rounded-xl px-4 py-3 backdrop-blur-sm bg-white/55 ring-1 ring-white/30 shadow-sm",
+        "transition-all duration-200",
+        "hover:bg-white/80 hover:backdrop-blur-md hover:shadow-[0_10px_30px_-10px_rgba(59,130,246,0.35)]",
+        "hover:ring-white/40",
+        highlight ? "outline outline-1 outline-emerald-200/50" : "",
+      ].join(" ")}
+    >
+      <div className="flex items-center gap-2 mb-1">
+        <span className="text-lg">{icon}</span>
+        <span className="text-xs text-gray-600 uppercase tracking-wide">{label}</span>
+      </div>
+      <div className="text-xl font-bold tabular-nums text-gray-900">{value}</div>
+    </div>
+  );
+}
+
+/* ===== Table Helpers ===== */
+function Th({ children, align = "left" }) {
+  return (
+    <th className={`px-3 py-2 font-medium ${align === "right" ? "text-right" : "text-left"}`}>
+      {children}
+    </th>
+  );
+}
+
+function Td({ children, align = "left", colSpan, strong = false, className = "" }) {
+  return (
+    <td
+      colSpan={colSpan}
+      className={[
+        "px-3 py-2 border-t border-gray-200/70",
+        align === "right" ? "text-right" : "text-left",
+        strong ? "font-medium text-gray-800" : "",
+        className,
+      ].join(" ")}
+    >
+      {children}
+    </td>
+  );
+}
+

@@ -58,11 +58,12 @@ export default function Sidebar() {
       { name: "Customer Ledger", path: "/customer-ledger", icon: <BanknotesIcon className="w-6 h-6" />, perm: "ledger.customer.view" },
 
       { type: "section", name: "Reports" },
-      { name: "Cost of Sale Report",     path: "/reports/cost-of-sale",    icon: <ChartBarIcon className="w-6 h-6" />, perm: "report.cost-of-sale.view" },
-      { name: "Purchase Detail Report",  path: "/reports/purchase-detail", icon: <ChartBarIcon className="w-6 h-6" />, perm: "report.purchase-detail.view" },
-      { name: "Sale Detail Report",      path: "/reports/sale-detail",     icon: <ChartBarIcon className="w-6 h-6" />, perm: "report.sale-detail.view" },
-      { name: "Current Stock Report",    path: "/reports/current-stock",   icon: <CubeIcon className="w-6 h-6" />, perm: "report.current-stock.view" },
-      { name: "Stock Adjustment Report", path: "/reports/stock-adjustment",icon: <ArrowsRightLeftIcon className="w-6 h-6" />, perm: "report.stock-adjustment.view" },
+      { name: "Cost of Sale Report",        path: "/reports/cost-of-sale",        icon: <ChartBarIcon className="w-6 h-6" />, perm: "report.cost-of-sale.view" },
+      { name: "Purchase Detail Report",     path: "/reports/purchase-detail",     icon: <ChartBarIcon className="w-6 h-6" />, perm: "report.purchase-detail.view" },
+      { name: "Sale Detail Report",         path: "/reports/sale-detail",         icon: <ChartBarIcon className="w-6 h-6" />, perm: "report.sale-detail.view" },
+      { name: "Current Stock Report",       path: "/reports/current-stock",       icon: <CubeIcon className="w-6 h-6" />, perm: "report.current-stock.view" },
+      { name: "Stock Adjustment Report",    path: "/reports/stock-adjustment",    icon: <ArrowsRightLeftIcon className="w-6 h-6" />, perm: "report.stock-adjustment.view" },
+      { name: "Product Comprehensive",      path: "/reports/product-comprehensive", icon: <ChartBarIcon className="w-6 h-6" />, perm: "report.product-comprehensive.view" },
 
       { type: "section", name: "System" },
       { name: "Settings", path: "/settings", icon: <Cog6ToothIcon className="w-6 h-6" />, perm: "settings.view" },
