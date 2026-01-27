@@ -1,0 +1,151 @@
+@php
+    use Illuminate\Support\Facades\DB;
+
+    $logo   = $setting->logo_url ?? null;
+    $store  = $setting->store_name ?? 'Store Name';
+    $phone  = $setting->phone_number ?? '';
+    $addr   = $setting->address ?? '';
+    $user   = optional($invoice->user)->name ?? '';
+    $posted = $invoice->posted_number ?? '';
+    $date   = $invoice->date ? \Carbon\Carbon::parse($invoice->date)->format('d M Y h:i A') : '';
+    $time   = $invoice->date ? \Carbon\Carbon::parse($invoice->date)->format('h:i A') : '';
+    $cust   = optional($invoice->customer)->name ?? '';
+    $custPhone = optional($invoice->customer)->phone ?? '';
+
+    $gross  = $invoice->items->sum('sub_total');
+    $disc   = (float)($invoice->discount_amount ?? 0);
+    $tax    = (float)($invoice->tax_amount ?? 0);
+    $total  = isset($printTotal) ? (float)$printTotal : (float)($invoice->total ?? ($gross - $disc + $tax));
+    $totalReceive = isset($printReceive) ? (float)$printReceive : (float)($invoice->total_receive ?? 0);
+    $remainThis = isset($printRemainThis) ? (float)$printRemainThis : max($total - $totalReceive, 0);
+
+    if (isset($printOldRemain)) {
+        $oldRemaining = (float)$printOldRemain;
+    } else {
+        $oldRemaining = 0.0;
+        if ($invoice->customer_id) {
+            $oldRemaining = \App\Models\SaleInvoice::where('customer_id', $invoice->customer_id)
+                ->where('id', '<', $invoice->id)
+                ->sum(DB::raw("CASE WHEN COALESCE(total,0) - COALESCE(total_receive,0) > 0 THEN COALESCE(total,0) - COALESCE(total_receive,0) ELSE 0 END"));
+        }
+    }
+
+    $grandRemaining = isset($printGrandRemain) ? (float)$printGrandRemain : ($remainThis + (float)$oldRemaining);
+    $footerNote = trim(($invoice->footer_note ?? '') !== '' ? $invoice->footer_note : ($setting->note ?? ''));
+@endphp
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8"/>
+<title>Sale Invoice (Detailed Thermal) - {{ $posted }}</title>
+<style>
+  @page { size: 80mm auto; margin: 0; }
+  * { box-sizing: border-box; }
+  html, body { margin:0; padding:0; color:#000; background:#fff; }
+  body {
+    font-family: 'Courier New', monospace;
+    font-weight: 600;
+    font-size: 11px;
+    line-height: 1.4;
+    -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+  }
+  .print-actions { margin:8px; text-align:right; }
+  .print-actions button { padding:6px 10px; cursor:pointer; }
+  @media print { .print-actions { display:none; } }
+  .receipt { width:80mm; max-width:100%; margin:0 auto; padding:0 6px 8px; }
+  .center { text-align:center; }
+  .right  { text-align:right; }
+  .logo { max-width:60mm; max-height:35mm; object-fit:contain; display:block; margin:0 auto 4px; }
+  .hr { border-top:1px dashed #000; margin:6px 0; }
+  .double-hr { border-top:2px double #000; margin:6px 0; }
+  .section { margin-bottom:8px; }
+  .pair { display:flex; justify-content:space-between; }
+  .pair + .pair { margin-top:2px; }
+  .small-text { font-size:9px; }
+  table { width:100%; border-collapse:collapse; }
+  thead th { text-align:left; padding:3px 2px; border-bottom:2px solid #000; font-size:9px; }
+  tbody td { padding:2px 0; border-bottom:1px dotted #000; vertical-align:top; }
+  th.right, td.right { text-align:right; white-space:nowrap; }
+  td.center { text-align:center; }
+  .totals { margin-top:8px; }
+  .totals .pair { margin-top:3px; }
+  .totals .pair.total { font-size:14px; font-weight:bold; border-top:1px solid #000; padding-top:4px; margin-top:6px; }
+  .balance-section { background:#f5f5f5; padding:6px; margin-top:8px; border-radius:4px; }
+  .note { margin-top:8px; white-space:pre-wrap; font-size:9px; padding:6px; background:#f9f9f9; border-radius:4px; }
+  .foot { margin-top:10px; text-align:center; font-size:8px; padding-top:6px; border-top:1px dotted #000; }
+</style>
+</head>
+<body>
+<div class="print-actions">
+  <button onclick="window.print()">Print</button>
+</div>
+<div class="receipt">
+  @if($logo)
+    <img src="{{ $logo }}" alt="Logo" class="logo">
+  @endif
+  <div class="center" style="font-size:22px; font-weight:bold;">{{ $store }}</div>
+  @if($addr)<div class="center small-text">{{ $addr }}</div>@endif
+  @if($phone)<div class="center small-text">Ph: {{ $phone }}</div>@endif
+  <div class="hr"></div>
+  
+  <div class="section">
+    <div class="pair"><span>Invoice #</span><span>{{ $posted }}</span></div>
+    <div class="pair"><span>Date</span><span>{{ $date }}</span></div>
+    @if($cust)<div class="pair"><span>Customer</span><span>{{ $cust }}</span></div>@endif
+    @if($custPhone)<div class="pair"><span>Phone</span><span>{{ $custPhone }}</span></div>@endif
+    @if($user)<div class="pair"><span>Cashier</span><span>{{ $user }}</span></div>@endif
+  </div>
+  
+  <div class="double-hr"></div>
+  
+  <table>
+    <thead>
+      <tr>
+        <th>ITEM</th>
+        <th class="center">QTY</th>
+        <th class="right">RATE</th>
+        <th class="right">AMT</th>
+      </tr>
+    </thead>
+    <tbody>
+      @foreach($invoice->items as $it)
+        <tr>
+          <td>{{ optional($it->product)->name ?? '-' }}</td>
+          <td class="center">{{ number_format((float)$it->quantity) }}</td>
+          <td class="right">{{ number_format((float)$it->price, 2) }}</td>
+          <td class="right">{{ number_format((float)$it->sub_total, 2) }}</td>
+        </tr>
+      @endforeach
+    </tbody>
+  </table>
+  
+  <div class="totals">
+    <div class="hr"></div>
+    <div class="pair"><span>Sub Total</span><span>{{ number_format((float)$gross, 2) }}</span></div>
+    <div class="pair"><span>Discount</span><span>-{{ number_format((float)$disc, 2) }}</span></div>
+    <div class="pair"><span>Tax</span><span>{{ number_format((float)$tax, 2) }}</span></div>
+    <div class="pair total"><span>TOTAL</span><span>{{ number_format((float)$total, 2) }}</span></div>
+  </div>
+  
+  @if($remainThis > 0 || $oldRemaining > 0)
+    <div class="balance-section">
+      <div class="pair"><span>Payment</span><span>{{ number_format($totalReceive, 2) }}</span></div>
+      <div class="pair total"><span>Balance Due</span><span>{{ number_format($grandRemaining, 2) }}</span></div>
+      @if($oldRemaining > 0)
+        <div class="pair small-text"><span>(Prev. Due: {{ number_format($oldRemaining, 2) }})</span></div>
+      @endif
+    </div>
+  @endif
+  
+  @if($footerNote !== '')
+    <div class="note">{{ $footerNote }}</div>
+  @endif
+  
+  <div class="foot">
+    <div>Thank you for shopping with us!</div>
+    <div style="margin-top:4px;">{{ $time }} | {{ $posted }}</div>
+  </div>
+</div>
+</body>
+</html>

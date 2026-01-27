@@ -14,6 +14,7 @@ class Setting extends Model
         'license_number',
         'note',
         'printer_type',
+        'thermal_template',
         'logo_path',
     ];
     protected $appends = ['logo_url'];
