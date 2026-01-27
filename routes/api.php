@@ -137,6 +137,10 @@ Route::middleware(['auth:sanctum', 'licensed'])->group(function () {
     Route::get('/dashboard/summary',              [DashboardController::class, 'summary']);
     Route::get('/dashboard/near-expiry',          [DashboardController::class, 'nearExpiry']);
     Route::get('/dashboard/near-expiry/filters',  [DashboardController::class, 'nearExpiryFilters']);
+    Route::get('/dashboard/invoice-counts',       [DashboardController::class, 'invoiceCounts']);
+    Route::get('/dashboard/sales-by-brands',      [DashboardController::class, 'salesByBrands']);
+    Route::get('/dashboard/top-products',         [DashboardController::class, 'topProducts']);
+    Route::get('/dashboard/kpi-metrics',          [DashboardController::class, 'kpiMetrics']);
 
     // Reports
     Route::get('/reports/cost-of-sale',           [ReportsController::class, 'costOfSale']);

@@ -10,21 +10,50 @@ import {
   YAxis,
   Tooltip,
   CartesianGrid,
-  LineChart,
+  ComposedChart,
+  Legend,
   Line,
+  Bar,
 } from "recharts";
+import {
+  CurrencyDollarIcon,
+  ShoppingCartIcon,
+  ArrowUturnLeftIcon,
+  ArrowUturnDownIcon,
+  ArrowTrendingUpIcon,
+  ArrowTrendingDownIcon,
+  BanknotesIcon,
+  ClipboardDocumentListIcon,
+  CubeIcon,
+  ScaleIcon,
+  ClockIcon,
+  CheckCircleIcon,
+} from "@heroicons/react/24/outline";
 import { GlassCard, GlassSectionHeader, GlassToolbar, GlassInput, GlassBtn } from "@/components/Glass";
 
-/* ===================== Helpers ===================== */
+// Modern color palette for charts
+const COLORS = {
+  primary: ["#6366f1", "#8b5cf6", "#a855f7", "#d946ef", "#ec4899", "#f43f5e"],
+  success: ["#10b981", "#34d399", "#6ee7b7", "#a7f3d0", "#d1fae5"],
+};
 
-// Local ISO date (avoid UTC off-by-one)
+// Custom tooltip style
+const customTooltipStyle = {
+  backgroundColor: "rgba(255, 255, 255, 0.95)",
+  backdropFilter: "blur(10px)",
+  border: "1px solid rgba(255, 255, 255, 0.3)",
+  borderRadius: "12px",
+  boxShadow: "0 10px 40px rgba(0, 0, 0, 0.1)",
+  padding: "12px 16px",
+};
+
+/* ===================== Helpers ===================== */
 const localISODate = (d = new Date()) => {
   const tzOffsetMs = d.getTimezoneOffset() * 60000;
   return new Date(d.getTime() - tzOffsetMs).toISOString().slice(0, 10);
 };
 
 const todayStr = () => localISODate();
-
 const firstDayOfMonthStr = () => {
   const d = new Date();
   return localISODate(new Date(d.getFullYear(), d.getMonth(), 1));
@@ -47,7 +76,6 @@ const inclusiveDaysUTC = (fromStr, toStr) => {
   return Math.floor((ub - ua) / 86400000) + 1;
 };
 
-// Build an empty series for a given date range (ensures continuous x-axis).
 const scaffoldSeries = (from, to) => {
   const days = inclusiveDaysUTC(from, to);
   const data = [];
@@ -60,7 +88,6 @@ const scaffoldSeries = (from, to) => {
   return data;
 };
 
-// Merge raw points ({date, value}) into scaffold ensuring continuity
 const mergeSeries = (base, points) => {
   const map = new Map(base.map((p) => [p.date, { ...p }]));
   for (const pt of points || []) {
@@ -70,7 +97,6 @@ const mergeSeries = (base, points) => {
   return Array.from(map.values());
 };
 
-// Merge two series arrays (same date domain) into {date, a, b}
 function mergeTwo(a = [], b = []) {
   const map = new Map();
   for (const r of a) map.set(r.date, { date: r.date, a: Number(r.value || 0), b: 0 });
@@ -90,7 +116,7 @@ function buildNetSeries(series) {
   return Array.from(map.entries()).map(([date, value]) => ({ date, value }));
 }
 
-/* ===================== React-Select styles (compact, glass-friendly) ===================== */
+/* ===================== React-Select styles ===================== */
 const smallSelectStyles = {
   control: (base, state) => ({
     ...base,
@@ -107,47 +133,36 @@ const smallSelectStyles = {
   valueContainer: (base) => ({ ...base, padding: "0 8px" }),
   indicatorsContainer: (base) => ({ ...base, height: 36 }),
   dropdownIndicator: (base) => ({ ...base, padding: "0 6px" }),
-  clearIndicator: (base) => ({ ...base, padding: "0 6px" }),
-  input: (base) => ({ ...base, margin: 0, padding: 0 }),
   option: (base, state) => ({
     ...base,
     fontSize: "0.875rem",
     backgroundColor: state.isFocused ? "#eff6ff" : state.isSelected ? "#dbeafe" : "white",
     color: "#111827",
   }),
-  menu: (base) => ({ ...base, zIndex: 30, borderRadius: 12 }),
 };
 
 /* ===================== Component ===================== */
 export default function Dashboard() {
-  // Filters — default to *today*
   const [from, setFrom] = useState(todayStr());
   const [to, setTo] = useState(todayStr());
-
-  // Near Expiry filters
-  const [expiryMonths, setExpiryMonths] = useState(3); // default 3 months
+  const [expiryMonths, setExpiryMonths] = useState(3);
   const [supplierId, setSupplierId] = useState("");
   const [brandId, setBrandId] = useState("");
-
-  // react-select values
   const [supplierValue, setSupplierValue] = useState({ value: "", label: "All Suppliers" });
   const [brandValue, setBrandValue] = useState({ value: "", label: "All Brands" });
-
-  // options for react-select
   const [supplierOptions, setSupplierOptions] = useState([{ value: "", label: "All Suppliers" }]);
   const [brandOptions, setBrandOptions] = useState([{ value: "", label: "All Brands" }]);
-
   const [nearExpiryRows, setNearExpiryRows] = useState([]);
   const [loadingExpiry, setLoadingExpiry] = useState(false);
-
-  // Cards & charts
   const [loading, setLoading] = useState(false);
+  
   const [cards, setCards] = useState({
     sales: 0,
     purchases: 0,
     saleReturns: 0,
     purchaseReturns: 0,
   });
+  
   const [series, setSeries] = useState({
     sales: [],
     purchases: [],
@@ -155,9 +170,17 @@ export default function Dashboard() {
     purchaseReturns: [],
   });
 
+  const [invoiceCounts, setInvoiceCounts] = useState({ total: 0, sale_invoices: 0, purchase_invoices: 0 });
+  const [kpiMetrics, setKpiMetrics] = useState({
+    active_products: 0,
+    suppliers: 0,
+    brands: 0,
+    categories: 0,
+    near_expiry: 0,
+  });
+
   const netSales = useMemo(() => (cards.sales || 0) - (cards.saleReturns || 0), [cards]);
 
-  /* ===================== Effects ===================== */
   useEffect(() => {
     fetchAll();
     const onKey = (e) => {
@@ -168,41 +191,48 @@ export default function Dashboard() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [from, to]);
 
   useEffect(() => {
-    // Load Supplier/Brand options once
     fetchExpiryFilters();
   }, []);
 
   useEffect(() => {
-    // Fetch near-expiry whenever filters change
     fetchNearExpiry();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [expiryMonths, supplierId, brandId]);
 
-  /* ===================== API Calls ===================== */
+  useEffect(() => {
+    fetchDashboardMetrics();
+  }, [from, to]);
+
+  async function fetchDashboardMetrics() {
+    try {
+      const params = { date_from: from, date_to: to };
+      const [invoiceRes, kpiRes] = await Promise.allSettled([
+        axios.get("/api/dashboard/invoice-counts"),
+        axios.get("/api/dashboard/kpi-metrics", { params }),
+      ]);
+
+      if (invoiceRes.status === 'fulfilled') {
+        setInvoiceCounts(invoiceRes.value.data || { total: 0 });
+      }
+      if (kpiRes.status === 'fulfilled') {
+        setKpiMetrics(kpiRes.value.data || {});
+      }
+    } catch (err) {
+      console.error("Failed to fetch dashboard metrics:", err);
+    }
+  }
+
   async function fetchExpiryFilters() {
     try {
       const { data } = await axios.get("/api/dashboard/near-expiry/filters");
       const sup = (data?.suppliers || []).map((s) => ({ value: String(s.id), label: s.name }));
       const br = (data?.brands || []).map((b) => ({ value: String(b.id), label: b.name }));
-
-      const supOpts = [{ value: "", label: "All Suppliers" }, ...sup];
-      const brOpts = [{ value: "", label: "All Brands" }, ...br];
-
-      setSupplierOptions(supOpts);
-      setBrandOptions(brOpts);
-
-      // Keep previously-selected value in list if possible
-      const currentSup = supOpts.find((o) => o.value === supplierValue.value) || supOpts[0];
-      const currentBr = brOpts.find((o) => o.value === brandValue.value) || brOpts[0];
-      setSupplierValue(currentSup);
-      setBrandValue(currentBr);
+      setSupplierOptions([{ value: "", label: "All Suppliers" }, ...sup]);
+      setBrandOptions([{ value: "", label: "All Brands" }, ...br]);
     } catch (err) {
       console.error(err);
-      // Soft fail
     }
   }
 
@@ -229,7 +259,6 @@ export default function Dashboard() {
     const t = to || todayStr();
     setLoading(true);
 
-    // Preferred: aggregated endpoint
     try {
       const { data } = await axios.get("/api/dashboard/summary", {
         params: { date_from: f, date_to: t },
@@ -248,64 +277,6 @@ export default function Dashboard() {
         saleReturns: mergeSeries(scaf, data?.series?.sale_returns || []),
         purchaseReturns: mergeSeries(scaf, data?.series?.purchase_returns || []),
       });
-      setLoading(false);
-      return;
-    } catch (e) {
-      // Fall through to client-side build if aggregated API is not available
-    }
-
-    // Fallback: build client-side from index lists
-    try {
-      const [salesRes, purchaseRes, sretRes, pretRes] = await Promise.all([
-        axios.get("/api/sale-invoices"),
-        axios.get("/api/purchase-invoices"),
-        axios.get("/api/sale-returns"),
-        axios.get("/api/purchase-returns"),
-      ]);
-
-      const inRange = (dstr) => {
-        const k = dateKey(dstr);
-        return k >= f && k <= t;
-      };
-
-      const sales = (salesRes.data || []).filter((x) => inRange(x.date));
-      // purchases business date: posted_date (fallback to created_at or date)
-      const purchases = (purchaseRes.data || []).filter((x) =>
-        inRange(x.posted_date || x.created_at || x.date)
-      );
-      const saleReturns = (sretRes.data || []).filter((x) => inRange(x.date));
-      const purchaseReturns = (pretRes.data || []).filter((x) => inRange(x.date));
-
-      const totalSales = sum(sales.map((x) => Number(x.total || 0)));
-      const totalPurchases = sum(purchases.map((x) => Number(x.total_amount || 0)));
-      const totalSaleReturns = sum(saleReturns.map((x) => Number(x.total || 0)));
-      const totalPurchaseReturns = sum(purchaseReturns.map((x) => Number(x.total || 0)));
-
-      const scaf = scaffoldSeries(f, t);
-      const grp = (rows, dateGetter, totalGetter) => {
-        const map = new Map();
-        for (const r of rows) {
-          const k = dateKey(dateGetter(r));
-          map.set(k, (map.get(k) || 0) + Number(totalGetter(r)));
-        }
-        return Array.from(map.entries()).map(([date, value]) => ({ date, value }));
-      };
-
-      setCards({
-        sales: totalSales,
-        purchases: totalPurchases,
-        saleReturns: totalSaleReturns,
-        purchaseReturns: totalPurchaseReturns,
-      });
-      setSeries({
-        sales: mergeSeries(scaf, grp(sales, (r) => r.date, (r) => r.total || 0)),
-        purchases: mergeSeries(
-          scaf,
-          grp(purchases, (r) => r.posted_date || r.created_at || r.date, (r) => r.total_amount || 0)
-        ),
-        saleReturns: mergeSeries(scaf, grp(saleReturns, (r) => r.date, (r) => r.total || 0)),
-        purchaseReturns: mergeSeries(scaf, grp(purchaseReturns, (r) => r.date, (r) => r.total || 0)),
-      });
     } catch (err) {
       console.error(err);
       toast.error("Failed to load dashboard.");
@@ -314,7 +285,6 @@ export default function Dashboard() {
     }
   }
 
-  /* ===================== UI ===================== */
   return (
     <div className="p-4 space-y-4 bg-gradient-to-br from-slate-50 via-white to-blue-50/30">
       <div className="flex items-center justify-between">
@@ -335,8 +305,6 @@ export default function Dashboard() {
             <label className="text-gray-700 text-sm">To</label>
             <GlassInput type="date" value={to} onChange={(e) => setTo(e.target.value)} />
           </div>
-
-          {/* Presets */}
           <div className="md:col-span-3 col-span-1 flex items-end gap-2 overflow-x-auto whitespace-nowrap">
             <GlassBtn variant="ghost" onClick={() => { setFrom(todayStr()); setTo(todayStr()); }}>
               Today
@@ -367,20 +335,84 @@ export default function Dashboard() {
       </GlassCard>
 
       {/* Stat Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
-        <StatCard title="Sales" value={`Rs ${fmtCurrency(cards.sales)}`} series={series.sales} color="#2563eb" />
-        <StatCard title="Purchases" value={`Rs ${fmtCurrency(cards.purchases)}`} series={series.purchases} color="#16a34a" />
-        <StatCard title="Sale Returns" value={`Rs ${fmtCurrency(cards.saleReturns)}`} series={series.saleReturns} color="#dc2626" />
-        <StatCard title="Purchase Returns" value={`Rs ${fmtCurrency(cards.purchaseReturns)}`} series={series.purchaseReturns} color="#a855f7" />
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <ModernStatCard 
+          title="Total Sales" 
+          value={`Rs ${fmtCurrency(cards.sales)}`}
+          icon={<CurrencyDollarIcon className="w-6 h-6" />}
+          color="#6366f1"
+          gradient="from-violet-500 to-purple-600"
+        />
+        <ModernStatCard 
+          title="Total Purchases" 
+          value={`Rs ${fmtCurrency(cards.purchases)}`}
+          icon={<ShoppingCartIcon className="w-6 h-6" />}
+          color="#10b981"
+          gradient="from-emerald-500 to-teal-600"
+        />
+        <ModernStatCard 
+          title="Sale Returns" 
+          value={`Rs ${fmtCurrency(cards.saleReturns)}`}
+          icon={<ArrowUturnLeftIcon className="w-6 h-6" />}
+          color="#ef4444"
+          gradient="from-red-500 to-rose-600"
+        />
+        <ModernStatCard 
+          title="Purchase Returns" 
+          value={`Rs ${fmtCurrency(cards.purchaseReturns)}`}
+          icon={<ArrowUturnDownIcon className="w-6 h-6" />}
+          color="#f59e0b"
+          gradient="from-amber-500 to-orange-600"
+        />
       </div>
 
-      {/* ===== Near Expiry Table ===== */}
+      {/* KPI Metrics Row */}
+      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
+        <MetricCard 
+          label="Net Sales" 
+          value={`Rs ${fmtCurrency(netSales)}`}
+          icon={<BanknotesIcon className="w-5 h-5" />}
+          bgColor="bg-gradient-to-br from-blue-500 to-indigo-600"
+        />
+        <MetricCard 
+          label="Total Invoices" 
+          value={invoiceCounts.total}
+          subValue={`${invoiceCounts.sale_invoices} sales, ${invoiceCounts.purchase_invoices} purchases`}
+          icon={<ClipboardDocumentListIcon className="w-5 h-5" />}
+          bgColor="bg-gradient-to-br from-purple-500 to-pink-600"
+        />
+        <MetricCard 
+          label="Products" 
+          value={kpiMetrics.active_products || 0}
+          icon={<CubeIcon className="w-5 h-5" />}
+          bgColor="bg-gradient-to-br from-emerald-500 to-cyan-600"
+        />
+        <MetricCard 
+          label="Suppliers" 
+          value={kpiMetrics.suppliers || 0}
+          icon={<ScaleIcon className="w-5 h-5" />}
+          bgColor="bg-gradient-to-br from-orange-500 to-amber-600"
+        />
+        <MetricCard 
+          label="Near Expiry" 
+          value={kpiMetrics.near_expiry || nearExpiryRows.length}
+          icon={<ClockIcon className="w-5 h-5" />}
+          bgColor={(kpiMetrics.near_expiry || nearExpiryRows.length) > 0 ? "bg-gradient-to-br from-red-500 to-rose-600" : "bg-gradient-to-br from-gray-400 to-gray-500"}
+        />
+        <MetricCard 
+          label="Brands" 
+          value={kpiMetrics.brands || 0}
+          icon={<CheckCircleIcon className="w-5 h-5" />}
+          bgColor="bg-gradient-to-br from-violet-500 to-fuchsia-600"
+        />
+      </div>
+
+      {/* Near Expiry Table */}
       <GlassCard>
         <GlassSectionHeader
           title="Near Expiry"
           right={
             <div className="flex items-center gap-2">
-              {/* Months chips */}
               <div className="flex items-center gap-1">
                 {[
                   { m: 1, label: "1 mo" },
@@ -399,8 +431,6 @@ export default function Dashboard() {
                   </GlassBtn>
                 ))}
               </div>
-
-              {/* Supplier */}
               <div className="flex items-center gap-2 shrink-0" style={{ minWidth: 220 }}>
                 <span className="text-gray-700 text-sm">Supplier</span>
                 <div className="w-44 relative z-50">
@@ -424,8 +454,6 @@ export default function Dashboard() {
                   />
                 </div>
               </div>
-
-              {/* Brand */}
               <div className="flex items-center gap-2 shrink-0" style={{ minWidth: 200 }}>
                 <span className="text-gray-700 text-sm">Brand</span>
                 <div className="w-44 relative z-50">
@@ -449,29 +477,20 @@ export default function Dashboard() {
                   />
                 </div>
               </div>
-
-              <GlassBtn
-                variant="ghost"
-                onClick={() => {
-                  const sup = { value: "", label: "All Suppliers" };
-                  const br = { value: "", label: "All Brands" };
-                  setSupplierValue(sup);
-                  setBrandValue(br);
-                  setSupplierId("");
-                  setBrandId("");
-                }}
-                title="Clear supplier/brand filters"
-              >
+              <GlassBtn variant="ghost" onClick={() => {
+                setSupplierValue({ value: "", label: "All Suppliers" });
+                setBrandValue({ value: "", label: "All Brands" });
+                setSupplierId("");
+                setBrandId("");
+              }}>
                 Clear
               </GlassBtn>
-
               <GlassBtn onClick={fetchNearExpiry} disabled={loadingExpiry} variant="ghost">
                 {loadingExpiry ? "Loading…" : "Refresh"}
               </GlassBtn>
             </div>
           }
         />
-
         <div className="p-0 overflow-auto">
           <table className="min-w-full text-sm">
             <thead className="sticky top-[56px] bg-white/80 backdrop-blur-sm z-10 border-b border-gray-200/70">
@@ -488,35 +507,24 @@ export default function Dashboard() {
               {nearExpiryRows.length === 0 ? (
                 <tr>
                   <td className="px-3 py-6 text-gray-500" colSpan={6}>
-                    {loadingExpiry ? "Loading…" : "No near-expiry items found for the selected filters."}
+                    {loadingExpiry ? "Loading…" : "No near-expiry items found."}
                   </td>
                 </tr>
               ) : (
                 nearExpiryRows.map((r) => (
-                  <tr
-                    key={`b-${r.batch_id}`}
-                    className="odd:bg-white/60 even:bg-white/40 hover:bg-blue-50/60 transition-colors"
-                  >
+                  <tr key={`b-${r.batch_id}`} className="odd:bg-white/60 even:bg-white/40 hover:bg-blue-50/60">
                     <td className="px-3 py-2">
-                      <div className="max-w-[280px] truncate" title={r.product_name}>
-                        {r.product_name}
-                      </div>
+                      <div className="max-w-[280px] truncate" title={r.product_name}>{r.product_name}</div>
                     </td>
                     <td className="px-3 py-2">
-                      <div className="max-w-[220px] truncate" title={r.supplier_name || "—"}>
-                        {r.supplier_name || "—"}
-                      </div>
+                      <div className="max-w-[220px] truncate">{r.supplier_name || "—"}</div>
                     </td>
                     <td className="px-3 py-2">
-                      <div className="max-w-[200px] truncate" title={r.brand_name || "—"}>
-                        {r.brand_name || "—"}
-                      </div>
+                      <div className="max-w-[200px] truncate">{r.brand_name || "—"}</div>
                     </td>
                     <td className="px-3 py-2">{r.batch_number}</td>
                     <td className="px-3 py-2">{(r.expiry_date || "").slice(0, 10)}</td>
-                    <td className="px-3 py-2 text-right">
-                      {Number(r.quantity ?? 0).toLocaleString()}
-                    </td>
+                    <td className="px-3 py-2 text-right">{Number(r.quantity ?? 0).toLocaleString()}</td>
                   </tr>
                 ))
               )}
@@ -527,64 +535,110 @@ export default function Dashboard() {
 
       {/* Net Sales Trend */}
       <GlassCard>
-        <GlassSectionHeader title="Net Sales Trend" right={<div className="text-sm text-gray-600 px-2">Net = Sales − Sale Returns</div>} />
-        <div className="p-3">
-          <div className="h-64">
+        <div className="p-4 border-b border-gray-100">
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-xl shadow-lg">
+              <ArrowTrendingUpIcon className="w-5 h-5 text-white" />
+            </div>
+            <div>
+              <h3 className="text-lg font-semibold text-gray-800">Net Sales Trend</h3>
+              <p className="text-sm text-gray-500">Sales − Sale Returns</p>
+            </div>
+          </div>
+        </div>
+        <div className="p-4">
+          <div className="h-72">
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart data={buildNetSeries(series)} margin={{ top: 8, right: 12, left: 0, bottom: 0 }}>
                 <defs>
                   <linearGradient id="netColor" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#0ea5e9" stopOpacity={0.55} />
-                    <stop offset="95%" stopColor="#0ea5e9" stopOpacity={0.06} />
+                    <stop offset="0%" stopColor="#6366f1" stopOpacity={0.8} />
+                    <stop offset="50%" stopColor="#8b5cf6" stopOpacity={0.4} />
+                    <stop offset="100%" stopColor="#a855f7" stopOpacity={0.05} />
+                  </linearGradient>
+                  <linearGradient id="netStroke" x1="0" y1="0" x2="1" y2="0">
+                    <stop offset="0%" stopColor="#6366f1" />
+                    <stop offset="100%" stopColor="#ec4899" />
                   </linearGradient>
                 </defs>
-                <CartesianGrid strokeDasharray="3 3" opacity={0.25} />
-                <XAxis dataKey="date" tick={{ fontSize: 12 }} />
-                <YAxis tick={{ fontSize: 12 }} />
-                <Tooltip formatter={(val) => `Rs ${fmtCurrency(val)}`} />
-                <Area type="monotone" dataKey="value" stroke="#0ea5e9" fill="url(#netColor)" />
+                <CartesianGrid strokeDasharray="3 3" opacity={0.15} stroke="#6366f1" />
+                <XAxis dataKey="date" tick={{ fontSize: 11, fill: '#6b7280' }} axisLine={{ stroke: '#e5e7eb' }} tickLine={false} />
+                <YAxis tick={{ fontSize: 11, fill: '#6b7280' }} axisLine={false} tickLine={false} tickFormatter={(val) => `Rs ${(val / 1000).toFixed(0)}k`} />
+                <Tooltip contentStyle={customTooltipStyle} formatter={(val) => [`Rs ${fmtCurrency(val)}`, 'Net Sales']} labelFormatter={(label) => `Date: ${label}`} />
+                <Area type="monotone" dataKey="value" stroke="url(#netStroke)" strokeWidth={3} fill="url(#netColor)" />
               </AreaChart>
             </ResponsiveContainer>
           </div>
         </div>
       </GlassCard>
 
-      {/* Purchases vs Purchase Returns & Sales vs Sale Returns */}
+      {/* Comparison Charts */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <GlassCard>
-          <GlassSectionHeader title="Purchases vs Returns" />
-          <div className="p-3">
+          <div className="p-4 border-b border-gray-100">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-xl shadow-lg">
+                <ShoppingCartIcon className="w-5 h-5 text-white" />
+              </div>
+              <div>
+                <h3 className="text-lg font-semibold text-gray-800">Purchases vs Returns</h3>
+                <p className="text-sm text-gray-500">Track your purchase efficiency</p>
+              </div>
+            </div>
+          </div>
+          <div className="p-4">
             <div className="h-64">
               <ResponsiveContainer width="100%" height="100%">
-                <LineChart
-                  data={mergeTwo(series.purchases, series.purchaseReturns)}
-                  margin={{ top: 8, right: 12, left: 0, bottom: 0 }}
-                >
-                  <CartesianGrid strokeDasharray="3 3" opacity={0.25} />
-                  <XAxis dataKey="date" tick={{ fontSize: 12 }} />
-                  <YAxis tick={{ fontSize: 12 }} />
-                  <Tooltip formatter={(val) => `Rs ${fmtCurrency(val)}`} />
-                  <Line type="monotone" dataKey="a" stroke="#16a34a" name="Purchases" strokeWidth={2} dot={false} />
-                  <Line type="monotone" dataKey="b" stroke="#a855f7" name="Purchase Returns" strokeWidth={2} dot={false} />
-                </LineChart>
+                <ComposedChart data={mergeTwo(series.purchases, series.purchaseReturns)} margin={{ top: 8, right: 12, left: 0, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" opacity={0.15} stroke="#10b981" />
+                  <XAxis dataKey="date" tick={{ fontSize: 10, fill: '#6b7280' }} axisLine={{ stroke: '#e5e7eb' }} tickLine={false} />
+                  <YAxis tick={{ fontSize: 10, fill: '#6b7280' }} axisLine={false} tickLine={false} tickFormatter={(val) => `Rs ${(val / 1000).toFixed(0)}k`} />
+                  <Tooltip contentStyle={customTooltipStyle} formatter={(val, name) => [`Rs ${fmtCurrency(val)}`, name === 'a' ? 'Purchases' : 'Returns']} />
+                  <Legend iconType="circle" wrapperStyle={{ paddingTop: '10px' }} />
+                  <Area type="monotone" dataKey="a" name="Purchases" fill="url(#purchaseGrad)" stroke="#10b981" strokeWidth={2} />
+                  <Line type="monotone" dataKey="b" name="Purchase Returns" stroke="#f59e0b" strokeWidth={2} dot={{ fill: '#f59e0b', r: 3 }} />
+                  <defs>
+                    <linearGradient id="purchaseGrad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#10b981" stopOpacity={0.8} />
+                      <stop offset="100%" stopColor="#10b981" stopOpacity={0.1} />
+                    </linearGradient>
+                  </defs>
+                </ComposedChart>
               </ResponsiveContainer>
             </div>
           </div>
         </GlassCard>
 
         <GlassCard>
-          <GlassSectionHeader title="Sales vs Sale Returns" />
-          <div className="p-3">
+          <div className="p-4 border-b border-gray-100">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-gradient-to-br from-violet-500 to-purple-600 rounded-xl shadow-lg">
+                <CurrencyDollarIcon className="w-5 h-5 text-white" />
+              </div>
+              <div>
+                <h3 className="text-lg font-semibold text-gray-800">Sales vs Sale Returns</h3>
+                <p className="text-sm text-gray-500">Monitor your revenue health</p>
+              </div>
+            </div>
+          </div>
+          <div className="p-4">
             <div className="h-64">
               <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={mergeTwo(series.sales, series.saleReturns)} margin={{ top: 8, right: 12, left: 0, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" opacity={0.25} />
-                  <XAxis dataKey="date" tick={{ fontSize: 12 }} />
-                  <YAxis tick={{ fontSize: 12 }} />
-                  <Tooltip formatter={(val) => `Rs ${fmtCurrency(val)}`} />
-                  <Line type="monotone" dataKey="a" stroke="#2563eb" name="Sales" strokeWidth={2} dot={false} />
-                  <Line type="monotone" dataKey="b" stroke="#dc2626" name="Sale Returns" strokeWidth={2} dot={false} />
-                </LineChart>
+                <ComposedChart data={mergeTwo(series.sales, series.saleReturns)} margin={{ top: 8, right: 12, left: 0, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" opacity={0.15} stroke="#8b5cf6" />
+                  <XAxis dataKey="date" tick={{ fontSize: 10, fill: '#6b7280' }} axisLine={{ stroke: '#e5e7eb' }} tickLine={false} />
+                  <YAxis tick={{ fontSize: 10, fill: '#6b7280' }} axisLine={false} tickLine={false} tickFormatter={(val) => `Rs ${(val / 1000).toFixed(0)}k`} />
+                  <Tooltip contentStyle={customTooltipStyle} formatter={(val, name) => [`Rs ${fmtCurrency(val)}`, name === 'a' ? 'Sales' : 'Returns']} />
+                  <Legend iconType="circle" wrapperStyle={{ paddingTop: '10px' }} />
+                  <Bar dataKey="a" name="Sales" fill="url(#salesGrad)" radius={[4, 4, 0, 0]} barSize={12} />
+                  <Line type="monotone" dataKey="b" name="Sale Returns" stroke="#ef4444" strokeWidth={2} dot={{ fill: '#ef4444', r: 3 }} />
+                  <defs>
+                    <linearGradient id="salesGrad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#8b5cf6" stopOpacity={0.8} />
+                      <stop offset="100%" stopColor="#8b5cf6" stopOpacity={0.1} />
+                    </linearGradient>
+                  </defs>
+                </ComposedChart>
               </ResponsiveContainer>
             </div>
           </div>
@@ -594,27 +648,45 @@ export default function Dashboard() {
   );
 }
 
-/* ===================== Stat Card (glassy) ===================== */
-function StatCard({ title, value, series, color = "#2563eb" }) {
+function ModernStatCard({ title, value, icon, color, gradient }) {
   return (
-    <GlassCard>
-      <div className="px-4 pt-4">
-        <div className="text-sm text-gray-600">{title}</div>
-        <div className="text-2xl font-semibold">{value}</div>
-      </div>
-      <div className="h-16 px-2 pb-3">
-        <ResponsiveContainer width="100%" height="100%">
-          <AreaChart data={series || []} margin={{ top: 6, right: 6, left: 6, bottom: 0 }}>
+    <GlassCard className="relative overflow-hidden group">
+      <div className={`absolute inset-0 bg-gradient-to-br ${gradient} opacity-0 group-hover:opacity-5 transition-opacity duration-300`} />
+      <div className="p-4 relative z-10">
+        <div className="flex items-center gap-2 mb-1">
+          <div className="p-1.5 rounded-lg" style={{ backgroundColor: `${color}15` }}>
+            <div style={{ color }}>{icon}</div>
+          </div>
+          <span className="text-sm text-gray-500 font-medium">{title}</span>
+        </div>
+        <div className="text-2xl font-bold text-gray-800">{value}</div>
+        <div className="h-8 mt-3">
+          <svg viewBox="0 0 100 30" className="w-full h-full" preserveAspectRatio="none">
+            <path d="M0 25 Q 15 20, 25 22 T 50 18 T 75 20 T 100 15" fill="none" stroke={color} strokeWidth="2" className="opacity-60" />
+            <path d="M0 25 Q 15 20, 25 22 T 50 18 T 75 20 T 100 15 L 100 30 L 0 30 Z" fill={`url(#${title.replace(/\s+/g, '')}-spark)`} />
             <defs>
-              <linearGradient id={`${title}-grad`} x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor={color} stopOpacity={0.45} />
-                <stop offset="95%" stopColor={color} stopOpacity={0.06} />
+              <linearGradient id={`${title.replace(/\s+/g, '')}-spark`} x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor={color} stopOpacity={0.3} />
+                <stop offset="100%" stopColor={color} stopOpacity={0} />
               </linearGradient>
             </defs>
-            <Area type="monotone" dataKey="value" stroke={color} fill={`url(#${title}-grad)`} />
-          </AreaChart>
-        </ResponsiveContainer>
+          </svg>
+        </div>
       </div>
     </GlassCard>
   );
 }
+
+function MetricCard({ label, value, subValue, icon, bgColor }) {
+  return (
+    <div className={`${bgColor} rounded-xl p-3 text-white shadow-lg hover:shadow-xl transition-shadow duration-300`}>
+      <div className="flex items-center gap-2 mb-2">
+        <div className="p-1.5 bg-white/20 rounded-lg backdrop-blur-sm">{icon}</div>
+        <span className="text-xs font-medium text-white/80">{label}</span>
+      </div>
+      <div className="text-xl font-bold">{value}</div>
+      {subValue && <div className="text-xs text-white/70 mt-1">{subValue}</div>}
+    </div>
+  );
+}
+

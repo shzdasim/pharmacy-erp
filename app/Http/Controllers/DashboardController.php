@@ -143,4 +143,142 @@ public function nearExpiryFilters()
     return response()->json(compact('suppliers','brands'));
 }
 
+    /**
+     * GET /api/dashboard/invoice-counts
+     * Returns total counts of sale and purchase invoices
+     */
+    public function invoiceCounts()
+    {
+        $saleCount = SaleInvoice::count();
+        $purchaseCount = PurchaseInvoice::count();
+        
+        return response()->json([
+            'sale_invoices' => $saleCount,
+            'purchase_invoices' => $purchaseCount,
+            'total' => $saleCount + $purchaseCount,
+        ]);
+    }
+
+    /**
+     * GET /api/dashboard/sales-by-category
+     * Returns sales data grouped by product category
+     */
+    public function salesByCategory(Request $request)
+    {
+        $today = now()->toDateString();
+        $from = $request->query('date_from', now()->startOfMonth()->toDateString());
+        $to = $request->query('date_to', $today);
+
+        // Get sales by category from sale_invoice_items joined with products and categories
+        $data = DB::table('sale_invoice_items as sii')
+            ->join('sale_invoices as si', 'si.id', '=', 'sii.sale_invoice_id')
+            ->join('products as p', 'p.id', '=', 'sii.product_id')
+            ->leftJoin('categories as c', 'c.id', '=', 'p.category_id')
+            ->whereBetween('si.date', [$from, $to])
+            ->select(
+                DB::raw('COALESCE(c.name, "Uncategorized") as category'),
+                DB::raw('SUM(sii.quantity * sii.rate) as value')
+            )
+            ->groupBy('c.name')
+            ->orderByDesc('value')
+            ->limit(10)
+            ->get();
+
+        return response()->json(['data' => $data]);
+    }
+
+    /**
+     * GET /api/dashboard/kpi-metrics
+     * Returns various KPI metrics for the dashboard
+     */
+    public function kpiMetrics(Request $request)
+    {
+        $today = now()->toDateString();
+        $from = $request->query('date_from', $today);
+        $to = $request->query('date_to', $today);
+
+        // Count all products in the system
+        $activeProducts = DB::table('products')->count();
+
+        // Total suppliers
+        $supplierCount = DB::table('suppliers')->count();
+
+        // Total brands
+        $brandCount = DB::table('brands')->count();
+
+        // Total categories
+        $categoryCount = DB::table('categories')->count();
+
+        // Near expiry count (within 3 months)
+        $nearExpiryCount = DB::table('batches as b')
+            ->whereNotNull('b.expiry_date')
+            ->where('b.expiry_date', '>', $today)
+            ->where('b.expiry_date', '<=', now()->addMonths(3)->toDateString())
+            ->count();
+
+        return response()->json([
+            'active_products' => $activeProducts,
+            'suppliers' => $supplierCount,
+            'brands' => $brandCount,
+            'categories' => $categoryCount,
+            'near_expiry' => $nearExpiryCount,
+        ]);
+    }
+
+    /**
+     * GET /api/dashboard/sales-by-brands
+     * Returns sales data grouped by product brand
+     */
+    public function salesByBrands(Request $request)
+    {
+        $today = now()->toDateString();
+        $from = $request->query('date_from', now()->startOfMonth()->toDateString());
+        $to = $request->query('date_to', $today);
+
+        // Get sales by brand from sale_invoice_items joined with products and brands
+        $data = DB::table('sale_invoice_items as sii')
+            ->join('sale_invoices as si', 'si.id', '=', 'sii.sale_invoice_id')
+            ->join('products as p', 'p.id', '=', 'sii.product_id')
+            ->leftJoin('brands as br', 'br.id', '=', 'p.brand_id')
+            ->whereBetween('si.date', [$from, $to])
+            ->select(
+                DB::raw('COALESCE(br.name, "No Brand") as brand'),
+                DB::raw('SUM(sii.sub_total) as revenue')
+            )
+            ->groupBy('br.name')
+            ->orderByDesc('revenue')
+            ->limit(5)
+            ->get();
+
+        return response()->json(['data' => $data]);
+    }
+
+    /**
+     * GET /api/dashboard/top-products
+     * Returns top selling products by quantity sold
+     */
+    public function topProducts(Request $request)
+    {
+        $today = now()->toDateString();
+        $from = $request->query('date_from', now()->startOfMonth()->toDateString());
+        $to = $request->query('date_to', $today);
+        $limit = (int) $request->query('limit', 10);
+
+        $data = DB::table('sale_invoice_items as sii')
+            ->join('sale_invoices as si', 'si.id', '=', 'sii.sale_invoice_id')
+            ->join('products as p', 'p.id', '=', 'sii.product_id')
+            ->whereBetween('si.date', [$from, $to])
+            ->select(
+                'p.id',
+                'p.name as product_name',
+                DB::raw('SUM(sii.quantity) as total_sold'),
+                DB::raw('SUM(sii.sub_total) as revenue')
+            )
+            ->groupBy('p.id', 'p.name')
+            ->orderByDesc('total_sold')
+            ->limit($limit)
+            ->get();
+
+        return response()->json(['data' => $data]);
+    }
 }
