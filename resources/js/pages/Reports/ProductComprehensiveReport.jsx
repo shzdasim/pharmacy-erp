@@ -160,7 +160,7 @@ export default function ProductComprehensiveReport() {
   // tints
   const tintPrimary =
     "bg-slate-900/80 text-white ring-1 ring-white/15 shadow-[0_6px_20px_-6px_rgba(15,23,42,0.45)] hover:bg-slate-900/90";
-  const tintGhost = "bg-white/60 text-slate-700 ring-1 ring-white/30 hover:bg-white/75";
+  const tintGhost = isDark ? "bg-slate-800/60 text-slate-200 ring-1 ring-slate-700/50 hover:bg-slate-800/80" : "bg-white/60 text-slate-700 ring-1 ring-white/30 hover:bg-white/75";
 
   /* ============ Set default date range on mount ============ */
   useEffect(() => {
@@ -288,28 +288,36 @@ export default function ProductComprehensiveReport() {
   const getRowClass = (type) => {
     switch (type) {
       case "purchase":
-        return "bg-green-50/80";
+        return isDark ? "bg-green-900/30" : "bg-green-50/80";
       case "sale":
-        return "bg-red-50/80";
+        return isDark ? "bg-red-900/30" : "bg-red-50/80";
       case "purchase_return":
-        return "bg-amber-50/80";
+        return isDark ? "bg-amber-900/30" : "bg-amber-50/80";
       case "sale_return":
-        return "bg-purple-50/80";
+        return isDark ? "bg-purple-900/30" : "bg-purple-50/80";
       default:
-        return "";
+        return isDark ? "hover:bg-slate-800/50" : "hover:bg-white/80";
     }
   };
 
   const getTypeBadge = (type) => {
     switch (type) {
       case "purchase":
-        return <span className="px-2 py-0.5 rounded text-xs font-semibold bg-green-200 text-green-800">PURCHASE</span>;
+        return <span className={`px-2 py-0.5 rounded text-xs font-semibold ${
+          isDark ? "bg-green-800 text-green-200" : "bg-green-200 text-green-800"
+        }`}>PURCHASE</span>;
       case "sale":
-        return <span className="px-2 py-0.5 rounded text-xs font-semibold bg-red-200 text-red-800">SALE</span>;
+        return <span className={`px-2 py-0.5 rounded text-xs font-semibold ${
+          isDark ? "bg-red-800 text-red-200" : "bg-red-200 text-red-800"
+        }`}>SALE</span>;
       case "purchase_return":
-        return <span className="px-2 py-0.5 rounded text-xs font-semibold bg-amber-200 text-amber-800">P.RETURN</span>;
+        return <span className={`px-2 py-0.5 rounded text-xs font-semibold ${
+          isDark ? "bg-amber-800 text-amber-200" : "bg-amber-200 text-amber-800"
+        }`}>P.RETURN</span>;
       case "sale_return":
-        return <span className="px-2 py-0.5 rounded text-xs font-semibold bg-purple-200 text-purple-800">S.RETURN</span>;
+        return <span className={`px-2 py-0.5 rounded text-xs font-semibold ${
+          isDark ? "bg-purple-800 text-purple-200" : "bg-purple-200 text-purple-800"
+        }`}>S.RETURN</span>;
       default:
         return null;
     }
@@ -320,7 +328,7 @@ export default function ProductComprehensiveReport() {
       {/* ===== Header + Filters ===== */}
       <GlassCard>
         <GlassSectionHeader
-          title={<span className="font-semibold">Product Comprehensive Report</span>}
+          title={<span className={`font-semibold ${isDark ? "text-slate-200" : ""}`}>Product Comprehensive Report</span>}
           right={
             <div className="flex gap-2">
               <GlassBtn
@@ -344,29 +352,37 @@ export default function ProductComprehensiveReport() {
           <GlassToolbar className="grid grid-cols-1 md:grid-cols-12 gap-3">
             {/* From Date */}
             <div className="md:col-span-3">
-              <label className="text-sm text-gray-700 mb-1 block">From Date</label>
+              <label className={`text-sm mb-1 block ${isDark ? "text-slate-300" : "text-gray-700"}`}>From Date</label>
               <input
                 type="date"
                 value={fromDate}
                 onChange={(e) => setFromDate(e.target.value)}
-                className="w-full h-9 px-3 rounded-xl border border-gray-200/70 bg-white/60 backdrop-blur-sm focus:outline-none focus:ring-2 focus:ring-blue-400/60 text-sm"
+                className={`w-full h-9 px-3 rounded-xl border backdrop-blur-sm focus:outline-none focus:ring-2 focus:ring-blue-400/60 text-sm transition-colors ${
+                  isDark
+                    ? "bg-slate-800/60 border-slate-600/70 text-slate-200 placeholder-slate-500"
+                    : "bg-white/60 border-gray-200/70 text-gray-900"
+                }`}
               />
             </div>
 
             {/* To Date */}
             <div className="md:col-span-3">
-              <label className="text-sm text-gray-700 mb-1 block">To Date</label>
+              <label className={`text-sm mb-1 block ${isDark ? "text-slate-300" : "text-gray-700"}`}>To Date</label>
               <input
                 type="date"
                 value={toDate}
                 onChange={(e) => setToDate(e.target.value)}
-                className="w-full h-9 px-3 rounded-xl border border-gray-200/70 bg-white/60 backdrop-blur-sm focus:outline-none focus:ring-2 focus:ring-blue-400/60 text-sm"
+                className={`w-full h-9 px-3 rounded-xl border backdrop-blur-sm focus:outline-none focus:ring-2 focus:ring-blue-400/60 text-sm transition-colors ${
+                  isDark
+                    ? "bg-slate-800/60 border-slate-600/70 text-slate-200 placeholder-slate-500"
+                    : "bg-white/60 border-gray-200/70 text-gray-900"
+                }`}
               />
             </div>
 
             {/* Product Selector */}
             <div className="md:col-span-4">
-              <label className="text-sm text-gray-700 dark:text-gray-300 mb-1 block">Product</label>
+              <label className={`text-sm mb-1 block ${isDark ? "text-slate-300" : "text-gray-700"}`}>Product</label>
               <AsyncSelect
                 cacheOptions
                 loadOptions={loadProducts}
@@ -419,12 +435,12 @@ export default function ProductComprehensiveReport() {
       {/* ===== Permission states ===== */}
       {canView === null && (
         <GlassCard>
-          <div className="px-4 py-3 text-sm text-gray-700">Checking permissions…</div>
+          <div className={`px-4 py-3 text-sm ${isDark ? "text-slate-300" : "text-gray-700"}`}>Checking permissions…</div>
         </GlassCard>
       )}
       {canView === false && (
         <GlassCard>
-          <div className="px-4 py-3 text-sm text-gray-700">You don't have permission to view this report.</div>
+          <div className={`px-4 py-3 text-sm ${isDark ? "text-slate-300" : "text-gray-700"}`}>You don't have permission to view this report.</div>
         </GlassCard>
       )}
 
@@ -434,19 +450,25 @@ export default function ProductComprehensiveReport() {
           {/* Product Info Card */}
           {product && (
             <GlassCard>
-              <div className="flex flex-wrap items-center gap-4 p-4 bg-blue-50/80 rounded-xl border border-blue-200/60">
+              <div className={`flex flex-wrap items-center gap-4 p-4 rounded-xl border ${
+                isDark
+                  ? "bg-blue-900/30 border-blue-700/50"
+                  : "bg-blue-50/80 border-blue-200/60"
+              }`}>
                 <div className="flex-1">
-                  <h3 className="text-lg font-semibold text-blue-900">{product.name}</h3>
-                  <div className="flex flex-wrap gap-4 mt-1 text-sm text-blue-800">
+                  <h3 className={`text-lg font-semibold ${isDark ? "text-blue-300" : "text-blue-900"}`}>{product.name}</h3>
+                  <div className={`flex flex-wrap gap-4 mt-1 text-sm ${isDark ? "text-blue-200" : "text-blue-800"}`}>
                     {product.product_code && <span>Code: <strong>{product.product_code}</strong></span>}
                     {product.category_name && <span>Category: <strong>{product.category_name}</strong></span>}
                     {product.brand_name && <span>Brand: <strong>{product.brand_name}</strong></span>}
                     {product.pack_size && <span>Pack Size: <strong>{product.pack_size}</strong></span>}
                   </div>
                 </div>
-                <div className="text-center px-6 py-3 bg-white/80 rounded-xl border border-blue-200 shadow-sm">
-                  <div className="text-xs text-blue-600 uppercase tracking-wide">Current Stock</div>
-                  <div className="text-2xl font-bold text-blue-900">{fmtNumber(product.current_quantity)}</div>
+                <div className={`text-center px-6 py-3 rounded-xl border shadow-sm ${
+                  isDark ? "bg-slate-800/80 border-blue-700/50" : "bg-white/80 border-blue-200"
+                }`}>
+                  <div className={`text-xs uppercase tracking-wide ${isDark ? "text-blue-400" : "text-blue-600"}`}>Current Stock</div>
+                  <div className={`text-2xl font-bold ${isDark ? "text-blue-200" : "text-blue-900"}`}>{fmtNumber(product.current_quantity)}</div>
                 </div>
               </div>
             </GlassCard>
@@ -454,7 +476,7 @@ export default function ProductComprehensiveReport() {
 
           {transactions.length === 0 && !loading && (
             <GlassCard>
-              <div className="px-4 py-4 text-sm text-gray-600">
+              <div className={`px-4 py-4 text-sm ${isDark ? "text-slate-400" : "text-gray-600"}`}>
                 {product ? "No transactions found for this product in the selected date range." : "Select a product and click Load to view the report."}
               </div>
             </GlassCard>
@@ -468,46 +490,52 @@ export default function ProductComprehensiveReport() {
                   label="Total Purchase Price"
                   value={fmtCurrency(summary.total_purchases)}
                   icon="📥"
+                  isDark={isDark}
                 />
                 <KpiCard
                   label="Purchase Returns Price"
                   value={fmtCurrency(summary.total_purchase_returns)}
                   icon="📤"
+                  isDark={isDark}
                 />
                 <KpiCard
                   label="Net Purchase Price"
                   value={fmtCurrency(summary.net_purchases)}
                   icon="💰"
                   highlight={true}
+                  isDark={isDark}
                 />
                 <KpiCard
                   label="Total Sale Price"
                   value={fmtCurrency(summary.total_sales)}
                   icon="📤"
+                  isDark={isDark}
                 />
                 <KpiCard
                   label="Sale Returns Price"
                   value={fmtCurrency(summary.total_sale_returns)}
                   icon="📥"
+                  isDark={isDark}
                 />
                 <KpiCard
                   label="Net Sale Price"
                   value={fmtCurrency(summary.net_sales)}
                   icon="💰"
                   highlight={true}
+                  isDark={isDark}
                 />
               </div>
 
               {/* ===== Quantity Summary ===== */}
               <GlassCard>
-                <div className="flex justify-around py-3">
+                <div className={`flex justify-around py-3 ${isDark ? "text-slate-200" : ""}`}>
                   <div className="text-center">
-                    <div className="text-xs text-gray-500 uppercase">Total In</div>
-                    <div className="text-xl font-bold text-green-600">{fmtNumber(summary.total_quantity_in)}</div>
+                    <div className={`text-xs uppercase ${isDark ? "text-slate-400" : "text-gray-500"}`}>Total In</div>
+                    <div className={`text-xl font-bold ${isDark ? "text-green-400" : "text-green-600"}`}>{fmtNumber(summary.total_quantity_in)}</div>
                   </div>
                   <div className="text-center">
-                    <div className="text-xs text-gray-500 uppercase">Total Out</div>
-                    <div className="text-xl font-bold text-red-600">{fmtNumber(summary.total_quantity_out)}</div>
+                    <div className={`text-xs uppercase ${isDark ? "text-slate-400" : "text-gray-500"}`}>Total Out</div>
+                    <div className={`text-xl font-bold ${isDark ? "text-red-400" : "text-red-600"}`}>{fmtNumber(summary.total_quantity_out)}</div>
                   </div>
                 </div>
               </GlassCard>
@@ -515,20 +543,22 @@ export default function ProductComprehensiveReport() {
               {/* ===== Data Table ===== */}
               <GlassCard className="relative z-10">
                 <div className="max-h-[70vh] overflow-auto rounded-b-2xl">
-                  <table className="min-w-[1200px] w-full text-sm text-gray-900">
-                    <thead className="sticky top-0 bg-white/90 backdrop-blur-sm z-10 border-b border-gray-200/70">
-                      <tr className="text-left bg-gray-50/80">
-                        <Th>#</Th>
-                        <Th>Date</Th>
-                        <Th>Type</Th>
-                        <Th>Ref #</Th>
-                        <Th>Supplier/Customer</Th>
-                        <Th>Batch</Th>
-                        <Th>Expiry</Th>
-                        <Th align="right">Qty In</Th>
-                        <Th align="right">Qty Out</Th>
-                        <Th align="right">Unit Price</Th>
-                        <Th align="right">Subtotal</Th>
+                  <table className="min-w-[1200px] w-full text-sm">
+                    <thead className={`sticky top-0 backdrop-blur-sm z-10 border-b ${
+                      isDark ? "bg-slate-800/90" : "bg-white/90"
+                    }`}>
+                      <tr className={isDark ? "text-left text-slate-300" : "text-left bg-gray-50/80"}>
+                        <Th isDark={isDark}>#</Th>
+                        <Th isDark={isDark}>Date</Th>
+                        <Th isDark={isDark}>Type</Th>
+                        <Th isDark={isDark}>Ref #</Th>
+                        <Th isDark={isDark}>Supplier/Customer</Th>
+                        <Th isDark={isDark}>Batch</Th>
+                        <Th isDark={isDark}>Expiry</Th>
+                        <Th isDark={isDark} align="right">Qty In</Th>
+                        <Th isDark={isDark} align="right">Qty Out</Th>
+                        <Th isDark={isDark} align="right">Unit Price</Th>
+                        <Th isDark={isDark} align="right">Subtotal</Th>
                       </tr>
                     </thead>
 
@@ -536,23 +566,25 @@ export default function ProductComprehensiveReport() {
                       {transactions.map((txn, idx) => (
                         <tr
                           key={idx}
-                          className={`transition-all duration-150 hover:bg-white/80 ${getRowClass(txn.type)}`}
+                          className={`transition-all duration-150 ${
+                            isDark ? "hover:bg-slate-700/50 text-slate-200" : "hover:bg-white/80 text-gray-900"
+                          } ${getRowClass(txn.type)}`}
                         >
-                          <Td>{idx + 1}</Td>
-                          <Td>{fmtDate(txn.date)}</Td>
-                          <Td>{getTypeBadge(txn.type)}</Td>
-                          <Td className="font-medium">{txn.reference_number || "-"}</Td>
-                          <Td>{txn.counter_party || "-"}</Td>
-                          <Td>{txn.batch || "-"}</Td>
-                          <Td>{fmtDate(txn.expiry)}</Td>
-                          <Td align="right" className="text-green-700 font-medium">
+                          <Td isDark={isDark}>{idx + 1}</Td>
+                          <Td isDark={isDark}>{fmtDate(txn.date)}</Td>
+                          <Td isDark={isDark}>{getTypeBadge(txn.type)}</Td>
+                          <Td isDark={isDark} className="font-medium">{txn.reference_number || "-"}</Td>
+                          <Td isDark={isDark}>{txn.counter_party || "-"}</Td>
+                          <Td isDark={isDark}>{txn.batch || "-"}</Td>
+                          <Td isDark={isDark}>{fmtDate(txn.expiry)}</Td>
+                          <Td isDark={isDark} align="right" className={isDark ? "text-green-400 font-medium" : "text-green-700 font-medium"}>
                             {txn.quantity_in > 0 ? fmtNumber(txn.quantity_in) : "-"}
                           </Td>
-                          <Td align="right" className="text-red-700 font-medium">
+                          <Td isDark={isDark} align="right" className={isDark ? "text-red-400 font-medium" : "text-red-700 font-medium"}>
                             {txn.quantity_out > 0 ? fmtNumber(txn.quantity_out) : "-"}
                           </Td>
-                          <Td align="right">{fmtCurrency(txn.unit_price)}</Td>
-                          <Td align="right" className="font-medium">
+                          <Td isDark={isDark} align="right">{fmtCurrency(txn.unit_price)}</Td>
+                          <Td isDark={isDark} align="right" className="font-medium">
                             {fmtCurrency(txn.sub_total)}
                           </Td>
                         </tr>
@@ -560,24 +592,26 @@ export default function ProductComprehensiveReport() {
 
                       {transactions.length === 0 && (
                         <tr>
-                          <td colSpan={11} className="px-3 py-6 text-center text-gray-500">
+                          <td colSpan={11} className={`px-3 py-6 text-center ${isDark ? "text-slate-500" : "text-gray-500"}`}>
                             No transactions found.
                           </td>
                         </tr>
                       )}
                     </tbody>
 
-                    <tfoot className="border-t-2 border-gray-300 bg-white/80 backdrop-blur-sm font-semibold">
-                      <tr className="bg-gray-50">
-                        <Td colSpan={7} align="right" strong>TOTALS</Td>
-                        <Td align="right" className="text-green-800">
+                    <tfoot className={`border-t-2 backdrop-blur-sm font-semibold ${
+                      isDark ? "bg-slate-800/80 border-slate-700" : "bg-white/80 border-gray-300"
+                    }`}>
+                      <tr className={isDark ? "text-slate-300" : "bg-gray-50"}>
+                        <Td isDark={isDark} colSpan={7} align="right" strong>TOTALS</Td>
+                        <Td isDark={isDark} align="right" className={isDark ? "text-green-400" : "text-green-800"}>
                           {fmtNumber(summary.total_quantity_in)}
                         </Td>
-                        <Td align="right" className="text-red-800">
+                        <Td isDark={isDark} align="right" className={isDark ? "text-red-400" : "text-red-800"}>
                           {fmtNumber(summary.total_quantity_out)}
                         </Td>
-                        <Td align="right">-</Td>
-                        <Td align="right">-</Td>
+                        <Td isDark={isDark} align="right">-</Td>
+                        <Td isDark={isDark} align="right">-</Td>
                       </tr>
                     </tfoot>
                   </table>
@@ -601,43 +635,49 @@ export default function ProductComprehensiveReport() {
 }
 
 /* ===== KPI Card Component ===== */
-function KpiCard({ label, value, icon, highlight = false }) {
+function KpiCard({ label, value, icon, highlight = false, isDark = false }) {
   return (
     <div
       className={[
-        "group rounded-xl px-4 py-3 backdrop-blur-sm bg-white/55 ring-1 ring-white/30 shadow-sm",
+        "group rounded-xl px-4 py-3 backdrop-blur-sm ring-1 shadow-sm",
         "transition-all duration-200",
-        "hover:bg-white/80 hover:backdrop-blur-md hover:shadow-[0_10px_30px_-10px_rgba(59,130,246,0.35)]",
+        "hover:backdrop-blur-md hover:shadow-[0_10px_30px_-10px_rgba(59,130,246,0.35)]",
         "hover:ring-white/40",
         highlight ? "outline outline-1 outline-emerald-200/50" : "",
+        isDark
+          ? "bg-slate-800/55 ring-slate-700/30 hover:bg-slate-800/80"
+          : "bg-white/55 ring-white/30 hover:bg-white/80",
       ].join(" ")}
     >
       <div className="flex items-center gap-2 mb-1">
         <span className="text-lg">{icon}</span>
-        <span className="text-xs text-gray-600 uppercase tracking-wide">{label}</span>
+        <span className={`text-xs uppercase tracking-wide ${isDark ? "text-slate-400" : "text-gray-600"}`}>{label}</span>
       </div>
-      <div className="text-xl font-bold tabular-nums text-gray-900">{value}</div>
+      <div className={`text-xl font-bold tabular-nums ${isDark ? "text-slate-200" : "text-gray-900"}`}>{value}</div>
     </div>
   );
 }
 
 /* ===== Table Helpers ===== */
-function Th({ children, align = "left" }) {
+function Th({ children, align = "left", isDark = false }) {
   return (
-    <th className={`px-3 py-2 font-medium ${align === "right" ? "text-right" : "text-left"}`}>
+    <th className={`px-3 py-2 font-medium ${align === "right" ? "text-right" : "text-left"} ${
+      isDark ? "text-slate-300" : "text-gray-700"
+    }`}>
       {children}
     </th>
   );
 }
 
-function Td({ children, align = "left", colSpan, strong = false, className = "" }) {
+function Td({ children, align = "left", colSpan, strong = false, className = "", isDark = false }) {
   return (
     <td
       colSpan={colSpan}
       className={[
-        "px-3 py-2 border-t border-gray-200/70",
+        "px-3 py-2 border-t",
         align === "right" ? "text-right" : "text-left",
-        strong ? "font-medium text-gray-800" : "",
+        strong ? "font-medium" : "",
+        isDark ? "border-slate-700 text-slate-300" : "border-gray-200/70 text-gray-900",
         className,
       ].join(" ")}
     >

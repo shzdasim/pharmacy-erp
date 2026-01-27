@@ -5,6 +5,7 @@ import AsyncSelect from "react-select/async";
 import { createFilter } from "react-select";
 import toast from "react-hot-toast";
 import { usePermissions } from "@/api/usePermissions";
+import { useTheme } from "@/context/ThemeContext";
 
 // 🧊 glass primitives
 import {
@@ -28,32 +29,61 @@ const fmtNumber = (v) =>
   n(v).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 });
 
 /* react-select → glassy control */
-const selectStyles = {
+const getSelectStyles = (isDarkMode = false) => ({
   control: (base) => ({
     ...base,
     minHeight: 36,
     height: 36,
-    borderColor: "rgba(229,231,235,0.8)",
-    backgroundColor: "rgba(255,255,255,0.7)",
+    borderColor: isDarkMode ? "rgba(71,85,105,0.8)" : "rgba(229,231,235,0.8)",
+    backgroundColor: isDarkMode ? "rgba(51,65,85,0.7)" : "rgba(255,255,255,0.7)",
     backdropFilter: "blur(6px)",
-    boxShadow: "0 1px 2px rgba(15,23,42,0.06)",
+    boxShadow: isDarkMode ? "0 1px 2px rgba(0,0,0,0.2)" : "0 1px 2px rgba(15,23,42,0.06)",
     borderRadius: 12,
     transition: "all .2s ease",
-    "&:hover": { borderColor: "rgba(148,163,184,0.9)", backgroundColor: "rgba(255,255,255,0.85)" },
+    "&:hover": {
+      borderColor: isDarkMode ? "rgba(100,116,139,0.9)" : "rgba(148,163,184,0.9)",
+      backgroundColor: isDarkMode ? "rgba(51,65,85,0.85)" : "rgba(255,255,255,0.85)",
+    },
   }),
   valueContainer: (base) => ({ ...base, height: 36, padding: "0 10px" }),
   indicatorsContainer: (base) => ({ ...base, height: 36 }),
-  input: (base) => ({ ...base, margin: 0, padding: 0 }),
+  input: (base) => ({
+    ...base,
+    margin: 0,
+    padding: 0,
+    color: isDarkMode ? "#f1f5f9" : "#111827",
+  }),
   menuPortal: (base) => ({ ...base, zIndex: 9999 }),
   menu: (base) => ({
     ...base,
     borderRadius: 12,
     overflow: "hidden",
-    backgroundColor: "rgba(255,255,255,0.9)",
+    backgroundColor: isDarkMode ? "rgba(30,41,59,0.95)" : "rgba(255,255,255,0.9)",
     backdropFilter: "blur(10px)",
-    boxShadow: "0 10px 30px -10px rgba(30,64,175,0.18)",
+    boxShadow: isDarkMode ? "0 10px 30px -10px rgba(0,0,0,0.4)" : "0 10px 30px -10px rgba(30,64,175,0.18)",
+    border: isDarkMode ? "1px solid rgba(71,85,105,0.5)" : "none",
   }),
-};
+  option: (base, state) => ({
+    ...base,
+    backgroundColor: isDarkMode
+      ? state.isFocused
+        ? "rgba(71,85,105,1)"
+        : "rgba(51,65,85,1)"
+      : state.isFocused
+        ? "rgba(241,245,249,1)"
+        : "rgba(255,255,255,1)",
+    color: isDarkMode ? "#f1f5f9" : "#111827",
+    cursor: "pointer",
+  }),
+  singleValue: (base) => ({
+    ...base,
+    color: isDarkMode ? "#f1f5f9" : "#111827",
+  }),
+  placeholder: (base) => ({
+    ...base,
+    color: isDarkMode ? "#64748b" : "#9ca3af",
+  }),
+});
 
 // helper to try /api/... then /...
 async function tryEndpoints(paths, params) {
@@ -88,10 +118,13 @@ export default function CurrentStockReport() {
   const canView = perms?.has?.("report.current-stock.view");
   const canExport = perms?.has?.("report.current-stock.export");
 
+  // Get dark mode state
+  const { isDark } = useTheme();
+
   // tints
   const tintPrimary =
     "bg-slate-900/80 text-white ring-1 ring-white/15 shadow-[0_6px_20px_-6px_rgba(15,23,42,0.45)] hover:bg-slate-900/90";
-  const tintGhost = "bg-white/60 text-slate-700 ring-1 ring-white/30 hover:bg-white/75";
+  const tintGhost = isDark ? "bg-slate-800/60 text-slate-200 ring-1 ring-slate-700/50 hover:bg-slate-800/80" : "bg-white/60 text-slate-700 ring-1 ring-white/30 hover:bg-white/75";
 
   /* ============ Async loaders ============ */
   const loadCategories = useMemo(
@@ -257,7 +290,7 @@ export default function CurrentStockReport() {
       {/* ===== Header + Filters ===== */}
       <GlassCard>
         <GlassSectionHeader
-          title={<span className="font-semibold">Current Stock Report</span>}
+          title={<span className={`font-semibold ${isDark ? "text-slate-200" : ""}`}>Current Stock Report</span>}
           right={
             <div className="flex gap-2">
               <GlassBtn
@@ -281,7 +314,7 @@ export default function CurrentStockReport() {
           <GlassToolbar className="grid grid-cols-1 md:grid-cols-12 gap-3">
             {/* Category */}
             <div className="md:col-span-4">
-              <label className="text-sm text-gray-700 mb-1 block">Category</label>
+              <label className={`text-sm mb-1 block ${isDark ? "text-slate-300" : "text-gray-700"}`}>Category</label>
               <AsyncSelect
                 cacheOptions
                 defaultOptions={[{ value: "", label: "All Categories" }]}
@@ -292,7 +325,7 @@ export default function CurrentStockReport() {
                   setCategoryValue(opt);
                   setCategoryId(opt?.value || "");
                 }}
-                styles={selectStyles}
+                styles={getSelectStyles(isDark)}
                 menuPortalTarget={document.body}
                 filterOption={createFilter({
                   matchFrom: "start",
@@ -303,7 +336,7 @@ export default function CurrentStockReport() {
 
             {/* Brand */}
             <div className="md:col-span-4">
-              <label className="text-sm text-gray-700 mb-1 block">Brand</label>
+              <label className={`text-sm mb-1 block ${isDark ? "text-slate-300" : "text-gray-700"}`}>Brand</label>
               <AsyncSelect
                 cacheOptions
                 defaultOptions={[{ value: "", label: "All Brands" }]}
@@ -314,7 +347,7 @@ export default function CurrentStockReport() {
                   setBrandValue(opt);
                   setBrandId(opt?.value || "");
                 }}
-                styles={selectStyles}
+                styles={getSelectStyles(isDark)}
                 menuPortalTarget={document.body}
                 filterOption={createFilter({
                   matchFrom: "start",
@@ -325,7 +358,7 @@ export default function CurrentStockReport() {
 
             {/* Supplier */}
             <div className="md:col-span-4">
-              <label className="text-sm text-gray-700 mb-1 block">Supplier</label>
+              <label className={`text-sm mb-1 block ${isDark ? "text-slate-300" : "text-gray-700"}`}>Supplier</label>
               <AsyncSelect
                 cacheOptions
                 defaultOptions={[{ value: "", label: "All Suppliers" }]}
@@ -336,7 +369,7 @@ export default function CurrentStockReport() {
                   setSupplierValue(opt);
                   setSupplierId(opt?.value || "");
                 }}
-                styles={selectStyles}
+                styles={getSelectStyles(isDark)}
                 menuPortalTarget={document.body}
                 filterOption={createFilter({
                   matchFrom: "start",
@@ -378,12 +411,12 @@ export default function CurrentStockReport() {
       {/* ===== Permission states ===== */}
       {canView === null && (
         <GlassCard>
-          <div className="px-4 py-3 text-sm text-gray-700">Checking permissions…</div>
+          <div className={`px-4 py-3 text-sm ${isDark ? "text-slate-300" : "text-gray-700"}`}>Checking permissions…</div>
         </GlassCard>
       )}
       {canView === false && (
         <GlassCard>
-          <div className="px-4 py-3 text-sm text-gray-700">You don't have permission to view this report.</div>
+          <div className={`px-4 py-3 text-sm ${isDark ? "text-slate-300" : "text-gray-700"}`}>You don't have permission to view this report.</div>
         </GlassCard>
       )}
 
@@ -392,7 +425,7 @@ export default function CurrentStockReport() {
         <>
           {rows.length === 0 && !loading && (
             <GlassCard>
-              <div className="px-4 py-4 text-sm text-gray-600">
+              <div className={`px-4 py-4 text-sm ${isDark ? "text-slate-400" : "text-gray-600"}`}>
                 No stock items found. Apply filters and click "Load Report".
               </div>
             </GlassCard>
@@ -406,49 +439,54 @@ export default function CurrentStockReport() {
                   label="Total Items"
                   value={fmtNumber(summary.total_items)}
                   icon="📦"
+                  isDark={isDark}
                 />
                 <KpiCard
                   label="Total Quantity"
                   value={fmtNumber(summary.total_quantity)}
                   icon="🔢"
+                  isDark={isDark}
                 />
                 <KpiCard
                   label="Purchase Value"
                   value={fmtCurrency(summary.total_purchase_value)}
                   icon="💰"
                   highlight={false}
+                  isDark={isDark}
                 />
                 <KpiCard
                   label="Sale Value"
                   value={fmtCurrency(summary.total_sale_value)}
                   icon="🏷️"
                   highlight={false}
+                  isDark={isDark}
                 />
                 <KpiCard
                   label="Potential Profit"
                   value={fmtCurrency(potentialProfit)}
                   icon="📈"
                   highlight={true}
+                  isDark={isDark}
                 />
               </div>
 
               {/* ===== Data Table ===== */}
               <GlassCard className="relative z-10">
                 <div className="max-h-[75vh] overflow-auto rounded-b-2xl">
-                  <table className="min-w-[1200px] w-full text-sm text-gray-900">
-                    <thead className="sticky top-0 bg-white/90 backdrop-blur-sm z-10 border-b border-gray-200/70">
+                  <table className={`min-w-[1200px] w-full text-sm ${isDark ? "text-slate-200" : "text-gray-900"}`}>
+                    <thead className={`sticky top-0 backdrop-blur-sm z-10 border-b ${isDark ? "bg-slate-800/90" : "bg-white/90"} ${isDark ? "border-slate-600/70" : "border-gray-200/70"}`}>
                       <tr className="text-left">
-                        <Th>#</Th>
-                        <Th>Product Name</Th>
-                        <Th>Category</Th>
-                        <Th>Brand</Th>
-                        <Th>Supplier</Th>
-                        <Th align="right">Pack Size</Th>
-                        <Th align="right">Quantity</Th>
-                        <Th align="right">Pack Purchase</Th>
-                        <Th align="right">Pack Sale</Th>
-                        <Th align="right">Total Purchase</Th>
-                        <Th align="right">Total Sale</Th>
+                        <Th isDark={isDark}>#</Th>
+                        <Th isDark={isDark}>Product Name</Th>
+                        <Th isDark={isDark}>Category</Th>
+                        <Th isDark={isDark}>Brand</Th>
+                        <Th isDark={isDark}>Supplier</Th>
+                        <Th align="right" isDark={isDark}>Pack Size</Th>
+                        <Th align="right" isDark={isDark}>Quantity</Th>
+                        <Th align="right" isDark={isDark}>Pack Purchase</Th>
+                        <Th align="right" isDark={isDark}>Pack Sale</Th>
+                        <Th align="right" isDark={isDark}>Total Purchase</Th>
+                        <Th align="right" isDark={isDark}>Total Sale</Th>
                       </tr>
                     </thead>
 
@@ -456,23 +494,27 @@ export default function CurrentStockReport() {
                       {rows.map((row, idx) => (
                         <tr
                           key={row.id ?? idx}
-                          className="transition-all duration-150 odd:bg-white/90 even:bg-white/70 hover:bg-white/80 hover:backdrop-blur-[2px]"
+                          className={`transition-all duration-150 hover:backdrop-blur-[2px] ${
+                            isDark
+                              ? "odd:bg-slate-800/80 even:bg-slate-800/60 hover:bg-slate-700/80"
+                              : "odd:bg-white/90 even:bg-white/70 hover:bg-white/80"
+                          }`}
                         >
-                          <Td>{idx + 1}</Td>
-                          <Td className="font-medium">{row.name || "-"}</Td>
-                          <Td>{row.category_name || "-"}</Td>
-                          <Td>{row.brand_name || "-"}</Td>
-                          <Td>{row.supplier_name || "-"}</Td>
-                          <Td align="right">{fmtNumber(row.pack_size)}</Td>
-                          <Td align="right" className="font-semibold text-blue-700">
+                          <Td isDark={isDark}>{idx + 1}</Td>
+                          <Td isDark={isDark} className="font-medium">{row.name || "-"}</Td>
+                          <Td isDark={isDark}>{row.category_name || "-"}</Td>
+                          <Td isDark={isDark}>{row.brand_name || "-"}</Td>
+                          <Td isDark={isDark}>{row.supplier_name || "-"}</Td>
+                          <Td align="right" isDark={isDark}>{fmtNumber(row.pack_size)}</Td>
+                          <Td align="right" isDark={isDark} className="font-semibold text-blue-700">
                             {fmtNumber(row.quantity)}
                           </Td>
-                          <Td align="right">{fmtCurrency(row.pack_purchase_price)}</Td>
-                          <Td align="right">{fmtCurrency(row.pack_sale_price)}</Td>
-                          <Td align="right" className="text-emerald-700">
+                          <Td align="right" isDark={isDark}>{fmtCurrency(row.pack_purchase_price)}</Td>
+                          <Td align="right" isDark={isDark}>{fmtCurrency(row.pack_sale_price)}</Td>
+                          <Td align="right" isDark={isDark} className="text-emerald-700">
                             {fmtCurrency(row.total_purchase_value)}
                           </Td>
-                          <Td align="right" className="text-indigo-700">
+                          <Td align="right" isDark={isDark} className="text-indigo-700">
                             {fmtCurrency(row.total_sale_value)}
                           </Td>
                         </tr>
@@ -480,26 +522,26 @@ export default function CurrentStockReport() {
 
                       {(!rows || rows.length === 0) && (
                         <tr>
-                          <td colSpan={11} className="px-3 py-6 text-center text-gray-500">
+                          <td colSpan={11} className={`px-3 py-6 text-center ${isDark ? "text-slate-400" : "text-gray-500"}`}>
                             No stock items found.
                           </td>
                         </tr>
                       )}
                     </tbody>
 
-                    <tfoot className="border-t-2 border-gray-300 bg-white/80 backdrop-blur-sm font-semibold">
-                      <tr className="bg-gray-50">
-                        <Td colSpan={5} align="right" strong>TOTALS</Td>
-                        <Td align="right">-</Td>
-                        <Td align="right" className="text-blue-800">
+                    <tfoot className={`border-t-2 backdrop-blur-sm font-semibold ${isDark ? "border-slate-600 bg-slate-800/80" : "border-gray-300 bg-white/80"}`}>
+                      <tr className={isDark ? "bg-slate-700" : "bg-gray-50"}>
+                        <Td colSpan={5} align="right" strong isDark={isDark}>TOTALS</Td>
+                        <Td align="right" isDark={isDark}>-</Td>
+                        <Td align="right" isDark={isDark} className="text-blue-800">
                           {fmtNumber(summary.total_quantity)}
                         </Td>
-                        <Td align="right">-</Td>
-                        <Td align="right">-</Td>
-                        <Td align="right" className="text-emerald-800">
+                        <Td align="right" isDark={isDark}>-</Td>
+                        <Td align="right" isDark={isDark}>-</Td>
+                        <Td align="right" isDark={isDark} className="text-emerald-800">
                           {fmtCurrency(summary.total_purchase_value)}
                         </Td>
-                        <Td align="right" className="text-indigo-800">
+                        <Td align="right" isDark={isDark} className="text-indigo-800">
                           {fmtCurrency(summary.total_sale_value)}
                         </Td>
                       </tr>
@@ -546,22 +588,23 @@ function KpiCard({ label, value, icon, highlight = false }) {
 }
 
 /* ===== Table Helpers ===== */
-function Th({ children, align = "left" }) {
+function Th({ children, align = "left", isDark = false }) {
   return (
-    <th className={`px-3 py-2 font-medium ${align === "right" ? "text-right" : "text-left"}`}>
+    <th className={`px-3 py-2 font-medium ${align === "right" ? "text-right" : "text-left"} ${isDark ? "text-slate-200" : ""}`}>
       {children}
     </th>
   );
 }
 
-function Td({ children, align = "left", colSpan, strong = false, className = "" }) {
+function Td({ children, align = "left", colSpan, strong = false, className = "", isDark = false }) {
   return (
     <td
       colSpan={colSpan}
       className={[
-        "px-3 py-2 border-t border-gray-200/70",
+        "px-3 py-2 border-t",
+        isDark ? "border-slate-600/70" : "border-gray-200/70",
         align === "right" ? "text-right" : "text-left",
-        strong ? "font-medium text-gray-800" : "",
+        strong ? (isDark ? "font-medium text-slate-200" : "font-medium text-gray-800") : "",
         className,
       ].join(" ")}
     >

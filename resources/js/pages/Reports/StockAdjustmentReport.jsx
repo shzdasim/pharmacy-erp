@@ -272,19 +272,19 @@ export default function StockAdjustmentReport() {
                   <table className="min-w-[1400px] w-full text-sm">
                     <thead className={`sticky top-0 backdrop-blur-sm z-10 border-b ${isDark ? "bg-slate-800/90" : "bg-white/90"}`}>
                       <tr className={`text-left ${isDark ? "bg-slate-700/80 text-slate-200" : "bg-gray-50/80 text-gray-900"}`}>
-                        <Th>#</Th>
-                        <Th>Adjustment #</Th>
-                        <Th>Date</Th>
-                        <Th>Product</Th>
-                        <Th>Batch</Th>
-                        <Th>Expiry</Th>
-                        <Th align="right">Prev Qty</Th>
-                        <Th align="right">Actual Qty</Th>
-                        <Th align="right">Diff Qty</Th>
-                        <Th align="right">Unit Price</Th>
-                        <Th align="right">Worth Adj.</Th>
-                        <Th>Reason/Note</Th>
-                        <Th>User</Th>
+                        <Th isDark={isDark}>#</Th>
+                        <Th isDark={isDark}>Adjustment #</Th>
+                        <Th isDark={isDark}>Date</Th>
+                        <Th isDark={isDark}>Product</Th>
+                        <Th isDark={isDark}>Batch</Th>
+                        <Th isDark={isDark}>Expiry</Th>
+                        <Th align="right" isDark={isDark}>Prev Qty</Th>
+                        <Th align="right" isDark={isDark}>Actual Qty</Th>
+                        <Th align="right" isDark={isDark}>Diff Qty</Th>
+                        <Th align="right" isDark={isDark}>Unit Price</Th>
+                        <Th align="right" isDark={isDark}>Worth Adj.</Th>
+                        <Th isDark={isDark}>Reason/Note</Th>
+                        <Th isDark={isDark}>User</Th>
                       </tr>
                     </thead>
 
@@ -294,7 +294,7 @@ export default function StockAdjustmentReport() {
                         if (items.length === 0) {
                           return (
                             <tr key={`row-${row.id || idx}`} className={isDark ? "odd:bg-slate-800/90 even:bg-slate-800/70" : "odd:bg-white/90 even:bg-white/70"}>
-                              <Td colSpan={13} className={isDark ? "text-slate-400 italic" : "text-gray-400 italic"}>
+                              <Td colSpan={13} isDark={isDark} className={isDark ? "text-slate-400 italic" : "text-gray-400 italic"}>
                                 No items in this adjustment
                               </Td>
                             </tr>
@@ -312,41 +312,43 @@ export default function StockAdjustmentReport() {
                                   : "odd:bg-white/90 even:bg-white/70 hover:bg-white/80"
                               }`}
                             >
-                              <Td>{idx + 1}</Td>
-                              <Td className={`font-medium ${isDark ? "text-slate-300" : ""}`}>{row.posted_number || "-"}</Td>
-                              <Td className={isDark ? "text-slate-300" : ""}>{fmtDate(row.posted_date)}</Td>
-                              <Td className={`font-medium ${isDark ? "text-slate-300" : ""}`}>
+                              <Td isDark={isDark}>{idx + 1}</Td>
+                              <Td isDark={isDark} className={`font-medium ${isDark ? "text-slate-300" : ""}`}>{row.posted_number || "-"}</Td>
+                              <Td isDark={isDark} className={isDark ? "text-slate-300" : ""}>{fmtDate(row.posted_date)}</Td>
+                              <Td isDark={isDark} className={`font-medium ${isDark ? "text-slate-300" : ""}`}>
                                 {item.product_name || "-"}
                                 <div className={`text-xs ${isDark ? "text-slate-500" : "text-gray-500"}`}>{item.product_code}</div>
                               </Td>
-                              <Td className={isDark ? "text-slate-300" : ""}>{item.batch_number || "-"}</Td>
-                              <Td className={isDark ? "text-slate-300" : ""}>{fmtDate(item.expiry)}</Td>
-                              <Td align="right" className={isDark ? "text-slate-300" : ""}>{fmtNumber(item.previous_qty)}</Td>
-                              <Td align="right" className={isDark ? "text-slate-300" : ""}>{fmtNumber(item.actual_qty)}</Td>
+                              <Td isDark={isDark} className={isDark ? "text-slate-300" : ""}>{item.batch_number || "-"}</Td>
+                              <Td isDark={isDark} className={isDark ? "text-slate-300" : ""}>{fmtDate(item.expiry)}</Td>
+                              <Td align="right" isDark={isDark} className={isDark ? "text-slate-300" : ""}>{fmtNumber(item.previous_qty)}</Td>
+                              <Td align="right" isDark={isDark} className={isDark ? "text-slate-300" : ""}>{fmtNumber(item.actual_qty)}</Td>
                               <Td
                                 align="right"
+                                isDark={isDark}
                                 className={`font-semibold ${
-                                  isPositive 
-                                    ? isDark ? "text-green-400" : "text-green-600" 
-                                    : isNegative 
-                                      ? isDark ? "text-red-400" : "text-red-600" 
+                                  isPositive
+                                    ? isDark ? "text-green-400" : "text-green-600"
+                                    : isNegative
+                                      ? isDark ? "text-red-400" : "text-red-600"
                                       : ""
                                 }`}
                               >
                                 {item.diff_qty > 0 ? "+" : ""}
                                 {fmtNumber(item.diff_qty)}
                               </Td>
-                              <Td align="right" className={isDark ? "text-slate-300" : ""}>{fmtCurrency(item.unit_purchase_price)}</Td>
+                              <Td align="right" isDark={isDark} className={isDark ? "text-slate-300" : ""}>{fmtCurrency(item.unit_purchase_price)}</Td>
                               <Td
                                 align="right"
+                                isDark={isDark}
                                 className={item.worth_adjusted >= 0 ? (isDark ? "text-emerald-400" : "text-emerald-700") : (isDark ? "text-red-400" : "text-red-700")}
                               >
                                 {fmtCurrency(item.worth_adjusted)}
                               </Td>
-                              <Td className={`max-w-xs truncate ${isDark ? "text-slate-300" : ""}`} title={row.note}>
+                              <Td isDark={isDark} className={`max-w-xs truncate ${isDark ? "text-slate-300" : ""}`} title={row.note}>
                                 {row.note || "-"}
                               </Td>
-                              <Td className={isDark ? "text-slate-300" : ""}>{row.user_name || "-"}</Td>
+                              <Td isDark={isDark} className={isDark ? "text-slate-300" : ""}>{row.user_name || "-"}</Td>
                             </tr>
                           );
                         });
@@ -363,15 +365,15 @@ export default function StockAdjustmentReport() {
 
                     <tfoot className={`border-t-2 ${isDark ? "border-slate-600 bg-slate-800/80" : "border-gray-300 bg-white/80"} backdrop-blur-sm font-semibold`}>
                       <tr className={isDark ? "bg-slate-700/50 text-slate-200" : "bg-gray-50 text-gray-800"}>
-                        <Td colSpan={6} align="right" strong>TOTALS</Td>
-                        <Td align="right">-</Td>
-                        <Td align="right">-</Td>
-                        <Td align="right">-</Td>
-                        <Td align="right">-</Td>
-                        <Td align="right" className={isDark ? "text-emerald-400" : "text-emerald-800"}>
+                        <Td colSpan={6} align="right" strong isDark={isDark}>TOTALS</Td>
+                        <Td align="right" isDark={isDark}>-</Td>
+                        <Td align="right" isDark={isDark}>-</Td>
+                        <Td align="right" isDark={isDark}>-</Td>
+                        <Td align="right" isDark={isDark}>-</Td>
+                        <Td align="right" isDark={isDark} className={isDark ? "text-emerald-400" : "text-emerald-800"}>
                           {fmtCurrency(summary.total_worth_adjusted)}
                         </Td>
-                        <Td colSpan={4}></Td>
+                        <Td colSpan={4} isDark={isDark}></Td>
                       </tr>
                     </tfoot>
                   </table>
@@ -416,15 +418,15 @@ function KpiCard({ isDark, label, value, icon, highlight = false }) {
 }
 
 /* ===== Table Helpers ===== */
-function Th({ children, align = "left" }) {
+function Th({ children, align = "left", isDark = false }) {
   return (
-    <th className={`px-3 py-2 font-medium ${align === "right" ? "text-right" : "text-left"}`}>
+    <th className={`px-3 py-2 font-medium ${align === "right" ? "text-right" : "text-left"} ${isDark ? "text-slate-200" : ""}`}>
       {children}
     </th>
   );
 }
 
-function Td({ children, align = "left", colSpan, strong = false, className = "" }) {
+function Td({ children, align = "left", colSpan, strong = false, className = "", isDark = false }) {
   return (
     <td
       colSpan={colSpan}
@@ -432,7 +434,7 @@ function Td({ children, align = "left", colSpan, strong = false, className = "" 
         "px-3 py-2 border-t",
         isDark ? "border-slate-700/70" : "border-gray-200/70",
         align === "right" ? "text-right" : "text-left",
-        strong ? "font-medium" : "",
+        strong ? (isDark ? "font-medium text-slate-200" : "font-medium text-gray-800") : "",
         className,
       ].join(" ")}
     >
