@@ -15,6 +15,7 @@ import EditProduct from "../pages/Products/Edit.jsx";
 import PurchaseInvoicesIndex from "../pages/PurchaseInvoice/index.jsx";
 import CreatePurchaseInvoice from "../pages/PurchaseInvoice/Create.jsx";
 import EditPurchaseInvoice from "../pages/PurchaseInvoice/Edit.jsx";
+import ShowPurchaseInvoice from "../pages/PurchaseInvoice/Show.jsx";
 import PurchaseReturnsIndex from "../pages/PurchaseReturn/index.jsx";
 import CreatePurchaseReturn from "../pages/PurchaseReturn/Create.jsx";
 import EditPurchaseReturn from "../pages/PurchaseReturn/Edit.jsx";
@@ -177,6 +178,16 @@ export default function AppRoutes() {
           <ProtectedRoute>
             <DashboardLayout>
               <EditPurchaseInvoice />
+            </DashboardLayout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/purchase-invoices/:id"
+        element={
+          <ProtectedRoute>
+            <DashboardLayout>
+              <ShowPurchaseInvoice />
             </DashboardLayout>
           </ProtectedRoute>
         }

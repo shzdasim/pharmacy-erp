@@ -8,6 +8,7 @@ import {
   PlusCircleIcon,
   PencilSquareIcon,
   EyeIcon,
+  PrinterIcon,
   TrashIcon,
   ArrowPathIcon,
   ShieldExclamationIcon,
@@ -47,12 +48,13 @@ export default function SaleInvoicesIndex() {
     [canFor]
   );
 
-  // 🧊 iOS-style tinted glass palette (same tokens as Products)
+// 🧊 iOS-style tinted glass palette (same tokens as Products)
   const tintBlue   = "bg-blue-500/85 text-white shadow-[0_6px_20px_-6px_rgba(37,99,235,0.45)] ring-1 ring-white/20 hover:bg-blue-500/95";
   const tintIndigo = "bg-indigo-500/85 text-white shadow-[0_6px_20px_-6px_rgba(99,102,241,0.45)] ring-1 ring-white/20 hover:bg-indigo-500/95";
   const tintSlate  = "bg-slate-900/80 text-white shadow-[0_6px_20px_-6px_rgba(15,23,42,0.45)] ring-1 ring-white/15 hover:bg-slate-900/90";
   const tintAmber  = "bg-amber-500/85 text-white shadow-[0_6px_20px_-6px_rgba(245,158,11,0.45)] ring-1 ring-white/20 hover:bg-amber-500/95";
   const tintRed    = "bg-rose-500/85 text-white shadow-[0_6px_20px_-6px_rgba(244,63,94,0.45)] ring-1 ring-white/20 hover:bg-rose-500/95";
+  const tintGreenGlass  = "bg-green-600/85 text-white shadow-[0_6px_20px_-6px_rgba(22,163,74,0.45)] ring-1 ring-white/20 hover:bg-green-600/95";
   const tintGlass  = "bg-white/60 text-slate-700 ring-1 ring-white/30 hover:bg-white/75";
 
   // Fetch (kept same endpoint/shape)
@@ -139,7 +141,7 @@ export default function SaleInvoicesIndex() {
 
   const proceedToPassword = () => setDeleteStep(3);
 
-  const confirmAndDelete = async () => {
+const confirmAndDelete = async () => {
     if (!deletingId) return;
     if (!can.delete) return toast.error("You don't have permission to delete sale invoices.");
     try {
@@ -159,6 +161,62 @@ export default function SaleInvoicesIndex() {
     } finally {
       setDeleting(false);
     }
+  };
+
+  // Print popup logic (same as Show page)
+  const handlePrint = (id) => {
+    if (!id) return;
+
+    const WEB_BASE =
+      (import.meta.env.VITE_BACKEND_WEB_BASE || "").replace(/\/$/, "") ||
+      window.location.origin;
+
+    const url = `${WEB_BASE}/print/sale-invoices/${id}`;
+
+    const width = 900;
+    const height = 700;
+    const left = Math.max(
+      0,
+      (window.screenX || window.screenLeft || 0) + (window.outerWidth - width) / 2
+    );
+    const top = Math.max(
+      0,
+      (window.screenY || window.screenTop || 0) + (window.outerHeight - height) / 2
+    );
+
+    const features = [
+      `width=${Math.round(width)}`,
+      `height=${Math.round(height)}`,
+      `left=${Math.round(left)}`,
+      `top=${Math.round(top)}`,
+      "menubar=no",
+      "toolbar=no",
+      "location=no",
+      "status=no",
+      "scrollbars=yes",
+      "resizable=yes",
+    ].join(",");
+
+    const w = window.open(url, "salePrintWin", features);
+    if (!w) {
+      toast.error("Popup blocked. Please allow popups to print.");
+      return;
+    }
+
+    try { w.opener = null; } catch {}
+
+    w.onload = () => {
+      try { w.focus(); w.print(); } catch {}
+    };
+
+    const timer = setInterval(() => {
+      try {
+        if (w.document?.readyState === "complete") {
+          w.focus(); w.print(); clearInterval(timer);
+        }
+      } catch {}
+      if (w.closed) clearInterval(timer);
+    }, 400);
   };
 
   // ===== search + pagination (client-side; behavior unchanged) =====
@@ -304,7 +362,7 @@ export default function SaleInvoicesIndex() {
                         </Link>
                       </Guard>
 
-                      <Link
+<Link
                         to={`/sale-invoices/${invoice.id}`}
                         className={`h-9 min-w-[100px] inline-flex items-center justify-center gap-1 rounded-xl px-3 ${tintIndigo}`}
                         title="View"
@@ -312,6 +370,15 @@ export default function SaleInvoicesIndex() {
                         <EyeIcon className="w-5 h-5" />
                         View
                       </Link>
+
+                      <button
+                        onClick={() => handlePrint(invoice.id)}
+                        className={`h-9 min-w-[100px] inline-flex items-center justify-center gap-1 rounded-xl px-3 ${tintGreenGlass}`}
+                        title="Print"
+                      >
+                        <PrinterIcon className="w-5 h-5" />
+                        Print
+                      </button>
 
                       <Guard when={can.delete}>
                         <GlassBtn
