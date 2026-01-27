@@ -149,7 +149,7 @@
       <div class="hr"></div>
       <div class="note">{{ $footerNote }}</div>
     @endif
-    <div class="foot">Thank you for your business!</div>
+    <div class="foot">Software by Asim Shahzad<br/>PH:0304-7674787</div>
   </div>
 </div>
 </body>

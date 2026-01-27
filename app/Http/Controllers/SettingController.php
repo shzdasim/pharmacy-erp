@@ -15,6 +15,7 @@ class SettingController extends Controller
         $this->authorize('view', Setting::class);
         $setting = Setting::firstOrCreate(['id' => 1], [
             'printer_type' => 'thermal',
+            'thermal_template' => 'standard',
         ]);
 
         return response()->json($setting);
@@ -33,6 +34,7 @@ class SettingController extends Controller
             'license_number' => ['nullable','string','max:100'],
             'note'           => ['nullable','string','max:2000'],
             'printer_type'   => ['required', Rule::in(['thermal','a4'])],
+            'thermal_template' => ['nullable', Rule::in(['standard','minimal','detailed','compact','bold','barcode'])],
             'logo'           => ['nullable','image','mimes:jpg,jpeg,png,webp','max:2048'],
         ]);
 

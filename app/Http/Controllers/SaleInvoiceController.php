@@ -488,7 +488,17 @@ class SaleInvoiceController extends Controller
         $oldRemainingNet = $globalNet - $remainThis;
         if ($oldRemainingNet < 0) $oldRemainingNet = 0.0;
 
-        return view("printer.sale_invoice_{$type}", [
+        // Determine which template to use
+        if ($type === 'thermal') {
+            // For thermal, use the selected thermal template from settings
+            $thermalTemplate = $setting->thermal_template ?? 'standard';
+            $templateName = "sale_invoice_thermal_{$thermalTemplate}";
+        } else {
+            // For A4, use the standard template
+            $templateName = "sale_invoice_a4";
+        }
+
+        return view("printer.{$templateName}", [
             'invoice'          => $invoice,
             'setting'          => $setting,
             'printTotal'       => $total,

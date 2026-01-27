@@ -108,7 +108,7 @@
   @if($footerNote !== '')
     <div class="note">NOTE: {{ $footerNote }}</div>
   @endif
-  <div class="foot">*** THANK YOU ***<br/>{{ $date }}</div>
+  <div class="foot">Software by Asim Shahzad<br/>PH:0304-7674787</div>
 </div>
 </body>
 </html>

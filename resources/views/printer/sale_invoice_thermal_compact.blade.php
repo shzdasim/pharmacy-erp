@@ -88,9 +88,9 @@
   </table>
   <div class="totals">
     <div class="hr"></div>
-    <div class="pair"><span>Grs:{{ number_format((float)$gross, 2) }}</span></div>
+    <div class="pair"><span>Gross:{{ number_format((float)$gross, 2) }}</span></div>
     <div class="pair"><span>Disc:{{ number_format((float)$disc, 2) }}</span></div>
-    <div class="pair total"><span>TOT:{{ number_format((float)$total, 2) }}</span></div>
+    <div class="pair total"><span>TOTAL:{{ number_format((float)$total, 2) }}</span></div>
     @if($remainThis > 0)
       <div class="pair"><span>Paid:{{ number_format($totalReceive, 2) }}</span></div>
       <div class="pair"><span>Due:{{ number_format($remainThis, 2) }}</span></div>
@@ -100,7 +100,7 @@
     <div class="hr"></div>
     <div class="note">{{ $footerNote }}</div>
   @endif
-  <div class="foot">{{ $user }}</div>
+  <div class="foot">Software by Asim Shahzad<br/>PH:0304-7674787</div>
 </div>
 </body>
 </html>
