@@ -9,6 +9,7 @@ import ProductSearchInput from "../../components/ProductSearchInput.jsx";
 import BatchSearchInput from "../../components/BatchSearchInput.jsx";
 import SupplierSearchInput from "../../components/SupplierSearchInput.jsx";
 import { recalcItem, recalcFooter } from "../../Formula/PurchaseReturn.js";
+import { useTheme } from "@/context/ThemeContext";
 
 export default function PurchaseReturnForm({ returnId, initialData, onSuccess }) {
   // ===== defaults =====
@@ -1198,6 +1199,67 @@ export default function PurchaseReturnForm({ returnId, initialData, onSuccess })
     );
     return m ? unitsFromInvoiceItem(m) : 0;
   };
+
+  // Get dark mode state
+  const { isDark } = useTheme();
+
+  // Helper to get react-select styles based on dark mode
+  const getSelectStyles = (isDarkMode = false) => ({
+    control: (base) => ({
+      ...base,
+      minHeight: "28px",
+      height: "28px",
+      fontSize: "12px",
+      borderColor: isDarkMode ? "rgba(71,85,105,0.8)" : "rgba(229,231,235,0.8)",
+      backgroundColor: isDarkMode ? "rgba(51,65,85,0.7)" : "rgba(255,255,255,0.7)",
+      backdropFilter: "blur(6px)",
+      boxShadow: isDarkMode ? "0 1px 2px rgba(0,0,0,0.2)" : "0 1px 2px rgba(15,23,42,0.06)",
+      borderRadius: 8,
+      color: isDarkMode ? "#f1f5f9" : "#111827",
+    }),
+    valueContainer: (base) => ({
+      ...base,
+      height: "28px",
+      padding: "0 4px",
+    }),
+    input: (base) => ({
+      ...base,
+      margin: 0,
+      padding: 0,
+      color: isDarkMode ? "#f1f5f9" : "#111827",
+    }),
+    singleValue: (base) => ({
+      ...base,
+      color: isDarkMode ? "#f1f5f9" : "#111827",
+    }),
+    placeholder: (base) => ({
+      ...base,
+      color: isDarkMode ? "#64748b" : "#9ca3af",
+    }),
+    menu: (base) => ({
+      ...base,
+      borderRadius: 8,
+      overflow: "hidden",
+      backgroundColor: isDarkMode ? "rgba(30,41,59,0.95)" : "rgba(255,255,255,0.95)",
+      backdropFilter: "blur(10px)",
+      boxShadow: isDarkMode ? "0 10px 30px -10px rgba(0,0,0,0.4)" : "0 10px 30px -10px rgba(30,64,175,0.18)",
+      border: isDarkMode ? "1px solid rgba(71,85,105,0.5)" : "none",
+    }),
+    option: (base, state) => ({
+      ...base,
+      backgroundColor: isDarkMode
+        ? state.isFocused
+          ? "rgba(71,85,105,1)"
+          : "rgba(51,65,85,1)"
+        : state.isFocused
+          ? "rgba(241,245,249,1)"
+          : "rgba(255,255,255,1)",
+      color: isDarkMode ? "#f1f5f9" : "#111827",
+      cursor: "pointer",
+    }),
+    menuPortal: (base) => ({ ...base, zIndex: 9999 }),
+  });
+
   useEffect(() => {
     // Only when editing AND invoice-based
     if (!returnId || !form.purchase_invoice_id || !invoiceItems?.length) return;
@@ -1223,35 +1285,35 @@ export default function PurchaseReturnForm({ returnId, initialData, onSuccess })
     <div className="relative">
       <form className="flex flex-col" style={{ minHeight: "74vh", maxHeight: "80vh" }}>
         {/* ================= HEADER ================= */}
-        <div className="sticky top-0 bg-white shadow p-2 z-10">
-          <h2 className="text-sm font-bold mb-2">Purchase Return (Use Enter to navigate, Alt+S to save)</h2>
+        <div className="sticky top-0 bg-white dark:bg-slate-800 shadow p-2 z-10 border-b border-gray-200 dark:border-slate-700">
+          <h2 className="text-sm font-bold mb-2 text-gray-900 dark:text-gray-100">Purchase Return (Use Enter to navigate, Alt+S to save)</h2>
           <table className="w-full border-collapse text-xs">
             <tbody>
               <tr>
-                <td className="border p-1 w-1/12">
-                  <label className="block text-[10px]">Posted Number</label>
+                <td className="border p-1 w-1/12 bg-gray-50 dark:bg-slate-700/50">
+                  <label className="block text-[10px] text-gray-600 dark:text-gray-400">Posted Number</label>
                   <input
                     name="posted_number"
                     type="text"
                     readOnly
                     value={form.posted_number || ""}
-                    className="bg-gray-100 border rounded w-full p-1 h-7 text-xs"
+                    className="bg-gray-100 dark:bg-slate-600 border rounded w-full p-1 h-7 text-xs text-gray-900 dark:text-gray-100"
                   />
                 </td>
 
-                <td className="border p-1 w-1/6">
-                  <label className="block text-[10px]">Date</label>
+                <td className="border p-1 w-1/6 bg-gray-50 dark:bg-slate-700/50">
+                  <label className="block text-[10px] text-gray-600 dark:text-gray-400">Date</label>
                   <input
                     name="date"
                     type="date"
                     value={form.date}
                     onChange={handleChange}
-                    className="border rounded w-full p-1 h-7 text-xs"
+                    className="border rounded w-full p-1 h-7 text-xs bg-white dark:bg-slate-700 text-gray-900 dark:text-gray-100"
                   />
                 </td>
 
-                <td className="border p-1 w-1/3">
-                  <label className="block text-[10px]">Supplier *</label>
+                <td className="border p-1 w-1/3 bg-gray-50 dark:bg-slate-700/50">
+                  <label className="block text-[10px] text-gray-600 dark:text-gray-400">Supplier *</label>
                   <SupplierSearchInput
                     ref={supplierSelectRef}
                     value={form.supplier_id}
@@ -1266,8 +1328,8 @@ export default function PurchaseReturnForm({ returnId, initialData, onSuccess })
                   />
                 </td>
 
-                <td className="border p-1 w-1/3">
-                  <label className="block text-[10px]">Purchase Invoice (optional)</label>
+                <td className="border p-1 w-1/3 bg-gray-50 dark:bg-slate-700/50">
+                  <label className="block text-[10px] text-gray-600 dark:text-gray-400">Purchase Invoice (optional)</label>
                   <Select
                     ref={purchaseInvoiceRef}
                     options={invoiceOptions}
@@ -1296,35 +1358,19 @@ export default function PurchaseReturnForm({ returnId, initialData, onSuccess })
                     }}
                     isSearchable
                     classNamePrefix="react-select"
-                    styles={{
-                      control: (base) => ({
-                        ...base,
-                        minHeight: "28px",
-                        height: "28px",
-                        fontSize: "12px",
-                      }),
-                      valueContainer: (base) => ({
-                        ...base,
-                        height: "28px",
-                        padding: "0 4px",
-                      }),
-                      input: (base) => ({
-                        ...base,
-                        margin: 0,
-                        padding: 0,
-                      }),
-                    }}
+                    styles={getSelectStyles(isDark)}
+                    menuPortalTarget={typeof document !== "undefined" ? document.body : null}
                   />
                 </td>
 
-                <td className="border p-1 w-1/4">
-                  <label className="block text-[10px]">Remarks</label>
+                <td className="border p-1 w-1/4 bg-gray-50 dark:bg-slate-700/50">
+                  <label className="block text-[10px] text-gray-600 dark:text-gray-400">Remarks</label>
                   <input
                     name="remarks"
                     type="text"
                     value={form.remarks}
                     onChange={handleChange}
-                    className="border rounded w-full p-1 h-7 text-xs"
+                    className="border rounded w-full p-1 h-7 text-xs bg-white dark:bg-slate-700 text-gray-900 dark:text-gray-100"
                   />
                 </td>
               </tr>
@@ -1333,43 +1379,43 @@ export default function PurchaseReturnForm({ returnId, initialData, onSuccess })
         </div>
 
         {/* ================= ITEMS ================= */}
-        <div className="flex-1 overflow-auto p-1">
-          <h2 className="text-xs font-bold mb-1">Items (↑↓ arrows to navigate rows)</h2>
+        <div className="flex-1 overflow-auto p-1 bg-gray-50 dark:bg-slate-800/50">
+          <h2 className="text-xs font-bold mb-1 text-gray-900 dark:text-gray-100">Items (↑↓ arrows to navigate rows)</h2>
 
           <table className="w-full border-collapse text-[11px]">
-            <thead className="sticky top-0 bg-gray-100 z-5">
+            <thead className="sticky top-0 bg-gray-100 dark:bg-slate-700 z-5">
               <tr>
-                <th rowSpan={2} className="border w-6">#</th>
-                <th rowSpan={2} colSpan={1} className="border w-[80px]">Product</th>
-                <th colSpan={4} className="border">Pack Size / Batch / Expiry / Available Qty</th>
-                <th colSpan={2} className="border">Return Qty (Pack / Unit)</th>
-                <th colSpan={2} className="border">Purchase Price (P / U)</th>
-                <th colSpan={1} className="border">Disc %</th>
-                <th rowSpan={2} className="border w-16">Sub Total</th>
-                <th rowSpan={2} className="border w-6">+</th>
+                <th rowSpan={2} className="border w-6 bg-gray-200 dark:bg-slate-600 text-gray-900 dark:text-gray-100">#</th>
+                <th rowSpan={2} colSpan={1} className="border w-[80px] bg-gray-200 dark:bg-slate-600 text-gray-900 dark:text-gray-100">Product</th>
+                <th colSpan={4} className="border bg-gray-200 dark:bg-slate-600 text-gray-900 dark:text-gray-100">Pack Size / Batch / Expiry / Available Qty</th>
+                <th colSpan={2} className="border bg-gray-200 dark:bg-slate-600 text-gray-900 dark:text-gray-100">Return Qty (Pack / Unit)</th>
+                <th colSpan={2} className="border bg-gray-200 dark:bg-slate-600 text-gray-900 dark:text-gray-100">Purchase Price (P / U)</th>
+                <th colSpan={1} className="border bg-gray-200 dark:bg-slate-600 text-gray-900 dark:text-gray-100">Disc %</th>
+                <th rowSpan={2} className="border w-16 bg-gray-200 dark:bg-slate-600 text-gray-900 dark:text-gray-100">Sub Total</th>
+                <th rowSpan={2} className="border w-6 bg-gray-200 dark:bg-slate-600 text-gray-900 dark:text-gray-100">+</th>
               </tr>
               <tr>
-                <th className="border w-14">PSize</th>
-                <th className="border w-16">Batch</th>
-                <th className="border w-20">Exp</th>
-                <th className="border w-20">Avail.Q (Units)</th>
-                <th className="border w-12">Pack.Q</th>
-                <th className="border w-12">Unit.Q</th>
-                <th className="border w-14">Pack.P</th>
-                <th className="border w-14">Unit.P</th>
-                <th className="border w-14">Disc%</th>
+                <th className="border w-14 bg-gray-100 dark:bg-slate-600 text-gray-900 dark:text-gray-100">PSize</th>
+                <th className="border w-16 bg-gray-100 dark:bg-slate-600 text-gray-900 dark:text-gray-100">Batch</th>
+                <th className="border w-20 bg-gray-100 dark:bg-slate-600 text-gray-900 dark:text-gray-100">Exp</th>
+                <th className="border w-20 bg-gray-100 dark:bg-slate-600 text-gray-900 dark:text-gray-100">Avail.Q (Units)</th>
+                <th className="border w-12 bg-gray-100 dark:bg-slate-600 text-gray-900 dark:text-gray-100">Pack.Q</th>
+                <th className="border w-12 bg-gray-100 dark:bg-slate-600 text-gray-900 dark:text-gray-100">Unit.Q</th>
+                <th className="border w-14 bg-gray-100 dark:bg-slate-600 text-gray-900 dark:text-gray-100">Pack.P</th>
+                <th className="border w-14 bg-gray-100 dark:bg-slate-600 text-gray-900 dark:text-gray-100">Unit.P</th>
+                <th className="border w-14 bg-gray-100 dark:bg-slate-600 text-gray-900 dark:text-gray-100">Disc%</th>
               </tr>
             </thead>
 
             <tbody>
               {form.items.map((item, i) => (
-                <tr key={item.id} className="text-center">
+                <tr key={item.id} className="text-center odd:bg-white even:bg-gray-50 dark:odd:bg-slate-700/30 dark:even:bg-slate-700/50">
                   {/* Remove */}
                   <td className="border">
                     <button
                       type="button"
                       onClick={() => removeItem(i)}
-                      className="bg-red-500 text-white px-1 rounded text-[10px]"
+                      className="bg-red-500 dark:bg-red-600 text-white px-1 rounded text-[10px]"
                     >
                       X
                     </button>
@@ -1398,7 +1444,7 @@ export default function PurchaseReturnForm({ returnId, initialData, onSuccess })
                       type="number"
                       readOnly
                       value={item.pack_size || ""}
-                      className="border bg-gray-100 w-full h-6 text-[11px] px-1 appearance-none [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                      className="border bg-gray-100 dark:bg-slate-600 w-full h-6 text-[11px] px-1 appearance-none [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none text-gray-900 dark:text-gray-100"
                     />
                   </td>
 
@@ -1429,7 +1475,7 @@ export default function PurchaseReturnForm({ returnId, initialData, onSuccess })
                       type="text"
                       readOnly
                       value={item.expiry || ""}
-                      className="border bg-gray-100 w-full h-6 text-[11px] px-1"
+                      className="border bg-gray-100 dark:bg-slate-600 w-full h-6 text-[11px] px-1 text-gray-900 dark:text-gray-100"
                     />
                   </td>
 
@@ -1439,7 +1485,7 @@ export default function PurchaseReturnForm({ returnId, initialData, onSuccess })
                       type="number"
                       readOnly
                       value={item.available_units || 0}
-                      className="border bg-gray-100 w-full h-6 text-[11px] px-1"
+                      className="border bg-gray-100 dark:bg-slate-600 w-full h-6 text-[11px] px-1 text-gray-900 dark:text-gray-100"
                     />
                   </td>
 
@@ -1451,7 +1497,7 @@ export default function PurchaseReturnForm({ returnId, initialData, onSuccess })
                       value={item.return_pack_quantity === 0 ? "" : item.return_pack_quantity}
                       onChange={(e) => handleItemChange(i, "return_pack_quantity", e.target.value)}
                       onKeyDown={(e) => handleKeyDown(e, "pack_quantity", i)}
-                      className="border w-full h-6 text-[11px] px-1 appearance-none [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                      className="border w-full h-6 text-[11px] px-1 appearance-none [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none bg-white dark:bg-slate-700 text-gray-900 dark:text-gray-100"
                     />
                   </td>
 
@@ -1461,7 +1507,7 @@ export default function PurchaseReturnForm({ returnId, initialData, onSuccess })
                       type="text"
                       value={item.return_unit_quantity === 0 ? "" : item.return_unit_quantity}
                       onChange={(e) => handleItemChange(i, "return_unit_quantity", e.target.value)}
-                      className="border w-full h-6 text-[11px] px-1 appearance-none [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                      className="border w-full h-6 text-[11px] px-1 appearance-none [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none bg-white dark:bg-slate-700 text-gray-900 dark:text-gray-100"
                     />
                   </td>
 
@@ -1473,7 +1519,7 @@ export default function PurchaseReturnForm({ returnId, initialData, onSuccess })
                       value={item.pack_purchase_price === 0 ? "" : item.pack_purchase_price}
                       onChange={(e) => handleItemChange(i, "pack_purchase_price", e.target.value)}
                       onKeyDown={(e) => handleKeyDown(e, "pack_purchase_price", i)}
-                      className="border w-full h-6 text-[11px] px-1 appearance-none [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                      className="border w-full h-6 text-[11px] px-1 appearance-none [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none bg-white dark:bg-slate-700 text-gray-900 dark:text-gray-100"
                     />
                   </td>
 
@@ -1483,7 +1529,7 @@ export default function PurchaseReturnForm({ returnId, initialData, onSuccess })
                       type="text"
                       value={item.unit_purchase_price === 0 ? "" : item.unit_purchase_price}
                       onChange={(e) => handleItemChange(i, "unit_purchase_price", e.target.value)}
-                      className="border w-full h-6 text-[11px] px-1 appearance-none [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                      className="border w-full h-6 text-[11px] px-1 appearance-none [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none bg-white dark:bg-slate-700 text-gray-900 dark:text-gray-100"
                     />
                   </td>
 
@@ -1495,7 +1541,7 @@ export default function PurchaseReturnForm({ returnId, initialData, onSuccess })
                       value={item.item_discount_percentage === 0 ? "" : item.item_discount_percentage}
                       onChange={(e) => handleItemChange(i, "item_discount_percentage", e.target.value)}
                       onKeyDown={(e) => handleKeyDown(e, "item_discount", i)}
-                      className="border w-full h-6 text-[11px] px-1 appearance-none [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                      className="border w-full h-6 text-[11px] px-1 appearance-none [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none bg-white dark:bg-slate-700 text-gray-900 dark:text-gray-100"
                     />
                   </td>
 
@@ -1505,7 +1551,7 @@ export default function PurchaseReturnForm({ returnId, initialData, onSuccess })
                       type="number"
                       readOnly
                       value={(Number(item.sub_total) || 0).toFixed(2)}
-                      className="border bg-gray-100 w-full h-6 text-[11px] px-1 appearance-none [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                      className="border bg-gray-100 dark:bg-slate-600 w-full h-6 text-[11px] px-1 appearance-none [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none text-gray-900 dark:text-gray-100"
                     />
                   </td>
 
@@ -1514,7 +1560,7 @@ export default function PurchaseReturnForm({ returnId, initialData, onSuccess })
                     <button
                       type="button"
                       onClick={addItem}
-                      className="bg-blue-500 text-white px-1 rounded text-[10px]"
+                      className="bg-blue-500 dark:bg-blue-600 text-white px-1 rounded text-[10px]"
                     >
                       +
                     </button>
@@ -1526,38 +1572,38 @@ export default function PurchaseReturnForm({ returnId, initialData, onSuccess })
         </div>
 
         {/* ================= FOOTER ================= */}
-        <div className="sticky bottom-0 bg-white shadow p-2 z-10">
+        <div className="sticky bottom-0 bg-white dark:bg-slate-800 shadow p-2 z-10 border-t border-gray-200 dark:border-slate-700">
           <table className="w-full border-collapse text-xs">
             <tbody>
               <tr>
-                <td className="border p-1 w-1/6">
-                  <label className="block text-[10px]">Gross Total</label>
-                  <input type="number" readOnly value={(Number(form.gross_total) || 0).toFixed(2)} className="border rounded w-full p-1 h-7 text-xs bg-gray-100" />
+                <td className="border p-1 w-1/6 bg-gray-50 dark:bg-slate-700/50">
+                  <label className="block text-[10px] text-gray-600 dark:text-gray-400">Gross Total</label>
+                  <input type="number" readOnly value={(Number(form.gross_total) || 0).toFixed(2)} className="border rounded w-full p-1 h-7 text-xs bg-gray-100 dark:bg-slate-600 text-gray-900 dark:text-gray-100" />
                 </td>
 
-                <td className="border p-1 w-1/6">
-                  <label className="block text-[10px]">Discount %</label>
-                  <input name="discount_percentage" type="number" value={form.discount_percentage} onChange={handleChange} className="border rounded w-full p-1 h-7 text-xs" />
+                <td className="border p-1 w-1/6 bg-gray-50 dark:bg-slate-700/50">
+                  <label className="block text-[10px] text-gray-600 dark:text-gray-400">Discount %</label>
+                  <input name="discount_percentage" type="number" value={form.discount_percentage} onChange={handleChange} className="border rounded w-full p-1 h-7 text-xs bg-white dark:bg-slate-700 text-gray-900 dark:text-gray-100" />
                 </td>
 
-                <td className="border p-1 w-1/6">
-                  <label className="block text-[10px]">Discount Amount</label>
-                  <input type="number" readOnly value={(Number(form.discount_amount) || 0).toFixed(2)} className="border rounded w-full p-1 h-7 text-xs bg-gray-100" />
+                <td className="border p-1 w-1/6 bg-gray-50 dark:bg-slate-700/50">
+                  <label className="block text-[10px] text-gray-600 dark:text-gray-400">Discount Amount</label>
+                  <input type="number" readOnly value={(Number(form.discount_amount) || 0).toFixed(2)} className="border rounded w-full p-1 h-7 text-xs bg-gray-100 dark:bg-slate-600 text-gray-900 dark:text-gray-100" />
                 </td>
 
-                <td className="border p-1 w-1/6">
-                  <label className="block text-[10px]">Tax %</label>
-                  <input name="tax_percentage" type="number" value={form.tax_percentage} onChange={handleChange} className="border rounded w-full p-1 h-7 text-xs" />
+                <td className="border p-1 w-1/6 bg-gray-50 dark:bg-slate-700/50">
+                  <label className="block text-[10px] text-gray-600 dark:text-gray-400">Tax %</label>
+                  <input name="tax_percentage" type="number" value={form.tax_percentage} onChange={handleChange} className="border rounded w-full p-1 h-7 text-xs bg-white dark:bg-slate-700 text-gray-900 dark:text-gray-100" />
                 </td>
 
-                <td className="border p-1 w-1/6">
-                  <label className="block text-[10px]">Tax Amount</label>
-                  <input type="number" readOnly value={(Number(form.tax_amount) || 0).toFixed(2)} className="border rounded w-full p-1 h-7 text-xs bg-gray-100" />
+                <td className="border p-1 w-1/6 bg-gray-50 dark:bg-slate-700/50">
+                  <label className="block text-[10px] text-gray-600 dark:text-gray-400">Tax Amount</label>
+                  <input type="number" readOnly value={(Number(form.tax_amount) || 0).toFixed(2)} className="border rounded w-full p-1 h-7 text-xs bg-gray-100 dark:bg-slate-600 text-gray-900 dark:text-gray-100" />
                 </td>
 
-                <td className="border p-1 w-1/6 text-right align-middle">
-                  <label className="block text-[10px]">Total</label>
-                  <input type="number" readOnly value={(Number(form.total) || 0).toFixed(2)} className="border rounded w-full p-1 h-7 text-xs bg-gray-100 text-right" />
+                <td className="border p-1 w-1/6 text-right align-middle bg-gray-50 dark:bg-slate-700/50">
+                  <label className="block text-[10px] text-gray-600 dark:text-gray-400">Total</label>
+                  <input type="number" readOnly value={(Number(form.total) || 0).toFixed(2)} className="border rounded w-full p-1 h-7 text-xs bg-gray-100 dark:bg-slate-600 text-gray-900 dark:text-gray-100 text-right" />
                 </td>
               </tr>
 
@@ -1567,14 +1613,14 @@ export default function PurchaseReturnForm({ returnId, initialData, onSuccess })
                     <button
                       type="button"
                       onClick={handleCancel}
-                      className="px-6 py-3 rounded text-sm transition bg-gray-200 text-gray-800 hover:bg-gray-300"
+                      className="px-6 py-3 rounded text-sm transition bg-gray-200 dark:bg-slate-600 text-gray-800 dark:text-gray-200 hover:bg-gray-300 dark:hover:bg-slate-500"
                     >
                       Cancel
                     </button>
                     <button
                       type="button"
                       onClick={handleSubmit}
-                      className="px-8 py-3 rounded text-sm transition bg-green-600 text-white hover:bg-green-700"
+                      className="px-8 py-3 rounded text-sm transition bg-green-600 dark:bg-green-700 text-white hover:bg-green-700 dark:hover:bg-green-800"
                     >
                       {form.returnId || returnId ? "Update Return" : "Create Return"}
                     </button>

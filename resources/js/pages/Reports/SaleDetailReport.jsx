@@ -14,6 +14,7 @@ import {
   GlassInput,
   GlassBtn,
 } from "@/components/glass.jsx";
+import { useTheme } from "@/context/ThemeContext";
 
 import { ArrowDownOnSquareIcon, PencilSquareIcon, CheckCircleIcon, XCircleIcon } from "@heroicons/react/24/solid";
 
@@ -60,6 +61,63 @@ const selectStyles = {
   }),
 };
 
+// Helper to merge dark mode styles - returns function-based styles for react-select
+const getSelectStyles = (isDarkMode = false) => ({
+  control: (base) => ({
+    ...base,
+    minHeight: 36,
+    height: 36,
+    borderColor: isDarkMode ? "rgba(71,85,105,0.8)" : "rgba(229,231,235,0.8)",
+    backgroundColor: isDarkMode ? "rgba(51,65,85,0.7)" : "rgba(255,255,255,0.7)",
+    backdropFilter: "blur(6px)",
+    boxShadow: isDarkMode ? "0 1px 2px rgba(0,0,0,0.2)" : "0 1px 2px rgba(15,23,42,0.06)",
+    borderRadius: 12,
+    transition: "all .2s ease",
+    "&:hover": {
+      borderColor: isDarkMode ? "rgba(100,116,139,0.9)" : "rgba(148,163,184,0.9)",
+      backgroundColor: isDarkMode ? "rgba(51,65,85,0.85)" : "rgba(255,255,255,0.85)",
+    },
+  }),
+  valueContainer: (base) => ({ ...base, height: 36, padding: "0 10px" }),
+  indicatorsContainer: (base) => ({ ...base, height: 36 }),
+  input: (base) => ({
+    ...base,
+    margin: 0,
+    padding: 0,
+    color: isDarkMode ? "#f1f5f9" : "#111827",
+  }),
+  menuPortal: (base) => ({ ...base, zIndex: 9999 }),
+  menu: (base) => ({
+    ...base,
+    borderRadius: 12,
+    overflow: "hidden",
+    backgroundColor: isDarkMode ? "rgba(30,41,59,0.95)" : "rgba(255,255,255,0.9)",
+    backdropFilter: "blur(10px)",
+    boxShadow: isDarkMode ? "0 10px 30px -10px rgba(0,0,0,0.4)" : "0 10px 30px -10px rgba(30,64,175,0.18)",
+    border: isDarkMode ? "1px solid rgba(71,85,105,0.5)" : "none",
+  }),
+  option: (base, state) => ({
+    ...base,
+    backgroundColor: isDarkMode
+      ? state.isFocused
+        ? "rgba(71,85,105,1)"
+        : "rgba(51,65,85,1)"
+      : state.isFocused
+        ? "rgba(241,245,249,1)"
+        : "rgba(255,255,255,1)",
+    color: isDarkMode ? "#f1f5f9" : "#111827",
+    cursor: "pointer",
+  }),
+  singleValue: (base) => ({
+    ...base,
+    color: isDarkMode ? "#f1f5f9" : "#111827",
+  }),
+  placeholder: (base) => ({
+    ...base,
+    color: isDarkMode ? "#64748b" : "#9ca3af",
+  }),
+});
+
 // helper to try /api/... then /...
 async function tryEndpoints(paths, params) {
   let lastErr;
@@ -95,6 +153,9 @@ const perms = usePermissions();
 const canView = perms?.has?.("report.sale-detail.view");
 const canExport = perms?.has?.("report.sale-detail.export");
 const canEdit = perms?.has?.("report.sale-detail.edit"); // ✅ ADD THIS
+
+// Get dark mode state
+const { isDark } = useTheme();
 
 
   /* ============ Async loaders ============ */
@@ -152,8 +213,8 @@ const canEdit = perms?.has?.("report.sale-detail.edit"); // ✅ ADD THIS
 
   /* ============ Fetch report ============ */
   const fetchReport = async () => {
-    if (!canView) return toast.error("You don’t have permission to view this report.");
-    if (fromDate > toDate) return toast.error("‘From’ date cannot be after ‘To’ date.");
+    if (!canView) return toast.error("You don't have permission to view this report.");
+    if (fromDate > toDate) return toast.error("'From' date cannot be after 'To' date.");
 
     setLoading(true);
     try {
@@ -226,7 +287,7 @@ const saveInvoiceMeta = (inv) => async () => {
 
   /* ============ Export PDF ============ */
   const exportPdf = async () => {
-    if (!canExport) return toast.error("You don’t have permission to export PDF.");
+    if (!canExport) return toast.error("You don't have permission to export PDF.");
     setPdfLoading(true);
     try {
       const res = await axios.get("/api/reports/sale-detail/pdf", {
@@ -287,7 +348,7 @@ const saveInvoiceMeta = (inv) => async () => {
           <GlassToolbar className="grid grid-cols-1 md:grid-cols-12 gap-3">
             {/* Dates */}
             <div className="md:col-span-2">
-              <label className="text-sm text-gray-700 mb-1 block">From</label>
+              <label className="text-sm text-gray-700 dark:text-gray-300 mb-1 block">From</label>
               <GlassInput
                 type="date"
                 value={fromDate}
@@ -296,7 +357,7 @@ const saveInvoiceMeta = (inv) => async () => {
             </div>
 
             <div className="md:col-span-2">
-              <label className="text-sm text-gray-700 mb-1 block">To</label>
+              <label className="text-sm text-gray-700 dark:text-gray-300 mb-1 block">To</label>
               <GlassInput
                 type="date"
                 value={toDate}
@@ -306,7 +367,7 @@ const saveInvoiceMeta = (inv) => async () => {
 
             {/* Keep your existing search filters */}
             <div className="md:col-span-4">
-              <label className="text-sm text-gray-700 mb-1 block">Customer</label>
+              <label className="text-sm text-gray-700 dark:text-gray-300 mb-1 block">Customer</label>
               <AsyncSelect
                 cacheOptions
                 defaultOptions={[{ value: "", label: "All Customers" }]}
@@ -317,7 +378,7 @@ const saveInvoiceMeta = (inv) => async () => {
                   setCustomerValue(opt);
                   setCustomerId(opt?.value || "");
                 }}
-                styles={selectStyles}
+                styles={getSelectStyles(isDark)}
                 menuPortalTarget={document.body} 
                 filterOption={createFilter({
                   matchFrom: "start",
@@ -327,7 +388,7 @@ const saveInvoiceMeta = (inv) => async () => {
             </div>
 
             <div className="md:col-span-4">
-              <label className="text-sm text-gray-700 mb-1 block">Product</label>
+              <label className="text-sm text-gray-700 dark:text-gray-300 mb-1 block">Product</label>
               <AsyncSelect
                 cacheOptions
                 defaultOptions={[{ value: "", label: "All Products" }]}
@@ -338,7 +399,7 @@ const saveInvoiceMeta = (inv) => async () => {
                   setProductValue(opt);
                   setProductId(opt?.value || "");
                 }}
-                styles={selectStyles}
+                styles={getSelectStyles(isDark)}
                 menuPortalTarget={document.body}  // 🟢 Added
                 filterOption={createFilter({
                   matchFrom: "start",
@@ -416,12 +477,12 @@ const saveInvoiceMeta = (inv) => async () => {
       {/* ===== Permission states ===== */}
       {canView === null && (
         <GlassCard>
-          <div className="px-4 py-3 text-sm text-gray-700">Checking permissions…</div>
+          <div className="px-4 py-3 text-sm text-gray-700 dark:text-gray-300">Checking permissions…</div>
         </GlassCard>
       )}
       {canView === false && (
         <GlassCard>
-          <div className="px-4 py-3 text-sm text-gray-700">You don’t have permission to view this report.</div>
+          <div className="px-4 py-3 text-sm text-gray-700 dark:text-gray-300">You don't have permission to view this report.</div>
         </GlassCard>
       )}
 
@@ -430,7 +491,7 @@ const saveInvoiceMeta = (inv) => async () => {
         <>
           {data.length === 0 && !loading && (
             <GlassCard>
-              <div className="px-4 py-4 text-sm text-gray-600">No data found for the selected filters.</div>
+              <div className="px-4 py-4 text-sm text-gray-600 dark:text-gray-400">No data found for the selected filters.</div>
             </GlassCard>
           )}
 
@@ -438,7 +499,7 @@ const saveInvoiceMeta = (inv) => async () => {
             {data.map((inv, idxInv) => (
               <GlassCard
                 key={idxInv + "-" + (inv.posted_number ?? "") + "-" + (inv.invoice_date ?? "")}
-                className="overflow-hidden transition-all duration-200 hover:bg-white/70 hover:backdrop-blur-md hover:shadow-[0_12px_30px_-12px_rgba(37,99,235,0.25)]"
+                className="overflow-hidden transition-all duration-200 hover:bg-white/70 hover:backdrop-blur-md hover:shadow-[0_12px_30px_-12px_rgba(37,99,235,0.25)] dark:hover:bg-slate-800/70 dark:hover:backdrop-blur-md"
               >
                 {/* Invoice Header */}
                 <GlassSectionHeader
@@ -514,8 +575,8 @@ const saveInvoiceMeta = (inv) => async () => {
 
                 {/* Items Table */}
                 <div className="relative max-w-full overflow-x-auto">
-                  <table className="w-full min-w-[900px] text-sm text-gray-900">
-                    <thead className="sticky top-0 bg-white/85 backdrop-blur-sm border-b border-gray-200/70">
+                  <table className="w-full min-w-[900px] text-sm text-gray-900 dark:text-gray-100">
+                    <thead className="sticky top-0 bg-white/85 backdrop-blur-sm border-b border-gray-200/70 dark:bg-slate-800/90 dark:border-slate-700/60">
                       <tr className="text-left">
                         <Th>Product Name</Th>
                         <Th align="right">Pack Size</Th>
@@ -533,7 +594,7 @@ const saveInvoiceMeta = (inv) => async () => {
                       {(inv.items || []).map((it, idx) => (
                         <tr
                           key={(it.id ?? idx) + "-" + (it.product_id ?? "p") + "-" + idx}
-                          className="transition-all duration-150 odd:bg-white/90 even:bg-white/70 hover:bg-white/80 hover:backdrop-blur-[2px]"
+                          className="transition-all duration-150 odd:bg-white/90 even:bg-white/70 hover:bg-white/80 hover:backdrop-blur-[2px] dark:odd:bg-slate-800/60 dark:even:bg-slate-700/40 dark:hover:bg-slate-700/70 dark:backdrop-blur-sm"
                         >
                           <Td>{it.product_name || "-"}</Td>
                           <Td align="right">{it.pack_size ?? 0}</Td>
@@ -549,14 +610,14 @@ const saveInvoiceMeta = (inv) => async () => {
 
                       {(!inv.items || !inv.items.length) && (
                         <tr>
-                          <td colSpan={9} className="px-3 py-6 text-center text-gray-500">
+                          <td colSpan={9} className="px-3 py-6 text-center text-gray-500 dark:text-slate-400">
                             No items match this filter in this invoice.
                           </td>
                         </tr>
                       )}
                     </tbody>
 
-                    <tfoot className="bg-white/70 backdrop-blur-[2px]">
+                    <tfoot className="bg-white/70 backdrop-blur-[2px] dark:bg-slate-700/50 dark:backdrop-blur-sm">
                       <tr>
                         <Td colSpan={6} align="right" strong>Discount %</Td>
                         <Td colSpan={1} align="right">{(inv.discount_percentage ?? 0).toFixed(2)}</Td>
@@ -607,15 +668,15 @@ const saveInvoiceMeta = (inv) => async () => {
 function KV({ label, value }) {
   return (
     <div className="text-sm">
-      <span className="text-gray-600">{label}</span>{" "}
-      <span className="font-semibold text-gray-900">{value}</span>
+      <span className="text-gray-600 dark:text-slate-400">{label}</span>{" "}
+      <span className="font-semibold text-gray-900 dark:text-gray-100">{value}</span>
     </div>
   );
 }
 
 function Th({ children, align = "left" }) {
   return (
-    <th className={`px-3 py-2 font-medium ${align === "right" ? "text-right" : "text-left"}`}>
+    <th className={`px-3 py-2 font-medium ${align === "right" ? "text-right" : "text-left"} dark:text-gray-200`}>
       {children}
     </th>
   );
@@ -626,9 +687,9 @@ function Td({ children, align = "left", colSpan, strong = false, className = "" 
     <td
       colSpan={colSpan}
       className={[
-        "px-3 py-2 border-t border-gray-200/70",
+        "px-3 py-2 border-t border-gray-200/70 dark:border-slate-700/60 dark:text-gray-200",
         align === "right" ? "text-right" : "text-left",
-        strong ? "font-medium text-gray-800" : "",
+        strong ? "font-medium text-gray-800 dark:text-gray-100" : "",
         className,
       ].join(" ")}
     >

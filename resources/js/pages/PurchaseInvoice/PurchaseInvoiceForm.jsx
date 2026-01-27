@@ -5,6 +5,7 @@ import toast from "react-hot-toast";
 import Select from "react-select";
 import ProductSearchInput from "../../components/ProductSearchInput.jsx";
 import { recalcItem, recalcFooter } from "../../Formula/PurchaseInvoice.js";
+import { useTheme } from "@/context/ThemeContext";
 
 // Centralized Axios error → toast mapper
 function showAxiosError(err) {
@@ -683,6 +684,66 @@ export default function PurchaseInvoiceForm({ invoiceId, onSuccess, onSubmit }) 
     spellCheck: false,
   };
 
+  // Get dark mode state
+  const { isDark } = useTheme();
+
+  // Helper to merge dark mode styles - returns function-based styles for react-select
+  const getSelectStyles = (isDarkMode = false) => ({
+    control: (base) => ({
+      ...base,
+      minHeight: "28px",
+      height: "28px",
+      fontSize: "12px",
+      borderColor: isDarkMode ? "rgba(71,85,105,0.8)" : "rgba(229,231,235,0.8)",
+      backgroundColor: isDarkMode ? "rgba(51,65,85,0.7)" : "rgba(255,255,255,0.7)",
+      backdropFilter: "blur(6px)",
+      boxShadow: isDarkMode ? "0 1px 2px rgba(0,0,0,0.2)" : "0 1px 2px rgba(15,23,42,0.06)",
+      borderRadius: 8,
+      color: isDarkMode ? "#f1f5f9" : "#111827",
+    }),
+    valueContainer: (base) => ({
+      ...base,
+      height: "28px",
+      padding: "0 4px",
+    }),
+    input: (base) => ({
+      ...base,
+      margin: 0,
+      padding: 0,
+      color: isDarkMode ? "#f1f5f9" : "#111827",
+    }),
+    singleValue: (base) => ({
+      ...base,
+      color: isDarkMode ? "#f1f5f9" : "#111827",
+    }),
+    placeholder: (base) => ({
+      ...base,
+      color: isDarkMode ? "#64748b" : "#9ca3af",
+    }),
+    menu: (base) => ({
+      ...base,
+      borderRadius: 8,
+      overflow: "hidden",
+      backgroundColor: isDarkMode ? "rgba(30,41,59,0.95)" : "rgba(255,255,255,0.95)",
+      backdropFilter: "blur(10px)",
+      boxShadow: isDarkMode ? "0 10px 30px -10px rgba(0,0,0,0.4)" : "0 10px 30px -10px rgba(30,64,175,0.18)",
+      border: isDarkMode ? "1px solid rgba(71,85,105,0.5)" : "none",
+    }),
+    option: (base, state) => ({
+      ...base,
+      backgroundColor: isDarkMode
+        ? state.isFocused
+          ? "rgba(71,85,105,1)"
+          : "rgba(51,65,85,1)"
+        : state.isFocused
+          ? "rgba(241,245,249,1)"
+          : "rgba(255,255,255,1)",
+      color: isDarkMode ? "#f1f5f9" : "#111827",
+      cursor: "pointer",
+    }),
+    menuPortal: (base) => ({ ...base, zIndex: 9999 }),
+  });
+
   return (
     <form
       className="flex flex-col"
@@ -690,14 +751,14 @@ export default function PurchaseInvoiceForm({ invoiceId, onSuccess, onSubmit }) 
       autoComplete="off" // disable browser suggestions globally
     >
       {/* ================= HEADER SECTION ================= */}
-      <div className="sticky top-0 bg-white shadow p-2 z-10" autoComplete="off">
+      <div className="sticky top-0 bg-white dark:bg-slate-800 shadow p-2 z-10 border-b border-gray-200 dark:border-slate-700" autoComplete="off">
         <div className="flex items-center justify-between mb-2">
-          <h2 className="text-sm font-bold">
+          <h2 className="text-sm font-bold text-gray-900 dark:text-gray-100">
             Purchase Invoice (Use Enter to navigate, Alt+S to save)
           </h2>
           
           {/* Invoice Type Radio Buttons */}
-          <div className="flex items-center gap-3 bg-gray-50 px-3 py-1.5 rounded border">
+          <div className="flex items-center gap-3 bg-gray-50 dark:bg-slate-700/50 px-3 py-1.5 rounded border border-gray-200 dark:border-slate-600">
             <label className="flex items-center gap-1 cursor-pointer">
               <input
                 type="radio"
@@ -707,7 +768,7 @@ export default function PurchaseInvoiceForm({ invoiceId, onSuccess, onSubmit }) 
                 onChange={() => handleInvoiceTypeChange("debit")}
                 className="cursor-pointer"
               />
-              <span className="text-xs font-medium text-gray-700">Debit</span>
+              <span className="text-xs font-medium text-gray-700 dark:text-gray-300">Debit</span>
             </label>
             <label className="flex items-center gap-1 cursor-pointer">
               <input
@@ -718,7 +779,7 @@ export default function PurchaseInvoiceForm({ invoiceId, onSuccess, onSubmit }) 
                 onChange={() => handleInvoiceTypeChange("credit")}
                 className="cursor-pointer"
               />
-              <span className="text-xs font-medium text-gray-700">Credit</span>
+              <span className="text-xs font-medium text-gray-700 dark:text-gray-300">Credit</span>
             </label>
           </div>
         </div>
@@ -726,8 +787,8 @@ export default function PurchaseInvoiceForm({ invoiceId, onSuccess, onSubmit }) 
         <table className="w-full border-collapse text-xs">
           <tbody>
             <tr>
-              <td className="border p-1 w-1/12">
-                <label className="block text-[10px]">Posted Number</label>
+              <td className="border p-1 w-1/12 bg-gray-50 dark:bg-slate-700/50">
+                <label className="block text-[10px] text-gray-600 dark:text-gray-400">Posted Number</label>
                 <input
                   type="text"
                   inputMode="decimal"
@@ -735,23 +796,23 @@ export default function PurchaseInvoiceForm({ invoiceId, onSuccess, onSubmit }) 
                   readOnly
                   placeholder="(auto on save)"
                   value={form.posted_number || ""}
-                  className="bg-gray-100 border rounded w-full p-1 h-7 text-xs"
+                  className="bg-gray-100 dark:bg-slate-600 border rounded w-full p-1 h-7 text-xs text-gray-900 dark:text-gray-100"
                   {...antiFill}
                 />
               </td>
-              <td className="border p-1 w-1/6">
-                <label className="block text-[10px]">Posted Date</label>
+              <td className="border p-1 w-1/6 bg-gray-50 dark:bg-slate-700/50">
+                <label className="block text-[10px] text-gray-600 dark:text-gray-400">Posted Date</label>
                 <input
                   type="date"
                   name="posted_date"
                   value={form.posted_date}
                   onChange={handleChange}
-                  className="border rounded w-full p-1 h-7 text-xs"
+                  className="border rounded w-full p-1 h-7 text-xs bg-white dark:bg-slate-700 text-gray-900 dark:text-gray-100"
                   {...antiFill}
                 />
               </td>
-              <td className="border p-1 w-1/3">
-                <label className="block text-[10px]">Supplier *</label>
+              <td className="border p-1 w-1/3 bg-gray-50 dark:bg-slate-700/50">
+                <label className="block text-[10px] text-gray-600 dark:text-gray-400">Supplier *</label>
                 <div {...antiFill}>
                   <Select
                     ref={supplierRef}
@@ -775,29 +836,13 @@ export default function PurchaseInvoiceForm({ invoiceId, onSuccess, onSubmit }) 
                     }}
                     isSearchable
                     className="text-xs"
-                    styles={{
-                      control: (base) => ({
-                        ...base,
-                        minHeight: "28px",
-                        height: "28px",
-                        fontSize: "12px",
-                      }),
-                      valueContainer: (base) => ({
-                        ...base,
-                        height: "28px",
-                        padding: "0 4px",
-                      }),
-                      input: (base) => ({
-                        ...base,
-                        margin: 0,
-                        padding: 0,
-                      }),
-                    }}
+                    styles={getSelectStyles(isDark)}
+                    menuPortalTarget={typeof document !== "undefined" ? document.body : null}
                   />
                 </div>
               </td>
-              <td className="border p-1 w-1/8">
-                <label className="block text-[10px]">Invoice Number</label>
+              <td className="border p-1 w-1/8 bg-gray-50 dark:bg-slate-700/50">
+                <label className="block text-[10px] text-gray-600 dark:text-gray-400">Invoice Number</label>
                 <input
                   ref={invoiceNumberRef}
                   type="text"
@@ -806,12 +851,12 @@ export default function PurchaseInvoiceForm({ invoiceId, onSuccess, onSubmit }) 
                   onChange={handleChange}
                   onKeyDown={(e) => handleKeyDown(e, "invoice_number")}
                   onFocus={(e) => e.target.select()}
-                  className="border rounded w-full p-1 h-7 text-xs"
+                  className="border rounded w-full p-1 h-7 text-xs bg-white dark:bg-slate-700 text-gray-900 dark:text-gray-100"
                   {...antiFill}
                 />
               </td>
-              <td className="border p-1 w-1/8">
-                <label className="block text-[10px]">Invoice Amount</label>
+              <td className="border p-1 w-1/8 bg-gray-50 dark:bg-slate-700/50">
+                <label className="block text-[10px] text-gray-600 dark:text-gray-400">Invoice Amount</label>
                 <input
                   ref={invoiceAmountRef}
                   type="text"
@@ -820,12 +865,12 @@ export default function PurchaseInvoiceForm({ invoiceId, onSuccess, onSubmit }) 
                   onChange={handleChange}
                   onKeyDown={(e) => handleKeyDown(e, "invoice_amount")}
                   onFocus={(e) => e.target.select()}
-                  className="border rounded w-full p-1 h-7 text-xs"
+                  className="border rounded w-full p-1 h-7 text-xs bg-white dark:bg-slate-700 text-gray-900 dark:text-gray-100"
                   {...antiFill}
                 />
               </td>
-              <td className="border p-1 w-1/8">
-                <label className="block text-[10px]">Difference</label>
+              <td className="border p-1 w-1/8 bg-gray-50 dark:bg-slate-700/50">
+                <label className="block text-[10px] text-gray-600 dark:text-gray-400">Difference</label>
                 <input
                   type="text"
                   readOnly
@@ -834,22 +879,22 @@ export default function PurchaseInvoiceForm({ invoiceId, onSuccess, onSubmit }) 
                       ? (Number(form.invoice_amount) - Number(form.total_amount)).toFixed(2)
                       : ""
                   }
-                  className={`border rounded w-full p-1 h-7 text-xs font-bold text-center bg-gray-100 ${
+                  className={`border rounded w-full p-1 h-7 text-xs font-bold text-center bg-gray-100 dark:bg-slate-600 ${
                     Number(form.invoice_amount) - Number(form.total_amount) !== 0
-                      ? "text-red-600"
-                      : "text-gray-700"
+                      ? "text-red-600 dark:text-red-400"
+                      : "text-gray-700 dark:text-gray-300"
                   }`}
                   {...antiFill}
                 />
               </td>
-              <td className="border p-1 w-1/6">
-                <label className="block text-[10px]">Remarks</label>
+              <td className="border p-1 w-1/6 bg-gray-50 dark:bg-slate-700/50">
+                <label className="block text-[10px] text-gray-600 dark:text-gray-400">Remarks</label>
                 <input
                   type="text"
                   name="remarks"
                   value={form.remarks}
                   onChange={handleChange}
-                  className="border rounded w-full p-1 h-7 text-xs"
+                  className="border rounded w-full p-1 h-7 text-xs bg-white dark:bg-slate-700 text-gray-900 dark:text-gray-100"
                   {...antiFill}
                 />
               </td>
@@ -859,51 +904,51 @@ export default function PurchaseInvoiceForm({ invoiceId, onSuccess, onSubmit }) 
       </div>
 
       {/* ================= ITEMS SECTION ================= */}
-      <div className="flex-1 overflow-auto p-1" autoComplete="off">
-        <h2 className="text-xs font-bold mb-1">Items (↑↓ arrows to navigate rows)</h2>
+      <div className="flex-1 overflow-auto p-1 bg-gray-50 dark:bg-slate-800/50" autoComplete="off">
+        <h2 className="text-xs font-bold mb-1 text-gray-900 dark:text-gray-100">Items (↑↓ arrows to navigate rows)</h2>
 
         <table className="w-full border-collapse text-[11px]">
-          <thead className="sticky top-0 bg-gray-100 z-5">
+          <thead className="sticky top-0 bg-gray-100 dark:bg-slate-700 z-5">
             <tr>
-              <th rowSpan={2} className="border w-6">#</th>
-              <th rowSpan={2} colSpan={1} className="border w-[80px]">Product</th>
-              <th colSpan={3} className="border">Pack Size / Batch / Expiry</th>
-              <th colSpan={2} className="border">Qty (Pack / Unit)</th>
-              <th colSpan={2} className="border">Purchase Price (P / U)</th>
-              <th colSpan={3} className="border">Disc % / Bonus (P / U)</th>
-              <th colSpan={2} className="border">Sale Price (P / U)</th>
-              <th colSpan={3} className="border">Margin % / Avg / Sub Total</th>
-              <th rowSpan={2} className="border w-6">+</th>
+              <th rowSpan={2} className="border w-6 bg-gray-200 dark:bg-slate-600 text-gray-900 dark:text-gray-100">#</th>
+              <th rowSpan={2} colSpan={1} className="border w-[80px] bg-gray-200 dark:bg-slate-600 text-gray-900 dark:text-gray-100">Product</th>
+              <th colSpan={3} className="border bg-gray-200 dark:bg-slate-600 text-gray-900 dark:text-gray-100">Pack Size / Batch / Expiry</th>
+              <th colSpan={2} className="border bg-gray-200 dark:bg-slate-600 text-gray-900 dark:text-gray-100">Qty (Pack / Unit)</th>
+              <th colSpan={2} className="border bg-gray-200 dark:bg-slate-600 text-gray-900 dark:text-gray-100">Purchase Price (P / U)</th>
+              <th colSpan={3} className="border bg-gray-200 dark:bg-slate-600 text-gray-900 dark:text-gray-100">Disc % / Bonus (P / U)</th>
+              <th colSpan={2} className="border bg-gray-200 dark:bg-slate-600 text-gray-900 dark:text-gray-100">Sale Price (P / U)</th>
+              <th colSpan={3} className="border bg-gray-200 dark:bg-slate-600 text-gray-900 dark:text-gray-100">Margin % / Avg / Sub Total</th>
+              <th rowSpan={2} className="border w-6 bg-gray-200 dark:bg-slate-600 text-gray-900 dark:text-gray-100">+</th>
             </tr>
 
             <tr>
-              <th className="border w-14">PSize</th>
-              <th className="border w-16">Batch</th>
-              <th className="border w-20">Exp</th>
-              <th className="border w-12">Pack.Q</th>
-              <th className="border w-12">Unit.Q</th>
-              <th className="border w-14">Pack.P</th>
-              <th className="border w-14">Unit.P</th>
-              <th className="border w-14">Disc%</th>
-              <th className="border w-14">PBonus</th>
-              <th className="border w-14">UBonus</th>
-              <th className="border w-14">Pack.S</th>
-              <th className="border w-14">Unit.S</th>
-              <th className="border w-14">Margin%</th>
-              <th className="border w-16">Avg</th>
-              <th className="border w-20">Sub Total</th>
+              <th className="border w-14 bg-gray-100 dark:bg-slate-600 text-gray-900 dark:text-gray-100">PSize</th>
+              <th className="border w-16 bg-gray-100 dark:bg-slate-600 text-gray-900 dark:text-gray-100">Batch</th>
+              <th className="border w-20 bg-gray-100 dark:bg-slate-600 text-gray-900 dark:text-gray-100">Exp</th>
+              <th className="border w-12 bg-gray-100 dark:bg-slate-600 text-gray-900 dark:text-gray-100">Pack.Q</th>
+              <th className="border w-12 bg-gray-100 dark:bg-slate-600 text-gray-900 dark:text-gray-100">Unit.Q</th>
+              <th className="border w-14 bg-gray-100 dark:bg-slate-600 text-gray-900 dark:text-gray-100">Pack.P</th>
+              <th className="border w-14 bg-gray-100 dark:bg-slate-600 text-gray-900 dark:text-gray-100">Unit.P</th>
+              <th className="border w-14 bg-gray-100 dark:bg-slate-600 text-gray-900 dark:text-gray-100">Disc%</th>
+              <th className="border w-14 bg-gray-100 dark:bg-slate-600 text-gray-900 dark:text-gray-100">PBonus</th>
+              <th className="border w-14 bg-gray-100 dark:bg-slate-600 text-gray-900 dark:text-gray-100">UBonus</th>
+              <th className="border w-14 bg-gray-100 dark:bg-slate-600 text-gray-900 dark:text-gray-100">Pack.S</th>
+              <th className="border w-14 bg-gray-100 dark:bg-slate-600 text-gray-900 dark:text-gray-100">Unit.S</th>
+              <th className="border w-14 bg-gray-100 dark:bg-slate-600 text-gray-900 dark:text-gray-100">Margin%</th>
+              <th className="border w-16 bg-gray-100 dark:bg-slate-600 text-gray-900 dark:text-gray-100">Avg</th>
+              <th className="border w-20 bg-gray-100 dark:bg-slate-600 text-gray-900 dark:text-gray-100">Sub Total</th>
             </tr>
           </thead>
 
           <tbody>
             {form.items.map((item, i) => (
-              <tr key={i} className="text-center">
+              <tr key={i} className="text-center odd:bg-white even:bg-gray-50 dark:odd:bg-slate-700/30 dark:even:bg-slate-700/50">
                 {/* Remove */}
                 <td className="border">
                   <button
                     type="button"
                     onClick={() => removeItem(i)}
-                    className="bg-red-500 text-white px-1 rounded text-[10px]"
+                    className="bg-red-500 dark:bg-red-600 text-white px-1 rounded text-[10px]"
                   >
                     X
                   </button>
@@ -1000,7 +1045,7 @@ export default function PurchaseInvoiceForm({ invoiceId, onSuccess, onSubmit }) 
                     type="number"
                     readOnly
                     value={item.pack_size ?? ""}
-                    className="border bg-gray-100 w-full h-6 text-[11px] px-1 appearance-none [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                    className="border bg-gray-100 dark:bg-slate-600 w-full h-6 text-[11px] px-1 appearance-none [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none text-gray-900 dark:text-gray-100"
                     {...antiFill}
                   />
                 </td>
@@ -1036,7 +1081,7 @@ export default function PurchaseInvoiceForm({ invoiceId, onSuccess, onSubmit }) 
                       setForm({ ...form, items: newItems });
                     }}
                     onKeyDown={(e) => handleKeyDown(e, "batch", i)}
-                    className="border w-full h-6 text-[11px] px-1"
+                    className="border w-full h-6 text-[11px] px-1 bg-white dark:bg-slate-700 text-gray-900 dark:text-gray-100"
                     {...antiFill}
                   />
                 </td>
@@ -1047,7 +1092,7 @@ export default function PurchaseInvoiceForm({ invoiceId, onSuccess, onSubmit }) 
                     type="date"
                     value={item.expiry ?? ""}
                     onChange={(e) => handleItemChange(i, "expiry", e.target.value)}
-                    className="border w-full h-6 text-[11px] px-1"
+                    className="border w-full h-6 text-[11px] px-1 bg-white dark:bg-slate-700 text-gray-900 dark:text-gray-100"
                     {...antiFill}
                   />
                 </td>
@@ -1061,7 +1106,7 @@ export default function PurchaseInvoiceForm({ invoiceId, onSuccess, onSubmit }) 
                     onChange={(e) => handleItemChange(i, "pack_quantity", e.target.value)}
                     onKeyDown={(e) => handleKeyDown(e, "pack_quantity", i)}
                     onFocus={(e) => e.target.select()}
-                    className="border w-full h-6 text-[11px] px-1 appearance-none [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                    className="border w-full h-6 text-[11px] px-1 appearance-none [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none bg-white dark:bg-slate-700 text-gray-900 dark:text-gray-100"
                     {...antiFill}
                   />
                 </td>
@@ -1072,7 +1117,7 @@ export default function PurchaseInvoiceForm({ invoiceId, onSuccess, onSubmit }) 
                     type="text"
                     value={item.unit_quantity === 0 ? "" : item.unit_quantity}
                     onChange={(e) => handleItemChange(i, "unit_quantity", e.target.value)}
-                    className="border w-full h-6 text-[11px] px-1 appearance-none [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                    className="border w-full h-6 text-[11px] px-1 appearance-none [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none bg-white dark:bg-slate-700 text-gray-900 dark:text-gray-100"
                     {...antiFill}
                   />
                 </td>
@@ -1086,7 +1131,7 @@ export default function PurchaseInvoiceForm({ invoiceId, onSuccess, onSubmit }) 
                     onChange={(e) => handleItemChange(i, "pack_purchase_price", e.target.value)}
                     onKeyDown={(e) => handleKeyDown(e, "pack_purchase_price", i)}
                     onFocus={(e) => e.target.select()}
-                    className="border w-full h-6 text-[11px] px-1 appearance-none [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                    className="border w-full h-6 text-[11px] px-1 appearance-none [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none bg-white dark:bg-slate-700 text-gray-900 dark:text-gray-100"
                     {...antiFill}
                   />
                 </td>
@@ -1097,7 +1142,7 @@ export default function PurchaseInvoiceForm({ invoiceId, onSuccess, onSubmit }) 
                     type="text"
                     value={item.unit_purchase_price ?? ""}
                     onChange={(e) => handleItemChange(i, "unit_purchase_price", e.target.value)}
-                    className="border w-full h-6 text-[11px] px-1 appearance-none [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                    className="border w-full h-6 text-[11px] px-1 appearance-none [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none bg-white dark:bg-slate-700 text-gray-900 dark:text-gray-100"
                     {...antiFill}
                   />
                 </td>
@@ -1113,7 +1158,7 @@ export default function PurchaseInvoiceForm({ invoiceId, onSuccess, onSubmit }) 
                     }
                     onKeyDown={(e) => handleKeyDown(e, "item_discount", i)}
                     onFocus={(e) => e.target.select()}
-                    className="border w-full h-6 text-[11px] px-1 appearance-none [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                    className="border w-full h-6 text-[11px] px-1 appearance-none [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none bg-white dark:bg-slate-700 text-gray-900 dark:text-gray-100"
                     {...antiFill}
                   />
                 </td>
@@ -1127,7 +1172,7 @@ export default function PurchaseInvoiceForm({ invoiceId, onSuccess, onSubmit }) 
                     onChange={(e) => handleItemChange(i, "pack_bonus", e.target.value)}
                     onKeyDown={(e) => handleKeyDown(e, "pack_bonus", i)}
                     onFocus={(e) => e.target.select()}
-                    className="border w-full h-6 text-[11px] px-1 appearance-none [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                    className="border w-full h-6 text-[11px] px-1 appearance-none [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none bg-white dark:bg-slate-700 text-gray-900 dark:text-gray-100"
                     {...antiFill}
                   />
                 </td>
@@ -1138,7 +1183,7 @@ export default function PurchaseInvoiceForm({ invoiceId, onSuccess, onSubmit }) 
                     type="text"
                     value={item.unit_bonus === 0 ? "" : item.unit_bonus}
                     onChange={(e) => handleItemChange(i, "unit_bonus", e.target.value)}
-                    className="border w-full h-6 text-[11px] px-1 appearance-none [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                    className="border w-full h-6 text-[11px] px-1 appearance-none [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none bg-white dark:bg-slate-700 text-gray-900 dark:text-gray-100"
                     {...antiFill}
                   />
                 </td>
@@ -1152,7 +1197,7 @@ export default function PurchaseInvoiceForm({ invoiceId, onSuccess, onSubmit }) 
                     onChange={(e) => handleItemChange(i, "pack_sale_price", e.target.value)}
                     onKeyDown={(e) => handleKeyDown(e, "pack_sale_price", i)}
                     onFocus={(e) => e.target.select()}
-                    className="border w-full h-6 text-[11px] px-1 appearance-none [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                    className="border w-full h-6 text-[11px] px-1 appearance-none [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none bg-white dark:bg-slate-700 text-gray-900 dark:text-gray-100"
                     {...antiFill}
                   />
                 </td>
@@ -1163,7 +1208,7 @@ export default function PurchaseInvoiceForm({ invoiceId, onSuccess, onSubmit }) 
                     type="text"
                     value={item.unit_sale_price ?? ""}
                     onChange={(e) => handleItemChange(i, "unit_sale_price", e.target.value)}
-                    className="border w-full h-6 text-[11px] px-1 appearance-none [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                    className="border w-full h-6 text-[11px] px-1 appearance-none [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none bg-white dark:bg-slate-700 text-gray-900 dark:text-gray-100"
                     {...antiFill}
                   />
                 </td>
@@ -1174,7 +1219,7 @@ export default function PurchaseInvoiceForm({ invoiceId, onSuccess, onSubmit }) 
                     type="number"
                     readOnly
                     value={item.margin ?? ""}
-                    className="border bg-gray-100 w-full h-6 text-[11px] px-1 appearance-none [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                    className="border bg-gray-100 dark:bg-slate-600 w-full h-6 text-[11px] px-1 appearance-none [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none text-gray-900 dark:text-gray-100"
                     {...antiFill}
                   />
                 </td>
@@ -1185,7 +1230,7 @@ export default function PurchaseInvoiceForm({ invoiceId, onSuccess, onSubmit }) 
                     type="number"
                     value={item.avg_price ?? ""}
                     readOnly
-                    className="border w-full h-6 text-[11px] px-1 bg-gray-100"
+                    className="border w-full h-6 text-[11px] px-1 bg-gray-100 dark:bg-slate-600 text-gray-900 dark:text-gray-100"
                     {...antiFill}
                   />
                 </td>
@@ -1196,7 +1241,7 @@ export default function PurchaseInvoiceForm({ invoiceId, onSuccess, onSubmit }) 
                     type="number"
                     value={item.sub_total ?? ""}
                     readOnly
-                    className="border w-full h-6 text-[11px] px-1 bg-gray-100"
+                    className="border w-full h-6 text-[11px] px-1 bg-gray-100 dark:bg-slate-600 text-gray-900 dark:text-gray-100"
                     {...antiFill}
                   />
                 </td>
@@ -1208,7 +1253,7 @@ export default function PurchaseInvoiceForm({ invoiceId, onSuccess, onSubmit }) 
                     readOnly
                     hidden
                     value={item.quantity ?? ""}
-                    className="border bg-gray-100 w-full h-6 text-[11px] px-1 appearance-none [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                    className="border bg-gray-100 dark:bg-slate-600 w-full h-6 text-[11px] px-1 appearance-none [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none text-gray-900 dark:text-gray-100"
                     {...antiFill}
                   />
                 </td>
@@ -1218,7 +1263,7 @@ export default function PurchaseInvoiceForm({ invoiceId, onSuccess, onSubmit }) 
                   <button
                     type="button"
                     onClick={addItem}
-                    className="bg-blue-500 text-white px-1 rounded text-[10px]"
+                    className="bg-blue-500 dark:bg-blue-600 text-white px-1 rounded text-[10px]"
                   >
                     +
                   </button>
@@ -1230,12 +1275,12 @@ export default function PurchaseInvoiceForm({ invoiceId, onSuccess, onSubmit }) 
       </div>
 
       {/* ================= FOOTER SECTION ================= */}
-      <div className="sticky bottom-0 bg-white shadow p-2 z-10" autoComplete="off">
+      <div className="sticky bottom-0 bg-white dark:bg-slate-800 shadow p-2 z-10 border-t border-gray-200 dark:border-slate-700" autoComplete="off">
         <table className="w-full border-collapse text-xs">
           <tbody>
             <tr>
-              <td className="border p-1 w-1/8">
-                <label className="block text-[10px]">Tax %</label>
+              <td className="border p-1 w-1/8 bg-gray-50 dark:bg-slate-700/50">
+                <label className="block text-[10px] text-gray-600 dark:text-gray-400">Tax %</label>
                 <input
                   ref={taxPercentageRef}
                   type="text"
@@ -1248,23 +1293,23 @@ export default function PurchaseInvoiceForm({ invoiceId, onSuccess, onSubmit }) 
                       discountPercentageRef.current?.focus();
                     }
                   }}
-                  className="border rounded w-full p-1 h-7 text-xs"
+                  className="border rounded w-full p-1 h-7 text-xs bg-white dark:bg-slate-700 text-gray-900 dark:text-gray-100"
                   {...antiFill}
                 />
               </td>
-              <td className="border p-1 w-1/8">
-                <label className="block text-[10px]">Tax Amount</label>
+              <td className="border p-1 w-1/8 bg-gray-50 dark:bg-slate-700/50">
+                <label className="block text-[10px] text-gray-600 dark:text-gray-400">Tax Amount</label>
                 <input
                   type="text"
                   name="tax_amount"
                   value={form.tax_amount ?? ""}
                   onChange={handleChange}
-                  className="border rounded w-full p-1 h-7 text-xs"
+                  className="border rounded w-full p-1 h-7 text-xs bg-white dark:bg-slate-700 text-gray-900 dark:text-gray-100"
                   {...antiFill}
                 />
               </td>
-              <td className="border p-1 w-1/8">
-                <label className="block text-[10px]">Discount %</label>
+              <td className="border p-1 w-1/8 bg-gray-50 dark:bg-slate-700/50">
+                <label className="block text-[10px] text-gray-600 dark:text-gray-400">Discount %</label>
                 <input
                   ref={discountPercentageRef}
                   type="text"
@@ -1277,34 +1322,34 @@ export default function PurchaseInvoiceForm({ invoiceId, onSuccess, onSubmit }) 
                       saveButtonRef.current?.focus();
                     }
                   }}
-                  className="border rounded w-full p-1 h-7 text-xs"
+                  className="border rounded w-full p-1 h-7 text-xs bg-white dark:bg-slate-700 text-gray-900 dark:text-gray-100"
                   {...antiFill}
                 />
               </td>
-              <td className="border p-1 w-1/8">
-                <label className="block text-[10px]">Discount Amount</label>
+              <td className="border p-1 w-1/8 bg-gray-50 dark:bg-slate-700/50">
+                <label className="block text-[10px] text-gray-600 dark:text-gray-400">Discount Amount</label>
                 <input
                   type="text"
                   name="discount_amount"
                   value={form.discount_amount ?? ""}
                   onChange={handleChange}
-                  className="border rounded w-full p-1 h-7 text-xs"
+                  className="border rounded w-full p-1 h-7 text-xs bg-white dark:bg-slate-700 text-gray-900 dark:text-gray-100"
                   {...antiFill}
                 />
               </td>
-              <td className="border p-1 w-1/8">
-                <label className="block text-[10px]">Total Amount</label>
+              <td className="border p-1 w-1/8 bg-gray-50 dark:bg-slate-700/50">
+                <label className="block text-[10px] text-gray-600 dark:text-gray-400">Total Amount</label>
                 <input
                   type="number"
                   name="total_amount"
                   readOnly
                   value={form.total_amount}
-                  className="border rounded w-full p-1 h-7 text-xs bg-gray-100"
+                  className="border rounded w-full p-1 h-7 text-xs bg-gray-100 dark:bg-slate-600 text-gray-900 dark:text-gray-100"
                   {...antiFill}
                 />
               </td>
-              <td className="border p-1 w-1/8">
-                <label className="block text-[10px]">Total Paid</label>
+              <td className="border p-1 w-1/8 bg-gray-50 dark:bg-slate-700/50">
+                <label className="block text-[10px] text-gray-600 dark:text-gray-400">Total Paid</label>
                 <div className="flex items-center gap-1">
                   <input
                     type="text"
@@ -1325,7 +1370,7 @@ export default function PurchaseInvoiceForm({ invoiceId, onSuccess, onSubmit }) 
                         return { ...prev, total_paid: normalized };
                       });
                     }}
-                    className="border rounded w-full p-1 h-7 text-xs"
+                    className="border rounded w-full p-1 h-7 text-xs bg-white dark:bg-slate-700 text-gray-900 dark:text-gray-100"
                     {...antiFill}
                   />
                   <button
@@ -1335,29 +1380,29 @@ export default function PurchaseInvoiceForm({ invoiceId, onSuccess, onSubmit }) 
                       setPaidTouched(false);
                       setForm((prev) => ({ ...prev, total_paid: prev.total_amount ?? "" }));
                     }}
-                    className="px-2 py-1 text-[11px] bg-gray-200 rounded"
+                    className="px-2 py-1 text-[11px] bg-gray-200 dark:bg-slate-600 rounded"
                   >
                     🔗
                   </button>
                 </div>
               </td>
-              <td className="border p-1 w-1/8">
-                <label className="block text-[10px]">Remaining</label>
+              <td className="border p-1 w-1/8 bg-gray-50 dark:bg-slate-700/50">
+                <label className="block text-[10px] text-gray-600 dark:text-gray-400">Remaining</label>
                 <input
                   type="number"
                   name="remaining_amount"
                   readOnly
                   value={to2((form.total_amount || 0) - (form.total_paid || 0)).toFixed(2)}
-                  className="border rounded w-full p-1 h-7 text-xs bg-gray-100"
+                  className="border rounded w-full p-1 h-7 text-xs bg-gray-100 dark:bg-slate-600 text-gray-900 dark:text-gray-100"
                   {...antiFill}
                 />
               </td>
-              <td className="border p-1 w-1/8 text-center align-middle">
+              <td className="border p-1 w-1/8 text-center align-middle bg-gray-50 dark:bg-slate-700/50">
                 <button
                   ref={saveButtonRef}
                   type="button"
                   onClick={handleSubmit}
-                  className="bg-green-600 text-white px-9 py-2 rounded text-sm hover:bg-green-700 transition duration-200"
+                  className="bg-green-600 dark:bg-green-700 text-white px-9 py-2 rounded text-sm hover:bg-green-700 dark:hover:bg-green-800 transition duration-200"
                 >
                   {invoiceId ? "Update " : "Save"}
                 </button>

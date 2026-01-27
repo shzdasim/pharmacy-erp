@@ -7,6 +7,7 @@ import Select from "react-select";
 import ProductSearchInput from "../../components/ProductSearchInput.jsx";
 import BatchSearchInput from "../../components/BatchSearchInput.jsx";
 import { recalcItem, recalcFooter } from "../../Formula/SaleInvoice.js";
+import { useTheme } from "@/context/ThemeContext";
 
 /* -------- utils (unchanged) -------- */
 const normalizeFormLoaded = (f) => {
@@ -153,6 +154,71 @@ export default function SaleInvoiceForm({ saleId, onSuccess }) {
   };
   const eqId = (a, b) => String(a ?? "") === String(b ?? "");
   const zeroToEmpty = (v) => (v === 0 || v === "0" ? "" : (v ?? ""));
+
+  // Get dark mode state
+  const { isDark } = useTheme();
+
+  // Helper to get react-select styles based on dark mode
+  const getSelectStyles = (isDarkMode = false) => ({
+    control: (base) => ({
+      ...base,
+      minHeight: "28px",
+      height: "28px",
+      fontSize: "11px",
+      borderColor: isDarkMode ? "rgba(71,85,105,0.8)" : "rgba(0,0,0,0.8)",
+      backgroundColor: isDarkMode ? "rgba(51,65,85,0.7)" : "rgba(255,255,255,0.7)",
+      backdropFilter: "blur(6px)",
+      boxShadow: isDarkMode ? "0 1px 2px rgba(0,0,0,0.2)" : "none",
+      borderRadius: 6,
+      color: isDarkMode ? "#f1f5f9" : "#111827",
+    }),
+    valueContainer: (base) => ({
+      ...base,
+      height: "28px",
+      padding: "0 6px",
+    }),
+    indicatorsContainer: (base) => ({
+      ...base,
+      height: "28px",
+    }),
+    input: (base) => ({
+      ...base,
+      margin: 0,
+      padding: 0,
+      color: isDarkMode ? "#f1f5f9" : "#111827",
+    }),
+    singleValue: (base) => ({
+      ...base,
+      color: isDarkMode ? "#f1f5f9" : "#111827",
+    }),
+    placeholder: (base) => ({
+      ...base,
+      color: isDarkMode ? "#64748b" : "#9ca3af",
+    }),
+    menu: (base) => ({
+      ...base,
+      fontSize: "12px",
+      borderRadius: 8,
+      overflow: "hidden",
+      backgroundColor: isDarkMode ? "rgba(30,41,59,0.95)" : "rgba(255,255,255,0.95)",
+      backdropFilter: "blur(10px)",
+      boxShadow: isDarkMode ? "0 10px 30px -10px rgba(0,0,0,0.4)" : "0 10px 30px -10px rgba(30,64,175,0.18)",
+      border: isDarkMode ? "1px solid rgba(71,85,105,0.5)" : "none",
+    }),
+    option: (base, state) => ({
+      ...base,
+      backgroundColor: isDarkMode
+        ? state.isFocused
+          ? "rgba(71,85,105,1)"
+          : "rgba(51,65,85,1)"
+        : state.isFocused
+          ? "rgba(241,245,249,1)"
+          : "rgba(255,255,255,1)",
+      color: isDarkMode ? "#f1f5f9" : "#111827",
+      cursor: "pointer",
+    }),
+    menuPortal: (base) => ({ ...base, zIndex: 9999 }),
+  });
 
   /* -------- data -------- */
   const fetchCustomers = async () => {
@@ -817,17 +883,17 @@ export default function SaleInvoiceForm({ saleId, onSuccess }) {
   /* ===================== R E N D E R ===================== */
   return (
     <form
-      className="h-[calc(90vh-100px)] flex flex-col bg-white"
+      className={`h-[calc(90vh-100px)] flex flex-col ${isDark ? "bg-slate-900" : "bg-white"}`}
       autoComplete="off" autoCapitalize="off" autoCorrect="off" spellCheck={false}
     >
       {/* Top Bar */}
-      <div className="shrink-0 sticky top-0 z-20 border-b bg-white">
+      <div className={`shrink-0 sticky top-0 z-20 border-b ${isDark ? "bg-slate-800 border-slate-700" : "bg-white border-gray-200"}`}>
         <div className="px-2 py-1 flex items-center gap-2">
-          <div className="text-xs font-semibold">Sale Invoice</div>
+          <div className={`text-xs font-semibold ${isDark ? "text-slate-200" : "text-gray-800"}`}>Sale Invoice</div>
 
           <div className="ml-auto flex items-center gap-2">
             {/* Invoice Type Radio Buttons */}
-            <div className="flex items-center gap-2 mr-2 bg-gray-50 px-2 py-1 rounded border">
+            <div className={`flex items-center gap-2 mr-2 px-2 py-1 rounded border ${isDark ? "bg-slate-700 border-slate-600" : "bg-gray-50 border-gray-200"}`}>
               <label className="flex items-center gap-1 cursor-pointer">
                 <input
                   type="radio"
@@ -837,7 +903,7 @@ export default function SaleInvoiceForm({ saleId, onSuccess }) {
                   onChange={() => handleInvoiceTypeChange("debit")}
                   className="cursor-pointer"
                 />
-                <span className="text-[10px] font-medium text-gray-700">Debit</span>
+                <span className={`text-[10px] font-medium ${isDark ? "text-slate-300" : "text-gray-700"}`}>Debit</span>
               </label>
               <label className="flex items-center gap-1 cursor-pointer">
                 <input
@@ -848,15 +914,15 @@ export default function SaleInvoiceForm({ saleId, onSuccess }) {
                   onChange={() => handleInvoiceTypeChange("credit")}
                   className="cursor-pointer"
                 />
-                <span className="text-[10px] font-medium text-gray-700">Credit</span>
+                <span className={`text-[10px] font-medium ${isDark ? "text-slate-300" : "text-gray-700"}`}>Credit</span>
               </label>
             </div>
 
-            <div className="hidden sm:flex items-center gap-2 text-[10px] text-gray-600">
+            <div className={`hidden sm:flex items-center gap-2 text-[10px] ${isDark ? "text-slate-400" : "text-gray-600"}`}>
               <span className="inline-flex items-center gap-1">
-                <span className="px-1 py-0.5 border rounded bg-gray-50">Alt</span>
+                <span className={`px-1 py-0.5 border rounded ${isDark ? "bg-slate-700 border-slate-600 text-slate-300" : "bg-gray-50 border-gray-200"}`}>Alt</span>
                 <span>+</span>
-                <span className="px-1 py-0.5 border rounded bg-gray-50">S</span>
+                <span className={`px-1 py-0.5 border rounded ${isDark ? "bg-slate-700 border-slate-600 text-slate-300" : "bg-gray-50 border-gray-200"}`}>S</span>
                 <span>Save</span>
               </span>
               <span>•</span>
@@ -878,29 +944,37 @@ export default function SaleInvoiceForm({ saleId, onSuccess }) {
         {/* Meta strip */}
         <div className="px-2 pb-1 grid grid-cols-12 gap-1 text-[11px]">
           <div className="col-span-2">
-            <label className="block text-[9px] mb-0.5">Posted #</label>
+            <label className={`block text-[9px] mb-0.5 ${isDark ? "text-slate-400" : "text-gray-600"}`}>Posted #</label>
             <input
               type="text"
               readOnly
               value={form.posted_number || ""}
               placeholder={saleId ? "" : "Auto on Save"}
               autoComplete="off"
-              className="w-full h-7 border-2 border-black rounded px-1 bg-gray-100"
+              className={`w-full h-7 border-2 rounded px-1 ${
+                isDark 
+                  ? "border-slate-600 bg-slate-700 text-slate-200 placeholder-slate-500" 
+                  : "border-black bg-gray-100 text-gray-800"
+              }`}
             />
           </div>
           <div className="col-span-2">
-            <label className="block text-[9px] mb-0.5">Date</label>
+            <label className={`block text-[9px] mb-0.5 ${isDark ? "text-slate-400" : "text-gray-600"}`}>Date</label>
             <input
               type="date"
               name="date"
               value={form.date ?? ""}
               onChange={handleHeaderChange}
               autoComplete="off"
-              className="w-full h-7 border-2 border-black rounded px-1"
+              className={`w-full h-7 border-2 rounded px-1 ${
+                isDark 
+                  ? "border-slate-600 bg-slate-700 text-slate-200" 
+                  : "border-black text-gray-800"
+              }`}
             />
           </div>
           <div className="col-span-4">
-            <label className="block text-[9px] mb-0.5">Customer *</label>
+            <label className={`block text-[9px] mb-0.5 ${isDark ? "text-slate-400" : "text-gray-600"}`}>Customer *</label>
             <Select
               options={customers.map((c) => ({ value: c.id, label: c.name }))}
               value={
@@ -910,91 +984,100 @@ export default function SaleInvoiceForm({ saleId, onSuccess }) {
               }
               onChange={(val) => setForm((prev) => ({ ...prev, customer_id: val?.value || "" }))}
               className="text-[11px]"
-              // React-Select already uses a custom input; but we still hint the browser:
               name="customer_select" inputId="customer_select" aria-autocomplete="list"
-              styles={{
-                control: (base) => ({ ...base, minHeight: 28, height: 28, fontSize: 11, borderRadius: 6 }),
-                valueContainer: (base) => ({ ...base, height: 28, padding: "0 6px" }),
-                indicatorsContainer: (base) => ({ ...base, height: 28 }),
-                input: (base) => ({ ...base, margin: 0, padding: 0 }),
-                menu: (base) => ({ ...base, fontSize: 12 }),
-              }}
+              styles={getSelectStyles(isDark)}
               isSearchable
             />
           </div>
           <div className="col-span-2">
-            <label className="block text-[9px] mb-0.5">Doctor</label>
+            <label className={`block text-[9px] mb-0.5 ${isDark ? "text-slate-400" : "text-gray-600"}`}>Doctor</label>
             <input
               type="text"
               name="doctor_name"
               value={form.doctor_name ?? ""}
               onChange={handleHeaderChange}
               autoComplete="off"
-              className="w-full h-7 border-2 border-black rounded px-1"
+              className={`w-full h-7 border-2 rounded px-1 ${
+                isDark 
+                  ? "border-slate-600 bg-slate-700 text-slate-200" 
+                  : "border-black text-gray-800"
+              }`}
             />
           </div>
             <div className="col-span-2">
-            <label className="block text-[9px] mb-0.5">Patient</label>
+            <label className={`block text-[9px] mb-0.5 ${isDark ? "text-slate-400" : "text-gray-600"}`}>Patient</label>
             <input
               type="text"
               name="patient_name"
               value={form.patient_name ?? ""}
               onChange={handleHeaderChange}
               autoComplete="off"
-              className="w-full h-7 border-2 border-black rounded px-1"
+              className={`w-full h-7 border-2 rounded px-1 ${
+                isDark 
+                  ? "border-slate-600 bg-slate-700 text-slate-200" 
+                  : "border-black text-gray-800"
+              }`}
             />
           </div>
 
           <div className="col-span-10">
-            <label className="block text-[9px] mb-0.5">Remarks</label>
+            <label className={`block text-[9px] mb-0.5 ${isDark ? "text-slate-400" : "text-gray-600"}`}>Remarks</label>
             <input
               type="text"
               name="remarks"
               value={form.remarks ?? ""}
               onChange={handleHeaderChange}
               autoComplete="off"
-              className="w-full h-7 border-2 border-black rounded px-1"
+              className={`w-full h-7 border-2 rounded px-1 ${
+                isDark 
+                  ? "border-slate-600 bg-slate-700 text-slate-200" 
+                  : "border-black text-gray-800"
+              }`}
             />
           </div>
           <div className="col-span-2">
-            <label className="block text-[9px] mb-0.5">Items</label>
+            <label className={`block text-[9px] mb-0.5 ${isDark ? "text-slate-400" : "text-gray-600"}`}>Items</label>
             <input
               type="text"
               readOnly
               value={form.items.length}
               autoComplete="off"
-              className="w-full h-7 border-2 border-black rounded px-1 bg-gray-100 text-center"
+              className={`w-full h-7 border-2 rounded px-1 text-center ${
+                isDark 
+                  ? "border-slate-600 bg-slate-700 text-slate-200" 
+                  : "border-black bg-gray-100 text-gray-800"
+              }`}
             />
           </div>
         </div>
       </div>
 
       {/* Main workspace: Items + Summary */}
-      <div className="flex-1 grid grid-cols-[1fr_240px]  gap-2 px-2 py-2 overflow-hidden">
+      <div className={`flex-1 grid grid-cols-[1fr_240px] gap-2 px-2 py-2 overflow-hidden ${isDark ? "bg-slate-900" : "bg-white"}`}>
         {/* LEFT: Items */}
         <div className="flex flex-col min-h-0">
-          <div className="text-[11px] font-semibold mb-1">Items</div>
-          <div ref={itemsScrollRef} className="flex-1 overflow-auto border-2 rounded relative">
+          <div className={`text-[11px] font-semibold mb-1 ${isDark ? "text-slate-300" : "text-gray-700"}`}>Items</div>
+          <div ref={itemsScrollRef} className={`flex-1 overflow-auto border-2 rounded relative ${isDark ? "border-slate-700 bg-slate-800" : "border-gray-200 bg-white"}`}>
             <table className="w-full text-[11px] table-fixed border-collapse" autoComplete="off">
-              <thead className="sticky top-0 z-20 bg-white/80 backdrop-blur-sm border-b border-gray-200/70">
+              <thead className={`sticky top-0 z-20 ${isDark ? "bg-slate-800/90 backdrop-blur-sm border-slate-700" : "bg-white/80 backdrop-blur-sm border-gray-200/70"} border-b`}>
                 <tr className="[&>th]:py-1 [&>th]:px-1 [&>th]:text-left">
-                  <th className="w-7 text-center text-red-600">DEL</th>
-                  <th className="w-7 text-center">#</th>
-                  <th className="w-[180px]">Product</th>
-                  <th className="w-14 text-center">PSize</th>
-                  <th className="w-24">Batch</th>
-                  <th className="w-15 text-center">Expiry</th>
-                  <th className="w-18 text-center">Avail</th>
-                  <th className="w-25 text-center">Qty</th>
-                  <th className="w-22 text-center">Price</th>
-                  <th className="w-18 text-center">Disc%</th>
-                  <th className="w-26 text-center">Sub Total</th>
+                  <th className={`w-7 text-center ${isDark ? "text-rose-400" : "text-red-600"}`}>DEL</th>
+                  <th className={`w-7 text-center ${isDark ? "text-slate-400" : "text-gray-600"}`}>#</th>
+                  <th className={`w-[180px] ${isDark ? "text-slate-400" : "text-gray-600"}`}>Product</th>
+                  <th className={`w-14 text-center ${isDark ? "text-slate-400" : "text-gray-600"}`}>PSize</th>
+                  <th className={`w-24 ${isDark ? "text-slate-400" : "text-gray-600"}`}>Batch</th>
+                  <th className={`w-15 text-center ${isDark ? "text-slate-400" : "text-gray-600"}`}>Expiry</th>
+                  <th className={`w-18 text-center ${isDark ? "text-slate-400" : "text-gray-600"}`}>Avail</th>
+                  <th className={`w-25 text-center ${isDark ? "text-slate-400" : "text-gray-600"}`}>Qty</th>
+                  <th className={`w-22 text-center ${isDark ? "text-slate-400" : "text-gray-600"}`}>Price</th>
+                  <th className={`w-18 text-center ${isDark ? "text-slate-400" : "text-gray-600"}`}>Disc%</th>
+                  <th className={`w-26 text-center ${isDark ? "text-slate-400" : "text-gray-600"}`}>Sub Total</th>
                   <th className="w-7 text-center">+</th>
                 </tr>
               </thead>
               <tbody className="[&>tr>td]:py-1 [&>tr>td]:px-0.2">
                 {form.items.map((it, i) => (
-                  <tr key={i} className="border-b">
+                  <tr key={i} className={`border-b ${isDark ? "border-slate-700 hover:bg-slate-700/50" : "border-gray-100 hover:bg-gray-50"}`}>
                     <td className="text-center">
                       <button
                         type="button"
@@ -1004,7 +1087,7 @@ export default function SaleInvoiceForm({ saleId, onSuccess }) {
                         X
                       </button>
                     </td>
-                    <td className="text-center">{i + 1}</td>
+                    <td className={`text-center ${isDark ? "text-slate-400" : "text-gray-600"}`}>{i + 1}</td>
 
                     <td>
                       <div ref={(el) => (productRefs.current[i] = el)}>
@@ -1014,7 +1097,6 @@ export default function SaleInvoiceForm({ saleId, onSuccess }) {
                           onKeyDown={(e) => onKeyNav(e, i, "product")}
                           products={products}
                           onRefreshProducts={fetchProducts}
-                          // ensure inner input disables suggestions (if your component forwards it)
                           inputProps={{ autoComplete: "off", autoCapitalize: "off", autoCorrect: "off", spellCheck: false }}
                         />
                       </div>
@@ -1026,7 +1108,11 @@ export default function SaleInvoiceForm({ saleId, onSuccess }) {
                         readOnly
                         value={it.pack_size ?? ""}
                         autoComplete="off"
-                        className="w-full h-6 border rounded px-1 bg-gray-100 text-center"
+                        className={`w-full h-6 border rounded px-1 text-center ${
+                          isDark 
+                            ? "border-slate-600 bg-slate-700 text-slate-300" 
+                            : "border-gray-200 bg-gray-100 text-gray-700"
+                        }`}
                       />
                     </td>
 
@@ -1057,7 +1143,11 @@ export default function SaleInvoiceForm({ saleId, onSuccess }) {
                         value={it.expiry ?? ""}
                         readOnly
                         autoComplete="off"
-                        className="w-full h-6 border rounded px-1 bg-gray-100 text-center"
+                        className={`w-full h-6 border rounded px-1 text-center ${
+                          isDark 
+                            ? "border-slate-600 bg-slate-700 text-slate-300" 
+                            : "border-gray-200 bg-gray-100 text-gray-700"
+                        }`}
                       />
                     </td>
 
@@ -1067,7 +1157,11 @@ export default function SaleInvoiceForm({ saleId, onSuccess }) {
                         readOnly
                         value={it.current_quantity ?? ""}
                         autoComplete="off"
-                        className="w-full h-6 border rounded px-1 bg-gray-100 text-center"
+                        className={`w-full h-6 border rounded px-1 text-center ${
+                          isDark 
+                            ? "border-slate-600 bg-slate-700 text-slate-300" 
+                            : "border-gray-200 bg-gray-100 text-gray-700"
+                        }`}
                       />
                     </td>
 
@@ -1080,7 +1174,11 @@ export default function SaleInvoiceForm({ saleId, onSuccess }) {
                         onChange={(e) => handleItemChange(i, "quantity", e.target.value)}
                         autoComplete="off"
                         className={
-                          "w-full h-6 border rounded px-1 text-center " +
+                          `w-full h-6 border rounded px-1 text-center ${
+                            isDark 
+                              ? "bg-slate-700 border-slate-600 text-slate-200" 
+                              : "bg-white border-gray-300 text-gray-800"
+                          } ` +
                           (Number(it.quantity || 0) > Number(it.current_quantity || 0)
                             ? "border-red-500 ring-1 ring-red-400"
                             : "")
@@ -1097,7 +1195,11 @@ export default function SaleInvoiceForm({ saleId, onSuccess }) {
                         value={to2(it.price ?? "")}
                         readOnly
                         autoComplete="off"
-                        className="w-full h-6 border rounded px-1 bg-gray-100 text-center"
+                        className={`w-full h-6 border rounded px-1 text-center ${
+                          isDark 
+                            ? "border-slate-600 bg-slate-700 text-slate-300" 
+                            : "border-gray-200 bg-gray-100 text-gray-700"
+                        }`}
                         onKeyDown={(e) => onKeyNav(e, i, "price")}
                       />
                     </td>
@@ -1119,7 +1221,11 @@ export default function SaleInvoiceForm({ saleId, onSuccess }) {
                           }
                         }}
                         autoComplete="off"
-                        className="w-full h-6 border rounded px-1 text-center"
+                        className={`w-full h-6 border rounded px-1 text-center ${
+                          isDark 
+                            ? "bg-slate-700 border-slate-600 text-slate-200" 
+                            : "bg-white border-gray-300 text-gray-800"
+                        }`}
                         onKeyDown={(e) => onKeyNav(e, i, "disc")}
                         onFocus={(e) => e.target.select()}
                       />
@@ -1131,7 +1237,11 @@ export default function SaleInvoiceForm({ saleId, onSuccess }) {
                         readOnly
                         value={it.sub_total ?? ""}
                         autoComplete="off"
-                        className="w-full h-6 border rounded px-1 bg-gray-100 text-center"
+                        className={`w-full h-6 border rounded px-1 text-center ${
+                          isDark 
+                            ? "border-slate-600 bg-slate-700 text-slate-300" 
+                            : "border-gray-200 bg-gray-100 text-gray-700"
+                        }`}
                       />
                     </td>
 
@@ -1154,10 +1264,10 @@ export default function SaleInvoiceForm({ saleId, onSuccess }) {
         {/* RIGHT: Summary */}
         <div className="min-h-0">
           <div className="sticky top-[20px] space-y-2">
-            <div className="border-2 rounded p-2">
-              <div className="text-[18px] font-semibold mb-1">Summary</div>
+            <div className={`border-2 rounded p-2 ${isDark ? "bg-slate-800 border-slate-700" : "bg-white border-gray-200"}`}>
+              <div className={`text-[18px] font-semibold mb-1 ${isDark ? "text-slate-200" : "text-gray-800"}`}>Summary</div>
               <div className="grid grid-cols-2 gap-1 text-[11px]">
-                <label className="text-[13px] font-bold self-center">Margin %</label>
+                <label className={`text-[13px] font-bold self-center ${isDark ? "text-slate-300" : "text-gray-700"}`}>Margin %</label>
                 <input
                   type="text"
                   name="margin_percentage"
@@ -1165,30 +1275,42 @@ export default function SaleInvoiceForm({ saleId, onSuccess }) {
                   value={marginPct}
                   onChange={(e) => setMarginPct(sanitizeNumberInput(e.target.value, true))}
                   autoComplete="off"
-                  className="h-7 border-2 border-black rounded px-1 bg-gray-100 font-extrabold text-red-600 text-lg"
+                  className={`h-7 border-2 rounded px-1 font-extrabold text-lg ${
+                    isDark 
+                      ? "border-slate-600 bg-slate-700 text-rose-400 placeholder-slate-500" 
+                      : "border-black bg-gray-100 text-red-600"
+                  }`}
                 />
 
-                <label className="text-[13px] font-bold self-center">Tax %</label>
+                <label className={`text-[13px] font-bold self-center ${isDark ? "text-slate-300" : "text-gray-700"}`}>Tax %</label>
                 <input
                   type="text"
                   name="tax_percentage"
                   value={form.tax_percentage ?? ""}
                   onChange={handleHeaderChange}
                   autoComplete="off"
-                  className="h-7 border-2 border-black rounded px-1"
+                  className={`h-7 border-2 rounded px-1 ${
+                    isDark 
+                      ? "border-slate-600 bg-slate-700 text-slate-200" 
+                      : "border-black text-gray-800"
+                  }`}
                 />
 
-                <label className="text-[13px] font-bold self-center">Tax Amt</label>
+                <label className={`text-[13px] font-bold self-center ${isDark ? "text-slate-300" : "text-gray-700"}`}>Tax Amt</label>
                 <input
                   type="text"
                   name="tax_amount"
                   value={form.tax_amount ?? ""}
                   onChange={handleHeaderChange}
                   autoComplete="off"
-                  className="h-7 border-2 border-black rounded px-1"
+                  className={`h-7 border-2 rounded px-1 ${
+                    isDark 
+                      ? "border-slate-600 bg-slate-700 text-slate-200" 
+                      : "border-black text-gray-800"
+                  }`}
                 />
 
-                <label className="text-[13px] font-bold self-center">Disc %</label>
+                <label className={`text-[13px] font-bold self-center ${isDark ? "text-slate-300" : "text-gray-700"}`}>Disc %</label>
                 <input
                   type="text"
                   name="discount_percentage"
@@ -1204,38 +1326,54 @@ export default function SaleInvoiceForm({ saleId, onSuccess }) {
                     }
                   }}
                   autoComplete="off"
-                  className="h-7 border-2 border-black rounded px-1"
+                  className={`h-7 border-2 rounded px-1 ${
+                    isDark 
+                      ? "border-slate-600 bg-slate-700 text-slate-200" 
+                      : "border-black text-gray-800"
+                  }`}
                 />
 
-                <label className="text-[13px] font-bold self-center">Disc Amt</label>
+                <label className={`text-[13px] font-bold self-center ${isDark ? "text-slate-300" : "text-gray-700"}`}>Disc Amt</label>
                 <input
                   type="text"
                   name="discount_amount"
                   value={form.discount_amount ?? ""}
                   onChange={handleHeaderChange}
                   autoComplete="off"
-                  className="h-7 border-2 border-black rounded px-1"
+                  className={`h-7 border-2 rounded px-1 ${
+                    isDark 
+                      ? "border-slate-600 bg-slate-700 text-slate-200" 
+                      : "border-black text-gray-800"
+                  }`}
                 />
 
-                <label className="text-[13px] font-bold self-center">Gross</label>
+                <label className={`text-[13px] font-bold self-center ${isDark ? "text-slate-300" : "text-gray-700"}`}>Gross</label>
                 <input
                   type="text"
                   readOnly
                   value={form.gross_amount ?? ""}
                   autoComplete="off"
-                  className="h-7 border-2 border-black rounded px-1 bg-gray-100"
+                  className={`h-7 border-2 rounded px-1 ${
+                    isDark 
+                      ? "border-slate-600 bg-slate-700 text-slate-300" 
+                      : "border-black bg-gray-100 text-gray-700"
+                  }`}
                 />
 
-                <label className="text-[13px] font-bold self-center">Total</label>
+                <label className={`text-[13px] font-bold self-center ${isDark ? "text-slate-300" : "text-gray-700"}`}>Total</label>
                 <input
                   type="text"
                   readOnly
                   value={form.total ?? ""}
                   autoComplete="off"
-                  className="h-7 border-2 border-black rounded px-1 bg-gray-100 font-extrabold text-red-600 text-lg"
+                  className={`h-7 border-2 rounded px-1 font-extrabold text-lg ${
+                    isDark 
+                      ? "border-slate-600 bg-slate-700 text-rose-400" 
+                      : "border-black bg-gray-100 text-red-600"
+                  }`}
                 />
 
-                <label className="text-[13px] font-bold self-center">Receive</label>
+                <label className={`text-[13px] font-bold self-center ${isDark ? "text-slate-300" : "text-gray-700"}`}>Receive</label>
                 <input
                   type="text"
                   name="total_receive"
@@ -1254,12 +1392,14 @@ export default function SaleInvoiceForm({ saleId, onSuccess }) {
                     }));
                   }}
                   autoComplete="off"
-                  className={`h-7 border-2 border-black rounded px-1 ${
-                    form.invoice_type === "debit" ? "bg-gray-100 cursor-not-allowed" : ""
-                  }`}
+                  className={`h-7 border-2 rounded px-1 ${
+                    isDark 
+                      ? "border-slate-600 bg-slate-700 text-slate-200" 
+                      : "border-black text-gray-800"
+                  } ${form.invoice_type === "debit" ? (isDark ? "cursor-not-allowed bg-slate-800" : "bg-gray-100 cursor-not-allowed") : ""}`}
                 />
 
-                <label className="text-[13px] font-bold self-center">Remaining</label>
+                <label className={`text-[13px] font-bold self-center ${isDark ? "text-slate-300" : "text-gray-700"}`}>Remaining</label>
                 <input
                   type="text"
                   readOnly
@@ -1267,7 +1407,11 @@ export default function SaleInvoiceForm({ saleId, onSuccess }) {
                     Math.round(Number(form.total || 0)) - Math.round(Number(form.total_receive || 0))
                   )}
                   autoComplete="off"
-                  className="h-7 border-2 border-black rounded px-1 bg-gray-100 cursor-not-allowed"
+                  className={`h-7 border-2 rounded px-1 cursor-not-allowed ${
+                    isDark 
+                      ? "border-slate-600 bg-slate-700 text-slate-300" 
+                      : "border-black bg-gray-100 text-gray-700"
+                  }`}
                 />
               </div>
 

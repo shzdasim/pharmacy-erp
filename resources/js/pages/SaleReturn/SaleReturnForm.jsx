@@ -6,6 +6,7 @@ import Select from "react-select";
 
 import ProductSearchInput from "../../components/ProductSearchInput.jsx";
 import BatchSearchInput from "../../components/BatchSearchInput.jsx";
+import { useTheme } from "@/context/ThemeContext";
 
 // ===== helpers =====
 const toNum = (v) => (v === undefined || v === null || v === "" ? 0 : Number(v));
@@ -174,6 +175,71 @@ export default function SaleReturnForm({ returnId, initialData, onSuccess }) {
   const discRefs = useRef([]);
 
   const productBatchCache = useRef(new Map()); // productId -> [{batch_number, expiry}]
+
+  // Get dark mode state
+  const { isDark } = useTheme();
+
+  // Helper to get react-select styles based on dark mode
+  const getSelectStyles = (isDarkMode = false) => ({
+    control: (base) => ({
+      ...base,
+      minHeight: "28px",
+      height: "28px",
+      fontSize: "12px",
+      borderColor: isDarkMode ? "rgba(71,85,105,0.8)" : "rgba(0,0,0,0.8)",
+      backgroundColor: isDarkMode ? "rgba(51,65,85,0.7)" : "rgba(255,255,255,0.7)",
+      backdropFilter: "blur(6px)",
+      boxShadow: isDarkMode ? "0 1px 2px rgba(0,0,0,0.2)" : "none",
+      borderRadius: 6,
+      color: isDarkMode ? "#f1f5f9" : "#111827",
+    }),
+    valueContainer: (base) => ({
+      ...base,
+      height: "28px",
+      padding: "0 4px",
+    }),
+    indicatorsContainer: (base) => ({
+      ...base,
+      height: "28px",
+    }),
+    input: (base) => ({
+      ...base,
+      margin: 0,
+      padding: 0,
+      color: isDarkMode ? "#f1f5f9" : "#111827",
+    }),
+    singleValue: (base) => ({
+      ...base,
+      color: isDarkMode ? "#f1f5f9" : "#111827",
+    }),
+    placeholder: (base) => ({
+      ...base,
+      color: isDarkMode ? "#64748b" : "#9ca3af",
+    }),
+    menu: (base) => ({
+      ...base,
+      fontSize: "12px",
+      borderRadius: 8,
+      overflow: "hidden",
+      backgroundColor: isDarkMode ? "rgba(30,41,59,0.95)" : "rgba(255,255,255,0.95)",
+      backdropFilter: "blur(10px)",
+      boxShadow: isDarkMode ? "0 10px 30px -10px rgba(0,0,0,0.4)" : "0 10px 30px -10px rgba(30,64,175,0.18)",
+      border: isDarkMode ? "1px solid rgba(71,85,105,0.5)" : "none",
+    }),
+    option: (base, state) => ({
+      ...base,
+      backgroundColor: isDarkMode
+        ? state.isFocused
+          ? "rgba(71,85,105,1)"
+          : "rgba(51,65,85,1)"
+        : state.isFocused
+          ? "rgba(241,245,249,1)"
+          : "rgba(255,255,255,1)",
+      color: isDarkMode ? "#f1f5f9" : "#111827",
+      cursor: "pointer",
+    }),
+    menuPortal: (base) => ({ ...base, zIndex: 9999 }),
+  });
 
   useEffect(() => {
     productRefs.current = productRefs.current.slice(0, form.items.length);
@@ -837,35 +903,43 @@ export default function SaleReturnForm({ returnId, initialData, onSuccess }) {
   // ===== Render =====
   return (
     <div className="relative">
-      <form className="flex flex-col" style={{ minHeight: "74vh", maxHeight: "80vh" }}>
+      <form className={`flex flex-col ${isDark ? "bg-slate-900" : "bg-white"}`} style={{ minHeight: "74vh", maxHeight: "80vh" }}>
         {/* HEADER */}
-        <div className="sticky top-0 bg-white shadow p-2 z-10">
-          <h2 className="text-sm font-bold mb-2">Sale Return (Unit-based) — Enter to move, Arrow ↑/↓ to switch rows, Alt+S to save</h2>
+        <div className={`sticky top-0 shadow p-2 z-10 ${isDark ? "bg-slate-800 border-b border-slate-700" : "bg-white border-b border-gray-200"}`}>
+          <h2 className={`text-sm font-bold mb-2 ${isDark ? "text-slate-200" : "text-gray-800"}`}>Sale Return (Unit-based) — Enter to move, Arrow ↑/↓ to switch rows, Alt+S to save</h2>
           <table className="w-full border-collapse text-xs">
             <tbody>
               <tr>
-                <td className="border p-1 w-1/12">
-                  <label className="block text-[10px]">Posted Number</label>
+                <td className={`border p-1 w-1/12 ${isDark ? "border-slate-700" : "border-gray-200"}`}>
+                  <label className={`block text-[10px] ${isDark ? "text-slate-400" : "text-gray-600"}`}>Posted Number</label>
                   <input
                     name="posted_number"
                     type="text"
                     readOnly
                     value={form.posted_number || ""}
-                    className="bg-gray-100 border rounded w-full p-1 h-7 text-xs"
+                    className={`border rounded w-full p-1 h-7 text-xs ${
+                      isDark 
+                        ? "border-slate-600 bg-slate-700 text-slate-300" 
+                        : "border-gray-300 bg-gray-100 text-gray-700"
+                    }`}
                   />
                 </td>
-                <td className="border p-1 w-1/6">
-                  <label className="block text-[10px]">Date</label>
+                <td className={`border p-1 w-1/6 ${isDark ? "border-slate-700" : "border-gray-200"}`}>
+                  <label className={`block text-[10px] ${isDark ? "text-slate-400" : "text-gray-600"}`}>Date</label>
                   <input
                     name="date"
                     type="date"
                     value={form.date}
                     onChange={(e) => setForm({ ...form, date: e.target.value })}
-                    className="border rounded w-full p-1 h-7 text-xs"
+                    className={`border rounded w-full p-1 h-7 text-xs ${
+                      isDark 
+                        ? "border-slate-600 bg-slate-700 text-slate-200" 
+                        : "border-gray-300 text-gray-800"
+                    }`}
                   />
                 </td>
-                <td className="border p-1 w-1/3">
-                  <label className="block text-[10px]">Customer *</label>
+                <td className={`border p-1 w-1/3 ${isDark ? "border-slate-700" : "border-gray-200"}`}>
+                  <label className={`block text-[10px] ${isDark ? "text-slate-400" : "text-gray-600"}`}>Customer *</label>
                   <Select
                     ref={customerSelectRef}
                     options={customers.map((c) => ({ value: c.id, label: c.name }))}
@@ -877,15 +951,11 @@ export default function SaleReturnForm({ returnId, initialData, onSuccess }) {
                     onChange={(val) => handleSelectChange("customer_id", val)}
                     isSearchable
                     classNamePrefix="react-select"
-                    styles={{
-                      control: (b) => ({ ...b, minHeight: "28px", height: "28px", fontSize: "12px" }),
-                      valueContainer: (b) => ({ ...b, height: "28px", padding: "0 4px" }),
-                      input: (b) => ({ ...b, margin: 0, padding: 0 }),
-                    }}
+                    styles={getSelectStyles(isDark)}
                   />
                 </td>
-                <td className="border p-1 w-1/3">
-                  <label className="block text-[10px]">Sale Invoice (optional)</label>
+                <td className={`border p-1 w-1/3 ${isDark ? "border-slate-700" : "border-gray-200"}`}>
+                  <label className={`block text-[10px] ${isDark ? "text-slate-400" : "text-gray-600"}`}>Sale Invoice (optional)</label>
                   <Select
                     ref={saleInvoiceRef}
                     options={saleInvoices.map((inv) => ({ value: inv.id, label: inv.posted_number }))}
@@ -915,11 +985,7 @@ export default function SaleReturnForm({ returnId, initialData, onSuccess }) {
                     }}
                     isSearchable
                     classNamePrefix="react-select"
-                    styles={{
-                      control: (b) => ({ ...b, minHeight: "28px", height: "28px", fontSize: "12px" }),
-                      valueContainer: (b) => ({ ...b, height: "28px", padding: "0 4px" }),
-                      input: (b) => ({ ...b, margin: 0, padding: 0 }),
-                    }}
+                    styles={getSelectStyles(isDark)}
                   />
                 </td>
               </tr>
@@ -928,31 +994,31 @@ export default function SaleReturnForm({ returnId, initialData, onSuccess }) {
         </div>
 
         {/* ITEMS */}
-        <div className="flex-1 overflow-auto p-1">
-          <h2 className="text-xs font-bold mb-1">Items</h2>
-          <table className="w-full border-collapse text-[11px]">
-            <thead className="sticky top-0 bg-gray-100 z-5">
+        <div className={`flex-1 overflow-auto p-1 ${isDark ? "bg-slate-900" : "bg-gray-50"}`}>
+          <h2 className={`text-xs font-bold mb-1 ${isDark ? "text-slate-300" : "text-gray-700"}`}>Items</h2>
+          <table className={`w-full border-collapse text-[11px] ${isDark ? "bg-slate-800" : "bg-white"}`}>
+            <thead className={`sticky top-0 z-5 ${isDark ? "bg-slate-700" : "bg-gray-100"}`}>
               <tr>
-                <th className="border w-6">#</th>
-                <th className="border">Product</th>
-                <th className="border w-20">Batch</th>
-                <th className="border w-20">Expiry</th>
-                <th className="border w-24">{form.sale_invoice_id ? "Unit Sale Qty" : "Available Qty"}</th>
-                <th className="border w-24">Unit Sale Price</th>
-                <th className="border w-24">Return Qty (Units)</th>
-                <th className="border w-16">Disc %</th>
-                <th className="border w-20">Sub Total</th>
-                <th className="border w-6">+</th>
+                <th className={`border ${isDark ? "border-slate-600" : "border-gray-200"}`}>#</th>
+                <th className={`border ${isDark ? "border-slate-600" : "border-gray-200"}`}>Product</th>
+                <th className={`border ${isDark ? "border-slate-600" : "border-gray-200"}`}>Batch</th>
+                <th className={`border ${isDark ? "border-slate-600" : "border-gray-200"}`}>Expiry</th>
+                <th className={`border ${isDark ? "border-slate-600" : "border-gray-200"}`}>{form.sale_invoice_id ? "Unit Sale Qty" : "Available Qty"}</th>
+                <th className={`border ${isDark ? "border-slate-600" : "border-gray-200"}`}>Unit Sale Price</th>
+                <th className={`border ${isDark ? "border-slate-600" : "border-gray-200"}`}>Return Qty (Units)</th>
+                <th className={`border ${isDark ? "border-slate-600" : "border-gray-200"}`}>Disc %</th>
+                <th className={`border ${isDark ? "border-slate-600" : "border-gray-200"}`}>Sub Total</th>
+                <th className={`border ${isDark ? "border-slate-600" : "border-gray-200"}`}>+</th>
               </tr>
             </thead>
             <tbody>
               {form.items.map((item, i) => {
                 const exceeds = form.sale_invoice_id
                   ? toNum(item.unit_return_quantity) > toNum(item.unit_sale_quantity)
-                  : false; // ✅ no visual cap in open mode
+                  : false;
                 return (
-                  <tr key={item.id} className="text-center">
-                    <td className="border">
+                  <tr key={item.id} className={`text-center ${isDark ? "hover:bg-slate-700/50" : "hover:bg-gray-50"}`}>
+                    <td className={`border ${isDark ? "border-slate-600" : "border-gray-200"}`}>
                       <button
                         type="button"
                         onClick={() => removeItem(i)}
@@ -961,85 +1027,110 @@ export default function SaleReturnForm({ returnId, initialData, onSuccess }) {
                         X
                       </button>
                     </td>
-                    <td className="border text-left w-[260px]">
+                    <td className={`border text-left w-[260px] ${isDark ? "border-slate-600" : "border-gray-200"}`}>
                       <div ref={(el) => (productRefs.current[i] = el)}>
                         <ProductSearchInput
                           value={item.product_id}
-                          onChange={(val) => handleProductSelect(i, val)}   // ← valid
-                          onRefreshProducts={refreshProducts}              // ← server search
+                          onChange={(val) => handleProductSelect(i, val)}
+                          onRefreshProducts={refreshProducts}
                           products={products}
                           onKeyDown={(e) => onKeyNav(e, i, "product")}
                         />
-
                       </div>
                     </td>
-                    <td className="border w-20">
+                    <td className={`border w-20 ${isDark ? "border-slate-600" : "border-gray-200"}`}>
                       <div ref={(el) => (batchRefs.current[i] = el)}>
                         <BatchSearchInput
                           value={item.batch_number}
                           batches={(rowBatches[i] || []).map((b) => ({
-                            batch_number: b.batch_number,   // ✅ REQUIRED
+                            batch_number: b.batch_number,
                           }))}
                           onChange={(v) => handleBatchSelect(i, v)}
                           onKeyDown={(e) => onKeyNav(e, i, "batch")}
                         />
                       </div>
                     </td>
-                    <td className="border w-20">
+                    <td className={`border w-20 ${isDark ? "border-slate-600" : "border-gray-200"}`}>
                       <input
                         type="text"
                         readOnly
                         value={item.expiry || ""}
-                        className="border bg-gray-100 w-full h-6 text-[11px] px-1"
+                        className={`border w-full h-6 text-[11px] px-1 ${
+                          isDark 
+                            ? "border-slate-600 bg-slate-700 text-slate-300" 
+                            : "border-gray-200 bg-gray-100 text-gray-700"
+                        }`}
                       />
                     </td>
-                    <td className="border w-24">
+                    <td className={`border w-24 ${isDark ? "border-slate-600" : "border-gray-200"}`}>
                       <input
                         type="number"
                         readOnly
                         value={item.unit_sale_quantity || 0}
-                        className="border bg-gray-100 w-full h-6 text-[11px] px-1"
+                        className={`border w-full h-6 text-[11px] px-1 ${
+                          isDark 
+                            ? "border-slate-600 bg-slate-700 text-slate-300" 
+                            : "border-gray-200 bg-gray-100 text-gray-700"
+                        }`}
                       />
                     </td>
-                    <td className="border w-24">
+                    <td className={`border w-24 ${isDark ? "border-slate-600" : "border-gray-200"}`}>
                       <input
                         type="number"
                         readOnly
                         value={item.unit_sale_price || 0}
-                        className="border bg-gray-100 w-full h-6 text-[11px] px-1"
+                        className={`border w-full h-6 text-[11px] px-1 ${
+                          isDark 
+                            ? "border-slate-600 bg-slate-700 text-slate-300" 
+                            : "border-gray-200 bg-gray-100 text-gray-700"
+                        }`}
                       />
                     </td>
-                    <td className="border w-24">
+                    <td className={`border w-24 ${isDark ? "border-slate-600" : "border-gray-200"}`}>
                       <input
                         ref={(el) => (qtyRefs.current[i] = el)}
                         type="text"
                         value={item.unit_return_quantity === 0 ? "" : item.unit_return_quantity}
                         onChange={(e) => handleItemChange(i, "unit_return_quantity", e.target.value)}
                         className={
-                          "border w-full h-6 text-[11px] px-1 " + (exceeds ? "border-red-500 ring-1 ring-red-400" : "")
+                          `border w-full h-6 text-[11px] px-1 ` +
+                          (exceeds 
+                            ? "border-red-500 ring-1 ring-red-400" 
+                            : isDark 
+                              ? "bg-slate-700 border-slate-600 text-slate-200" 
+                              : "bg-white border-gray-300 text-gray-800"
+                          )
                         }
                         onKeyDown={(e) => onKeyNav(e, i, "quantity")}
                       />
                     </td>
-                    <td className="border w-16">
+                    <td className={`border w-16 ${isDark ? "border-slate-600" : "border-gray-200"}`}>
                       <input
                         ref={(el) => (discRefs.current[i] = el)}
                         type="text"
                         value={item.item_discount_percentage === 0 ? "" : item.item_discount_percentage}
                         onChange={(e) => handleItemChange(i, "item_discount_percentage", e.target.value)}
-                        className="border w-full h-6 text-[11px] px-1"
+                        className={`border w-full h-6 text-[11px] px-1 ${
+                          isDark 
+                            ? "bg-slate-700 border-slate-600 text-slate-200" 
+                            : "bg-white border-gray-300 text-gray-800"
+                        }`}
                         onKeyDown={(e) => onKeyNav(e, i, "disc")}
                       />
                     </td>
-                    <td className="border w-20">
+                    <td className={`border w-20 ${isDark ? "border-slate-600" : "border-gray-200"}`}>
                       <input
                         type="number"
                         readOnly
                         value={(Number(item.sub_total) || 0).toFixed(2)}
-                        className="border bg-gray-100 w-full h-6 text-[11px] px-1"
+                        className={`border w-full h-6 text-[11px] px-1 ${
+                          isDark 
+                            ? "border-slate-600 bg-slate-700 text-slate-300" 
+                            : "border-gray-200 bg-gray-100 text-gray-700"
+                        }`}
                       />
                     </td>
-                    <td className="border">
+                    <td className={`border ${isDark ? "border-slate-600" : "border-gray-200"}`}>
                       <button
                         type="button"
                         onClick={addItem}
@@ -1056,72 +1147,100 @@ export default function SaleReturnForm({ returnId, initialData, onSuccess }) {
         </div>
 
         {/* FOOTER */}
-        <div className="sticky bottom-0 bg-white shadow p-2 z-10">
+        <div className={`sticky bottom-0 shadow p-2 z-10 ${isDark ? "bg-slate-800 border-t border-slate-700" : "bg-white border-t border-gray-200"}`}>
           <table className="w-full border-collapse text-xs">
             <tbody>
               <tr>
-                <td className="border p-1 w-1/6">
-                  <label className="block text-[10px]">Gross Total</label>
+                <td className={`border p-1 w-1/6 ${isDark ? "border-slate-700" : "border-gray-200"}`}>
+                  <label className={`block text-[10px] ${isDark ? "text-slate-400" : "text-gray-600"}`}>Gross Total</label>
                   <input
                     type="number"
                     readOnly
                     value={(Number(form.gross_total) || 0).toFixed(2)}
-                    className="border rounded w-full p-1 h-7 text-xs bg-gray-100"
+                    className={`border rounded w-full p-1 h-7 text-xs ${
+                      isDark 
+                        ? "border-slate-600 bg-slate-700 text-slate-300" 
+                        : "border-gray-300 bg-gray-100 text-gray-700"
+                    }`}
                   />
                 </td>
-                <td className="border p-1 w-1/6">
-                  <label className="block text-[10px]">Discount %</label>
+                <td className={`border p-1 w-1/6 ${isDark ? "border-slate-700" : "border-gray-200"}`}>
+                  <label className={`block text-[10px] ${isDark ? "text-slate-400" : "text-gray-600"}`}>Discount %</label>
                   <input
                     type="number"
                     value={form.discount_percentage === 0 ? "" : form.discount_percentage}
                     onChange={(e) => onDiscountPctChange(e.target.value)}
-                    className="border rounded w-full p-1 h-7 text-xs"
+                    className={`border rounded w-full p-1 h-7 text-xs ${
+                      isDark 
+                        ? "border-slate-600 bg-slate-700 text-slate-200" 
+                        : "border-gray-300 text-gray-800"
+                    }`}
                   />
                 </td>
-                <td className="border p-1 w-1/6">
-                  <label className="block text-[10px]">Discount Amount</label>
+                <td className={`border p-1 w-1/6 ${isDark ? "border-slate-700" : "border-gray-200"}`}>
+                  <label className={`block text-[10px] ${isDark ? "text-slate-400" : "text-gray-600"}`}>Discount Amount</label>
                   <input
                     type="number"
                     value={form.discount_amount === 0 ? "" : form.discount_amount}
                     onChange={(e) => onDiscountAmtChange(e.target.value)}
-                    className="border rounded w-full p-1 h-7 text-xs"
+                    className={`border rounded w-full p-1 h-7 text-xs ${
+                      isDark 
+                        ? "border-slate-600 bg-slate-700 text-slate-200" 
+                        : "border-gray-300 text-gray-800"
+                    }`}
                   />
                 </td>
-                <td className="border p-1 w-1/6">
-                  <label className="block text-[10px]">Tax %</label>
+                <td className={`border p-1 w-1/6 ${isDark ? "border-slate-700" : "border-gray-200"}`}>
+                  <label className={`block text-[10px] ${isDark ? "text-slate-400" : "text-gray-600"}`}>Tax %</label>
                   <input
                     type="number"
                     value={form.tax_percentage === 0 ? "" : form.tax_percentage}
                     onChange={(e) => onTaxPctChange(e.target.value)}
-                    className="border rounded w-full p-1 h-7 text-xs"
+                    className={`border rounded w-full p-1 h-7 text-xs ${
+                      isDark 
+                        ? "border-slate-600 bg-slate-700 text-slate-200" 
+                        : "border-gray-300 text-gray-800"
+                    }`}
                   />
                 </td>
-                <td className="border p-1 w-1/6">
-                  <label className="block text-[10px]">Tax Amount</label>
+                <td className={`border p-1 w-1/6 ${isDark ? "border-slate-700" : "border-gray-200"}`}>
+                  <label className={`block text-[10px] ${isDark ? "text-slate-400" : "text-gray-600"}`}>Tax Amount</label>
                   <input
                     type="number"
                     value={form.tax_amount === 0 ? "" : form.tax_amount}
                     onChange={(e) => onTaxAmtChange(e.target.value)}
-                    className="border rounded w-full p-1 h-7 text-xs"
+                    className={`border rounded w-full p-1 h-7 text-xs ${
+                      isDark 
+                        ? "border-slate-600 bg-slate-700 text-slate-200" 
+                        : "border-gray-300 text-gray-800"
+                    }`}
                   />
                 </td>
-                <td className="border p-1 w-1/6">
-                  <label className="block text-[10px]">Total</label>
+                <td className={`border p-1 w-1/6 ${isDark ? "border-slate-700" : "border-gray-200"}`}>
+                  <label className={`block text-[10px] ${isDark ? "text-slate-400" : "text-gray-600"}`}>Total</label>
                   <input
                     type="number"
                     readOnly
                     value={(Number(form.total) || 0).toFixed(2)}
-                    className="border rounded w-full p-1 h-7 text-xs bg-gray-100"
+                    className={`border rounded w-full p-1 h-7 text-xs ${
+                      isDark 
+                        ? "border-slate-600 bg-slate-700 text-rose-400" 
+                        : "border-gray-300 bg-gray-100 text-red-600"
+                    }`}
                   />
                 </td>
               </tr>
               <tr>
-                <td colSpan={6} className="p-2">
+                <td colSpan={6} className={`p-2 ${isDark ? "bg-slate-800" : "bg-white"}`}>
                   <div className="flex justify-end gap-2">
                     <button
                       type="button"
                       onClick={handleCancel}
-                      className="px-6 py-3 rounded text-sm transition bg-gray-200 text-gray-800 hover:bg-gray-300"
+                      className={`px-6 py-3 rounded text-sm transition ${
+                        isDark 
+                          ? "bg-slate-700 text-slate-200 hover:bg-slate-600" 
+                          : "bg-gray-200 text-gray-800 hover:bg-gray-300"
+                      }`}
                     >
                       Cancel
                     </button>

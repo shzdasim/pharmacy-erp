@@ -3,6 +3,7 @@ import { useMemo, useState } from "react";
 import axios from "axios";
 import toast from "react-hot-toast";
 import { usePermissions } from "@/api/usePermissions";
+import { useTheme } from "@/context/ThemeContext";
 import {
   GlassCard,
   GlassSectionHeader,
@@ -26,7 +27,7 @@ const fmtPct = (v) =>
   n(v).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + "%";
 
 export default function CostOfSaleReport() {
-  // ✅ Default from = yesterday, to = today
+  // Default from = yesterday, to = today
   const [fromDate, setFromDate] = useState(yesterdayStr());
   const [toDate, setToDate] = useState(todayStr());
   const [invoiceType, setInvoiceType] = useState("all"); // all, credit, debit
@@ -38,10 +39,13 @@ export default function CostOfSaleReport() {
   const permsReady = typeof hasFn === "function";
   const canView = permsReady ? !!hasFn("report.cost-of-sale.view") : null;
 
+  // Get dark mode state
+  const { isDark } = useTheme();
+
   // tints
   const tintPrimary =
     "bg-slate-900/80 text-white ring-1 ring-white/15 shadow-[0_6px_20px_-6px_rgba(15,23,42,0.45)] hover:bg-slate-900/90";
-  const tintGhost = "bg-white/60 text-slate-700 ring-1 ring-white/30 hover:bg-white/75";
+  const tintGhost = isDark ? "bg-slate-800/60 text-slate-200 ring-1 ring-slate-700/50 hover:bg-slate-800/80" : "bg-white/60 text-slate-700 ring-1 ring-white/30 hover:bg-white/75";
 
   // === Fetch report only when user clicks Apply/Load ===
   const fetchReport = async ({ silentDenied = false } = {}) => {
@@ -83,7 +87,7 @@ export default function CostOfSaleReport() {
     }
   };
 
-  // ✅ Remove auto-load effect on mount (no useEffect)
+  // Remove auto-load effect on mount (no useEffect)
 
   const computed = useMemo(() => {
     const withDerived = rows.map((r) => {
@@ -132,7 +136,7 @@ export default function CostOfSaleReport() {
       {/* Header + Filters */}
       <GlassCard>
         <GlassSectionHeader
-          title={<span className="font-semibold">Cost of Sale Report</span>}
+          title={<span className={`font-semibold ${isDark ? "text-slate-200" : ""}`}>Cost of Sale Report</span>}
           right={
             <div className="flex gap-2">
               <GlassBtn
@@ -164,22 +168,26 @@ export default function CostOfSaleReport() {
         {/* Filter toolbar */}
         <GlassToolbar className="grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-8 gap-3">
           <div className="sm:col-span-1 lg:col-span-2">
-            <label className="text-sm text-gray-700 mb-1 block">From</label>
+            <label className={`text-sm mb-1 block ${isDark ? "text-slate-300" : "text-gray-700"}`}>From</label>
             <GlassInput type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} className="w-full" />
           </div>
           <div className="sm:col-span-1 lg:col-span-2">
-            <label className="text-sm text-gray-700 mb-1 block">To</label>
+            <label className={`text-sm mb-1 block ${isDark ? "text-slate-300" : "text-gray-700"}`}>To</label>
             <GlassInput type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} className="w-full" />
           </div>
           
           {/* Invoice Type Filter - Dropdown */}
           <div className="sm:col-span-1 lg:col-span-2">
-            <label className="text-sm text-gray-700 mb-1 block">Sale Type</label>
+            <label className={`text-sm mb-1 block ${isDark ? "text-slate-300" : "text-gray-700"}`}>Sale Type</label>
             <div className="relative">
               <select
                 value={invoiceType}
                 onChange={(e) => setInvoiceType(e.target.value)}
-                className="w-full h-9 px-3 pr-8 text-sm border-2 border-gray-200 rounded-lg appearance-none bg-white focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 cursor-pointer transition-all duration-200"
+                className={`w-full h-9 px-3 pr-8 text-sm border-2 rounded-lg appearance-none focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 cursor-pointer transition-all duration-200 ${
+                  isDark 
+                    ? "bg-slate-800 border-slate-600 text-slate-200" 
+                    : "bg-white border-gray-200 text-gray-900"
+                }`}
               >
                 <option value="all">All Sales</option>
                 <option value="credit">Credit Sales</option>
@@ -187,7 +195,7 @@ export default function CostOfSaleReport() {
               </select>
               {/* Custom dropdown arrow */}
               <div className="absolute inset-y-0 right-0 flex items-center px-2 pointer-events-none">
-                <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className={`w-4 h-4 ${isDark ? "text-slate-400" : "text-gray-500"}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                 </svg>
               </div>
@@ -204,7 +212,7 @@ export default function CostOfSaleReport() {
               Apply
             </GlassBtn>
 
-            {/* ✅ Quick date filters */}
+            {/* Quick date filters */}
             <GlassBtn
               className={`h-9 ${tintGhost}`}
               onClick={() => {
@@ -250,13 +258,13 @@ export default function CostOfSaleReport() {
       {/* Permission & Data Views */}
       {canView === null && (
         <GlassCard>
-          <div className="px-4 py-3 text-sm text-gray-700">Checking permissions…</div>
+          <div className={`px-4 py-3 text-sm ${isDark ? "text-slate-300" : "text-gray-700"}`}>Checking permissions…</div>
         </GlassCard>
       )}
       {canView === false && (
         <GlassCard>
-          <div className="px-4 py-3 text-sm text-gray-700">
-            You don’t have permission to view this report.
+          <div className={`px-4 py-3 text-sm ${isDark ? "text-slate-300" : "text-gray-700"}`}>
+            You don't have permission to view this report.
           </div>
         </GlassCard>
       )}
@@ -266,9 +274,9 @@ export default function CostOfSaleReport() {
           {/* Table */}
           <GlassCard className="relative z-10">
             <div className="max-h-[75vh] overflow-auto rounded-b-2xl">
-              <table className="min-w-[1100px] w-full text-sm text-gray-900">
-                <thead className="sticky top-0 bg-white/90 backdrop-blur-sm z-10 border-b border-gray-200/70">
-                  <tr className="text-left">
+              <table className="min-w-[1100px] w-full text-sm">
+                <thead className={`sticky top-0 backdrop-blur-sm z-10 border-b ${isDark ? "bg-slate-800/90" : "bg-white/90"}`}>
+                  <tr className={`text-left ${isDark ? "text-slate-200" : "text-gray-900"}`}>
                     <th className="px-3 py-2 font-medium">Date</th>
                     <th className="px-3 py-2 font-medium text-right">Gross Sale</th>
                     <th className="px-3 py-2 font-medium text-right">Item Disc.</th>
@@ -286,7 +294,7 @@ export default function CostOfSaleReport() {
                 <tbody>
                   {computed.withDerived.length === 0 && !loading && (
                     <tr>
-                      <td colSpan={11} className="px-3 py-10 text-center text-gray-600">
+                      <td colSpan={11} className={`px-3 py-10 text-center ${isDark ? "text-slate-400" : "text-gray-600"}`}>
                         No data for the selected date range.
                       </td>
                     </tr>
@@ -295,25 +303,29 @@ export default function CostOfSaleReport() {
                   {computed.withDerived.map((r, idx) => (
                     <tr
                       key={r.sale_date + "_" + idx}
-                      className="transition-all duration-200 odd:bg-white/80 even:bg-white/60 hover:bg-white/80 hover:backdrop-blur-[2px]"
+                      className={`transition-all duration-200 ${
+                        isDark 
+                          ? "odd:bg-slate-800/80 even:bg-slate-800/60 hover:bg-slate-700/80" 
+                          : "odd:bg-white/80 even:bg-white/60 hover:bg-white/80"
+                      }`}
                     >
-                      <td className="px-3 py-2">{r.sale_date}</td>
-                      <td className="px-3 py-2 text-right tabular-nums">{fmtCurrency(r.gross_sale)}</td>
-                      <td className="px-3 py-2 text-right tabular-nums">{fmtCurrency(r.item_discount)}</td>
-                      <td className="px-3 py-2 text-right tabular-nums">{fmtCurrency(r.discount_amount)}</td>
-                      <td className="px-3 py-2 text-right tabular-nums">{fmtCurrency(r.tax_amount)}</td>
-                      <td className="px-3 py-2 text-right tabular-nums">{fmtCurrency(r.total_sales)}</td>
-                      <td className="px-3 py-2 text-right tabular-nums">{fmtCurrency(r.sale_return)}</td>
-                      <td className="px-3 py-2 text-right tabular-nums font-medium">{fmtCurrency(r.net_sale)}</td>
-                      <td className="px-3 py-2 text-right tabular-nums">{fmtCurrency(r.cost_of_sales)}</td>
-                      <td className="px-3 py-2 text-right tabular-nums font-medium">{fmtCurrency(r.gp_amount)}</td>
-                      <td className="px-3 py-2 text-right tabular-nums">{fmtPct(r.gp_pct)}</td>
+                      <td className={`px-3 py-2 ${isDark ? "text-slate-300" : ""}`}>{r.sale_date}</td>
+                      <td className={`px-3 py-2 text-right tabular-nums ${isDark ? "text-slate-300" : ""}`}>{fmtCurrency(r.gross_sale)}</td>
+                      <td className={`px-3 py-2 text-right tabular-nums ${isDark ? "text-slate-300" : ""}`}>{fmtCurrency(r.item_discount)}</td>
+                      <td className={`px-3 py-2 text-right tabular-nums ${isDark ? "text-slate-300" : ""}`}>{fmtCurrency(r.discount_amount)}</td>
+                      <td className={`px-3 py-2 text-right tabular-nums ${isDark ? "text-slate-300" : ""}`}>{fmtCurrency(r.tax_amount)}</td>
+                      <td className={`px-3 py-2 text-right tabular-nums ${isDark ? "text-slate-300" : ""}`}>{fmtCurrency(r.total_sales)}</td>
+                      <td className={`px-3 py-2 text-right tabular-nums ${isDark ? "text-slate-300" : ""}`}>{fmtCurrency(r.sale_return)}</td>
+                      <td className={`px-3 py-2 text-right tabular-nums font-medium ${isDark ? "text-slate-200" : ""}`}>{fmtCurrency(r.net_sale)}</td>
+                      <td className={`px-3 py-2 text-right tabular-nums ${isDark ? "text-slate-300" : ""}`}>{fmtCurrency(r.cost_of_sales)}</td>
+                      <td className={`px-3 py-2 text-right tabular-nums font-medium ${isDark ? "text-slate-200" : ""}`}>{fmtCurrency(r.gp_amount)}</td>
+                      <td className={`px-3 py-2 text-right tabular-nums ${isDark ? "text-slate-300" : ""}`}>{fmtPct(r.gp_pct)}</td>
                     </tr>
                   ))}
                 </tbody>
 
-                <tfoot className="border-t border-gray-200 bg-white/80 backdrop-blur-sm">
-                  <tr className="font-semibold text-gray-800">
+                <tfoot className={`border-t ${isDark ? "border-slate-600 bg-slate-800/80" : "border-gray-200 bg-white/80"} backdrop-blur-sm`}>
+                  <tr className={`font-semibold ${isDark ? "text-slate-200" : "text-gray-800"}`}>
                     <td className="px-3 py-2 text-right">Total</td>
                     <td className="px-3 py-2 text-right tabular-nums">{fmtCurrency(computed.totals.gross_sale)}</td>
                     <td className="px-3 py-2 text-right tabular-nums">{fmtCurrency(computed.totals.item_discount)}</td>
@@ -334,12 +346,12 @@ export default function CostOfSaleReport() {
           {/* KPI Summary */}
           <GlassCard>
             <div className="px-4 py-3 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 text-sm">
-              <Stat label="Net Sale" highlight value={fmtCurrency(computed.totals.net_sale)} />
-              <Stat label="Cost of Sales" value={fmtCurrency(computed.totals.cost_of_sales)} />
-              <Stat label="Gross Profit (Amt)" value={fmtCurrency(computed.totals.gp_amount)} />
-              <Stat label="Gross Profit %" value={fmtPct(computed.totals_gp_pct)} />
-              <Stat label="Gross Sale" value={fmtCurrency(computed.totals.gross_sale)} />
-              <Stat label="Total Sales" value={fmtCurrency(computed.totals.total_sales)} />
+              <Stat isDark={isDark} label="Net Sale" highlight value={fmtCurrency(computed.totals.net_sale)} />
+              <Stat isDark={isDark} label="Cost of Sales" value={fmtCurrency(computed.totals.cost_of_sales)} />
+              <Stat isDark={isDark} label="Gross Profit (Amt)" value={fmtCurrency(computed.totals.gp_amount)} />
+              <Stat isDark={isDark} label="Gross Profit %" value={fmtPct(computed.totals_gp_pct)} />
+              <Stat isDark={isDark} label="Gross Sale" value={fmtCurrency(computed.totals.gross_sale)} />
+              <Stat isDark={isDark} label="Total Sales" value={fmtCurrency(computed.totals.total_sales)} />
             </div>
           </GlassCard>
         </>
@@ -358,19 +370,20 @@ export default function CostOfSaleReport() {
 }
 
 /* ===== KPI Tile ===== */
-function Stat({ label, value, highlight = false }) {
+function Stat({ isDark, label, value, highlight = false }) {
   return (
     <div
       className={[
-        "group rounded-xl px-3 py-2 backdrop-blur-sm bg-white/55 ring-1 ring-white/30 shadow-sm",
-        "transition-all duration-200",
-        "hover:bg-white/80 hover:backdrop-blur-md hover:shadow-[0_10px_30px_-10px_rgba(59,130,246,0.35)]",
-        "hover:ring-white/40",
+        "group rounded-xl px-3 py-2 backdrop-blur-sm ring-1 shadow-sm transition-all duration-200",
+        isDark 
+          ? "bg-slate-800/55 ring-slate-700/50 hover:bg-slate-800/80 hover:ring-slate-600/40" 
+          : "bg-white/55 ring-white/30 hover:bg-white/80 hover:ring-white/40",
         highlight ? "outline outline-1 outline-blue-200/50" : "",
       ].join(" ")}
     >
-      <div className="text-xs text-gray-600">{label}</div>
-      <div className="text-base font-semibold tabular-nums">{value}</div>
+      <div className={`text-xs ${isDark ? "text-slate-400" : "text-gray-600"}`}>{label}</div>
+      <div className={`text-base font-semibold tabular-nums ${isDark ? "text-slate-200" : ""}`}>{value}</div>
     </div>
   );
 }
+

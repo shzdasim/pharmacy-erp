@@ -27,6 +27,7 @@ import "filepond-plugin-image-preview/dist/filepond-plugin-image-preview.css";
 
 // 🧊 glass primitives
 import { GlassCard, GlassSectionHeader, GlassToolbar, GlassInput, GlassBtn } from "@/components/glass.jsx";
+import { useTheme } from "@/context/ThemeContext";
 
 registerPlugin(FilePondPluginImagePreview, FilePondPluginFileValidateType);
 
@@ -65,7 +66,10 @@ export default function ProductForm({ initialData = null, onSubmitSuccess }) {
   const tintSlate  = "bg-slate-900/80 text-white shadow-[0_6px_20px_-6px_rgba(15,23,42,0.45)] ring-1 ring-white/15 hover:bg-slate-900/90";
   const tintAmber  = "bg-amber-500/85 text-white shadow-[0_6px_20px_-6px_rgba(245,158,11,0.45)] ring-1 ring-white/20 hover:bg-amber-500/95";
   const tintRed    = "bg-rose-500/85 text-white shadow-[0_6px_20px_-6px_rgba(244,63,94,0.45)] ring-1 ring-white/20 hover:bg-rose-500/95";
-  const tintGlass  = "bg-white/60 text-slate-700 ring-1 ring-white/30 hover:bg-white/75";
+  const tintGlass  = "bg-white/60 text-slate-700 ring-1 ring-white/30 hover:bg-white/75 dark:text-gray-100 dark:bg-slate-700/60 dark:ring-slate-600/30 dark:hover:bg-slate-600/75";
+
+  // Get dark mode state
+  const { isDark } = useTheme();
 
   // ---- Load dropdown data (categories + suppliers only; Brand is async search) ----
   const fetchDropdowns = async () => {
@@ -196,15 +200,123 @@ export default function ProductForm({ initialData = null, onSubmitSuccess }) {
     return () => window.removeEventListener("keydown", handleShortcut);
   }, [navigate]);
 
-  // Small react-select styles
+  // Small react-select styles with dark mode support
   const smallSelectStyles = {
-    control: (base) => ({ ...base, minHeight: "36px", height: "36px", fontSize: "13px", borderRadius: 12 }),
+    control: (base) => ({
+      ...base,
+      minHeight: "36px",
+      height: "36px",
+      fontSize: "13px",
+      borderRadius: 12,
+      borderColor: "rgba(229,231,235,0.8)",
+      backgroundColor: "rgba(255,255,255,0.7)",
+      backdropFilter: "blur(6px)",
+      boxShadow: "0 1px 2px rgba(15,23,42,0.06)",
+    }),
+    controlDark: (base) => ({
+      ...base,
+      minHeight: "36px",
+      height: "36px",
+      fontSize: "13px",
+      borderRadius: 12,
+      borderColor: "rgba(71,85,105,0.8)",
+      backgroundColor: "rgba(51,65,85,0.7)",
+      backdropFilter: "blur(6px)",
+      boxShadow: "0 1px 2px rgba(0,0,0,0.2)",
+    }),
     valueContainer: (base) => ({ ...base, height: "36px", padding: "0 10px" }),
     indicatorsContainer: (base) => ({ ...base, height: "36px" }),
-    input: (base) => ({ ...base, margin: 0, padding: 0 }),
-    menu: (base) => ({ ...base, fontSize: "13px", borderRadius: 12, overflow: "hidden" }),
+    input: (base) => ({ ...base, margin: 0, padding: 0, color: "#111827" }),
+    inputDark: (base) => ({ ...base, margin: 0, padding: 0, color: "#f1f5f9" }),
     menuPortal: (base) => ({ ...base, zIndex: 9999 }),
+    menu: (base) => ({
+      ...base,
+      fontSize: "13px",
+      borderRadius: 12,
+      overflow: "hidden",
+      backgroundColor: "rgba(255,255,255,0.95)",
+      backdropFilter: "blur(10px)",
+      boxShadow: "0 10px 30px -10px rgba(30,64,175,0.18)",
+    }),
+    menuDark: (base) => ({
+      ...base,
+      fontSize: "13px",
+      borderRadius: 12,
+      overflow: "hidden",
+      backgroundColor: "rgba(30,41,59,0.95)",
+      backdropFilter: "blur(10px)",
+      boxShadow: "0 10px 30px -10px rgba(0,0,0,0.4)",
+      border: "1px solid rgba(71,85,105,0.5)",
+    }),
+    option: (base) => ({
+      ...base,
+      backgroundColor: "rgba(255,255,255,1)",
+      color: "#111827",
+    }),
+    optionDark: (base) => ({
+      ...base,
+      backgroundColor: "rgba(51,65,85,1)",
+      color: "#f1f5f9",
+    }),
+    singleValue: (base) => ({ ...base, color: "#111827" }),
+    singleValueDark: (base) => ({ ...base, color: "#f1f5f9" }),
+    placeholder: (base) => ({ ...base, color: "#9ca3af" }),
+    placeholderDark: (base) => ({ ...base, color: "#64748b" }),
   };
+
+  // Helper to merge dark mode styles - returns function-based styles for react-select
+  const getSmallSelectStyles = (isDarkMode = false) => ({
+    control: (base) => ({
+      ...base,
+      minHeight: "36px",
+      height: "36px",
+      fontSize: "13px",
+      borderRadius: 12,
+      borderColor: isDarkMode ? "rgba(71,85,105,0.8)" : "rgba(229,231,235,0.8)",
+      backgroundColor: isDarkMode ? "rgba(51,65,85,0.7)" : "rgba(255,255,255,0.7)",
+      backdropFilter: "blur(6px)",
+      boxShadow: isDarkMode ? "0 1px 2px rgba(0,0,0,0.2)" : "0 1px 2px rgba(15,23,42,0.06)",
+    }),
+    valueContainer: (base) => ({ ...base, height: "36px", padding: "0 10px" }),
+    indicatorsContainer: (base) => ({ ...base, height: "36px" }),
+    input: (base) => ({
+      ...base,
+      margin: 0,
+      padding: 0,
+      color: isDarkMode ? "#f1f5f9" : "#111827",
+    }),
+    menuPortal: (base) => ({ ...base, zIndex: 9999 }),
+    menu: (base) => ({
+      ...base,
+      fontSize: "13px",
+      borderRadius: 12,
+      overflow: "hidden",
+      backgroundColor: isDarkMode ? "rgba(30,41,59,0.95)" : "rgba(255,255,255,0.95)",
+      backdropFilter: "blur(10px)",
+      boxShadow: isDarkMode ? "0 10px 30px -10px rgba(0,0,0,0.4)" : "0 10px 30px -10px rgba(30,64,175,0.18)",
+      border: isDarkMode ? "1px solid rgba(71,85,105,0.5)" : "none",
+    }),
+    option: (base, state) => ({
+      ...base,
+      backgroundColor: isDarkMode
+        ? state.isFocused
+          ? "rgba(71,85,105,1)"
+          : "rgba(51,65,85,1)"
+        : state.isFocused
+          ? "rgba(241,245,249,1)"
+          : "rgba(255,255,255,1)",
+      color: isDarkMode ? "#f1f5f9" : "#111827",
+      cursor: "pointer",
+    }),
+    singleValue: (base) => ({
+      ...base,
+      color: isDarkMode ? "#f1f5f9" : "#111827",
+    }),
+    placeholder: (base) => ({
+      ...base,
+      color: isDarkMode ? "#64748b" : "#9ca3af",
+    }),
+  });
 
   // ===== Brand: async server-side search (searches the whole table) =====
   const loadBrandOptions = async (inputValue) => {
@@ -339,7 +451,7 @@ export default function ProductForm({ initialData = null, onSubmitSuccess }) {
             {/* Category / Brand / Supplier */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
-                <label className="block text-sm font-medium mb-1">Category</label>
+                <label className="block text-sm font-medium mb-1 text-gray-700 dark:text-gray-300">Category</label>
                 <Select
                   ref={categorySelectRef}
                   options={asList(categories).map((c) => ({ value: c.id, label: c.name }))}
@@ -354,12 +466,12 @@ export default function ProductForm({ initialData = null, onSubmitSuccess }) {
                   }}
                   classNamePrefix="rs"
                   isSearchable
-                  styles={smallSelectStyles}
+                  styles={getSmallSelectStyles(isDark)}
                   menuPortalTarget={typeof document !== "undefined" ? document.body : null}
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium mb-1">Brand</label>
+                <label className="block text-sm font-medium mb-1 text-gray-700 dark:text-gray-300">Brand</label>
                 <AsyncSelect
                   ref={brandSelectRef}
                   cacheOptions
@@ -373,14 +485,14 @@ export default function ProductForm({ initialData = null, onSubmitSuccess }) {
                   }}
                   classNamePrefix="rs"
                   isSearchable
-                  styles={smallSelectStyles}
+                  styles={getSmallSelectStyles(isDark)}
                   placeholder="Search brand..."
                   noOptionsMessage={() => "Type to search brands..."}
                   menuPortalTarget={typeof document !== "undefined" ? document.body : null}
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium mb-1">Supplier</label>
+                <label className="block text-sm font-medium mb-1 text-gray-700 dark:text-gray-300">Supplier</label>
                 <Select
                   ref={supplierSelectRef}
                   options={asList(suppliers).map((s) => ({ value: s.id, label: s.name }))}
@@ -395,7 +507,7 @@ export default function ProductForm({ initialData = null, onSubmitSuccess }) {
                   }}
                   classNamePrefix="rs"
                   isSearchable
-                  styles={smallSelectStyles}
+                  styles={getSmallSelectStyles(isDark)}
                   menuPortalTarget={typeof document !== "undefined" ? document.body : null}
                 />
               </div>

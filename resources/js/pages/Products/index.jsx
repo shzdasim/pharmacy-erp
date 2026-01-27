@@ -29,6 +29,7 @@ import {
   GlassInput,
   GlassBtn,
 } from "@/components/glass.jsx";
+import { useTheme } from "@/context/ThemeContext";
 
 /** ---- helpers ---- */
 const normalizeList = (payload) => {
@@ -105,7 +106,10 @@ export default function ProductsIndex() {
   const tintSlate  = "bg-slate-900/80 text-white shadow-[0_6px_20px_-6px_rgba(15,23,42,0.45)] ring-1 ring-white/15 hover:bg-slate-900/90";
   const tintAmber  = "bg-amber-500/85 text-white shadow-[0_6px_20px_-6px_rgba(245,158,11,0.45)] ring-1 ring-white/20 hover:bg-amber-500/95";
   const tintRed    = "bg-rose-500/85 text-white shadow-[0_6px_20px_-6px_rgba(244,63,94,0.45)] ring-1 ring-white/20 hover:bg-rose-500/95";
-  const tintGlass  = "bg-white/60 text-slate-700 ring-1 ring-white/30 hover:bg-white/75";
+  const tintGlass  = "bg-white/60 text-slate-700 ring-1 ring-white/30 hover:bg-white/75 dark:text-gray-100 dark:bg-slate-700/60 dark:ring-slate-600/30 dark:hover:bg-slate-600/75";
+
+  // Get dark mode state
+  const { isDark } = useTheme();
 
   // === Alt+N => /products/create (only when can.create) ===
   useEffect(() => {
@@ -755,12 +759,63 @@ function TextSearch({ value, onChange, placeholder, icon }) {
 /** Bulk edit modal */
 function BulkEditModal({ onClose, selectedCount, selectedIds, onSaved, tintBlue, tintGlass }) {
   const [saving, setSaving] = useState(false);
+  const { isDark } = useTheme();
 
   const [catOpt, setCatOpt] = useState(null);
   const [brandOpt, setBrandOpt] = useState(null);
   const [suppOpt, setSuppOpt] = useState(null);
 
-  const selectStyles = { menuPortal: (base) => ({ ...base, zIndex: 9999 }) };
+  // Helper to merge dark mode styles - returns function-based styles for react-select
+  const getSelectStyles = (isDarkMode = false) => ({
+    control: (base) => ({
+      ...base,
+      minHeight: 36,
+      height: 36,
+      borderColor: isDarkMode ? "rgba(71,85,105,0.8)" : "rgba(229,231,235,0.8)",
+      backgroundColor: isDarkMode ? "rgba(51,65,85,0.7)" : "rgba(255,255,255,0.7)",
+      backdropFilter: "blur(6px)",
+      boxShadow: isDarkMode ? "0 1px 2px rgba(0,0,0,0.2)" : "0 1px 2px rgba(15,23,42,0.06)",
+      borderRadius: 12,
+    }),
+    valueContainer: (base) => ({ ...base, height: 36, padding: "0 10px" }),
+    indicatorsContainer: (base) => ({ ...base, height: 36 }),
+    input: (base) => ({
+      ...base,
+      margin: 0,
+      padding: 0,
+      color: isDarkMode ? "#f1f5f9" : "#111827",
+    }),
+    menuPortal: (base) => ({ ...base, zIndex: 9999 }),
+    menu: (base) => ({
+      ...base,
+      borderRadius: 12,
+      overflow: "hidden",
+      backgroundColor: isDarkMode ? "rgba(30,41,59,0.95)" : "rgba(255,255,255,0.95)",
+      backdropFilter: "blur(10px)",
+      boxShadow: isDarkMode ? "0 10px 30px -10px rgba(0,0,0,0.4)" : "0 10px 30px -10px rgba(30,64,175,0.18)",
+      border: isDarkMode ? "1px solid rgba(71,85,105,0.5)" : "none",
+    }),
+    option: (base, state) => ({
+      ...base,
+      backgroundColor: isDarkMode
+        ? state.isFocused
+          ? "rgba(71,85,105,1)"
+          : "rgba(51,65,85,1)"
+        : state.isFocused
+          ? "rgba(241,245,249,1)"
+          : "rgba(255,255,255,1)",
+      color: isDarkMode ? "#f1f5f9" : "#111827",
+      cursor: "pointer",
+    }),
+    singleValue: (base) => ({
+      ...base,
+      color: isDarkMode ? "#f1f5f9" : "#111827",
+    }),
+    placeholder: (base) => ({
+      ...base,
+      color: isDarkMode ? "#64748b" : "#9ca3af",
+    }),
+  });
 
   const fetchOptions = async (endpoint, inputValue) => {
     const { data } = await axios.get(endpoint, { params: { q: inputValue || "", limit: 20 } });
@@ -831,7 +886,7 @@ function BulkEditModal({ onClose, selectedCount, selectedIds, onSaved, tintBlue,
                     value={catOpt}
                     onChange={setCatOpt}
                     menuPortalTarget={typeof document !== "undefined" ? document.body : null}
-                    styles={selectStyles}
+                    styles={getSelectStyles(isDark)}
                     placeholder="(No change)"
                   />
                 </div>
@@ -848,7 +903,7 @@ function BulkEditModal({ onClose, selectedCount, selectedIds, onSaved, tintBlue,
                     value={brandOpt}
                     onChange={setBrandOpt}
                     menuPortalTarget={typeof document !== "undefined" ? document.body : null}
-                    styles={selectStyles}
+                    styles={getSelectStyles(isDark)}
                     placeholder="(No change)"
                   />
                 </div>
@@ -865,7 +920,7 @@ function BulkEditModal({ onClose, selectedCount, selectedIds, onSaved, tintBlue,
                     value={suppOpt}
                     onChange={setSuppOpt}
                     menuPortalTarget={typeof document !== "undefined" ? document.body : null}
-                    styles={selectStyles}
+                    styles={getSelectStyles(isDark)}
                     placeholder="(No change)"
                   />
                 </div>

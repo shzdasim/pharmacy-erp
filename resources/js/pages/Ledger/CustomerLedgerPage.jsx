@@ -3,6 +3,7 @@ import React, { useEffect, useMemo, useState, useRef } from "react";
 import axios from "axios";
 import toast from "react-hot-toast";
 import { usePermissions, Guard } from "@/api/usePermissions.js";
+import { useTheme } from "@/context/ThemeContext.jsx";
 
 // 🧊 glass primitives
 import {
@@ -27,6 +28,7 @@ import {
    Async Customer Search (tablet-friendly)
    ========================= */
 function CustomerSearchInput({ value, onChange, autoFocus }) {
+  const { isDark } = useTheme();
   const [term, setTerm] = useState("");
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState([]); // [{id,name,phone,email}]
@@ -114,7 +116,7 @@ function CustomerSearchInput({ value, onChange, autoFocus }) {
           value={term}
           onFocus={onFocus}
           onChange={(e) => onType(e.target.value)}
-          className="w-full"
+          className={`w-full ${isDark ? "bg-slate-700 border-slate-600 text-slate-200 placeholder:text-slate-400" : ""}`}
         />
         {value ? (
           <GlassBtn type="button" onClick={clear} className="h-9">
@@ -132,22 +134,30 @@ function CustomerSearchInput({ value, onChange, autoFocus }) {
       </div>
 
       {open && (
-        <div className="absolute z-20 mt-1 w-full bg-white/90 backdrop-blur-sm border rounded-xl shadow-xl max-h-80 overflow-auto ring-1 ring-gray-200/60">
+        <div className={`absolute z-20 mt-1 w-full backdrop-blur-sm border rounded-xl shadow-xl max-h-80 overflow-auto ring-1 ${
+          isDark 
+            ? "bg-slate-800/90 border-slate-600 ring-slate-700" 
+            : "bg-white/90 border-gray-200 ring-gray-200/60"
+        }`}>
           {loading && items.length === 0 && (
-            <div className="px-3 py-2 text-gray-600 text-xs">Loading…</div>
+            <div className={`px-3 py-2 text-xs ${isDark ? "text-slate-400" : "text-gray-600"}`}>Loading…</div>
           )}
           {!loading && items.length === 0 && (
-            <div className="px-3 py-2 text-gray-600 text-xs">No customers found</div>
+            <div className={`px-3 py-2 text-xs ${isDark ? "text-slate-400" : "text-gray-600"}`}>No customers found</div>
           )}
           {items.map((it) => (
             <button
               key={it.id}
               type="button"
               onClick={() => pick(it)}
-              className="w-full text-left px-3 py-2 hover:bg-gray-50"
+              className={`w-full text-left px-3 py-2 transition-colors ${
+                isDark 
+                  ? "hover:bg-slate-700" 
+                  : "hover:bg-gray-50"
+              }`}
             >
-              <div className="font-medium text-xs">{it.name}</div>
-              <div className="text-[11px] text-gray-600">{it.phone || it.email || "-"}</div>
+              <div className={`font-medium text-xs ${isDark ? "text-slate-200" : ""}`}>{it.name}</div>
+              <div className={`text-[11px] ${isDark ? "text-slate-400" : "text-gray-600"}`}>{it.phone || it.email || "-"}</div>
             </button>
           ))}
           {hasMore && (
@@ -192,6 +202,9 @@ export default function CustomerLedgerPage() {
       }),
     [canFor]
   );
+
+  // theme
+  const { isDark } = useTheme();
 
   // tints (same palette as Supplier Ledger)
   const tintBlue   = "bg-blue-500/85 text-white ring-1 ring-white/20 shadow-[0_6px_20px_-6px_rgba(37,99,235,0.45)] hover:bg-blue-500/95";
@@ -536,9 +549,9 @@ export default function CustomerLedgerPage() {
   if (!can.view) return <div className="p-6 text-sm text-gray-700">You don’t have permission to view customer ledger.</div>;
 
   return (
-    <div className="p-2 md:p-3 space-y-3">
+    <div className={`p-2 md:p-3 space-y-3 ${isDark ? "bg-slate-900" : "bg-gray-50"}`} style={{ minHeight: '100vh' }}>
       {/* ===== Controls Compact ===== */}
-      <GlassCard className="relative z-30 p-2">
+      <GlassCard className={`relative z-30 p-2 ${isDark ? "bg-slate-800/80 border-slate-700" : ""}`}>
         <GlassSectionHeader
           title={<span className="inline-flex items-center gap-2 text-sm">
             <span className="w-2 h-2 rounded-full bg-blue-600" />
@@ -639,19 +652,19 @@ export default function CustomerLedgerPage() {
       {/* ===== Summary Compact ===== */}
       {customerId && (
         <div className="grid grid-cols-4 gap-2">
-          <Stat label="Total Bills" value={fmt(summary.total_invoiced)} />
-          <Stat label="Advance" value={fmt(summary.received_on_invoice)} />
-          <Stat label="Payments" value={fmt(summary.payments_credited)} />
-          <Stat label="Total Due" value={fmt(summary.net_balance)} />
+          <Stat isDark={isDark} label="Total Bills" value={fmt(summary.total_invoiced)} />
+          <Stat isDark={isDark} label="Advance" value={fmt(summary.received_on_invoice)} />
+          <Stat isDark={isDark} label="Payments" value={fmt(summary.payments_credited)} />
+          <Stat isDark={isDark} label="Total Due" value={fmt(summary.net_balance)} />
         </div>
       )}
 
       {/* ===== Table Compact ===== */}
-      <GlassCard className="relative z-10 p-0 overflow-hidden">
-        <div className="max-h-[calc(100vh-250px)] overflow-auto">
+      <GlassCard className={`relative z-10 p-0 overflow-hidden ${isDark ? "bg-slate-800/80 border-slate-700" : ""}`}>
+        <div className={`max-h-[calc(100vh-250px)] overflow-auto ${isDark ? "bg-slate-800" : "bg-white"}`}>
           <table className="w-full text-xs">
-            <thead className="sticky top-0 bg-gray-100 z-10 border-b">
-              <tr className="text-left">
+            <thead className={`sticky top-0 z-10 border-b ${isDark ? "bg-slate-700" : "bg-gray-100"}`}>
+              <tr className={`text-left ${isDark ? "text-slate-200" : "text-gray-700"}`}>
                 <th className="px-2 py-1.5 font-medium w-24">Date</th>
                 <th className="px-2 py-1.5 font-medium w-14">Type</th>
                 <th className="px-2 py-1.5 font-medium w-20">Ref</th>
@@ -668,7 +681,7 @@ export default function CustomerLedgerPage() {
             <tbody>
               {!customerId && (
                 <tr>
-                  <td colSpan={10} className="px-2 py-8 text-center text-gray-500">
+                  <td colSpan={10} className={`px-2 py-8 text-center ${isDark ? "text-slate-400" : "text-gray-500"}`}>
                     Select a customer to view ledger
                   </td>
                 </tr>
@@ -678,13 +691,13 @@ export default function CustomerLedgerPage() {
                 const isInvoice = r.entry_type === "invoice";
                 const isPayment = r.entry_type === "payment";
                 return (
-                  <tr key={r.id ?? `new-${r.__i}`} className="border-b hover:bg-blue-50">
+                  <tr key={r.id ?? `new-${r.__i}`} className={`border-b ${isDark ? "border-slate-600 hover:bg-slate-700/50" : "border-gray-200 hover:bg-blue-50"}`}>
                     <td className="px-2 py-1">
                       <input
                         type="date"
                         value={(r.entry_date || "").slice(0,10)}
                         onChange={(e) => handleField(r.__i, "entry_date", e.target.value)}
-                        className="w-full text-xs border rounded px-1 py-1"
+                        className={`w-full text-xs border rounded px-1 py-1 ${isDark ? "border-slate-600 bg-slate-700 text-slate-200" : "border-gray-300 bg-white text-gray-800"}`}
                       />
                     </td>
 
@@ -705,7 +718,7 @@ export default function CustomerLedgerPage() {
                         onChange={(e) => handleField(r.__i, "posted_number", e.target.value)}
                         disabled={isInvoice}
                         placeholder={isInvoice ? "-" : "Ref"}
-                        className="w-full text-xs border rounded px-1 py-1 disabled:bg-gray-100"
+                        className={`w-full text-xs border rounded px-1 py-1 ${isDark ? "border-slate-600 bg-slate-700 text-slate-200 disabled:bg-slate-800" : "border-gray-300 bg-white text-gray-800 disabled:bg-gray-100"}`}
                       />
                     </td>
 
@@ -717,10 +730,10 @@ export default function CustomerLedgerPage() {
                           onChange={(e) => setInput(r.__i, "invoice_total", e.target.value)}
                           onBlur={() => commitNumber(r.__i, "invoice_total")}
                           disabled={isInvoice}
-                          className="w-full text-xs text-right border rounded px-1 py-1 disabled:bg-gray-100"
+                          className={`w-full text-xs text-right border rounded px-1 py-1 ${isDark ? "border-slate-600 bg-slate-700 text-slate-200 disabled:bg-slate-800" : "border-gray-300 bg-white text-gray-800 disabled:bg-gray-100"}`}
                         />
                       ) : (
-                        <span className="text-gray-400">—</span>
+                        <span className={isDark ? "text-slate-500" : "text-gray-400"}>—</span>
                       )}
                     </td>
 
@@ -732,29 +745,29 @@ export default function CustomerLedgerPage() {
                           onChange={(e) => setInput(r.__i, "credited_amount", e.target.value)}
                           onBlur={() => commitNumber(r.__i, "credited_amount")}
                           placeholder="0.00"
-                          className="w-full text-xs text-right border rounded px-1 py-1 font-medium text-emerald-600"
+                          className={`w-full text-xs text-right border rounded px-1 py-1 font-medium ${isDark ? "border-slate-600 bg-slate-700 text-emerald-400" : "border-gray-300 bg-white text-emerald-600"}`}
                         />
                       ) : (
-                        <span className="text-gray-400">—</span>
+                        <span className={isDark ? "text-slate-500" : "text-gray-400"}>—</span>
                       )}
                     </td>
 
                     <td className="px-2 py-1 text-right">
                       {isInvoice || r.entry_type === "manual" ? (
-                        <span className="font-medium">{fmt(r.total_received || 0)}</span>
+                        <span className={`font-medium ${isDark ? "text-slate-300" : "text-gray-700"}`}>{fmt(r.total_received || 0)}</span>
                       ) : (
-                        <span className="text-gray-400">—</span>
+                        <span className={isDark ? "text-slate-500" : "text-gray-400"}>—</span>
                       )}
                     </td>
 
                     <td className="px-2 py-1 text-right">
-                      <span className={`font-bold ${(r.balance_remaining || 0) > 0 ? 'text-red-600' : 'text-green-600'}`}>
+                      <span className={`font-bold ${(r.balance_remaining || 0) > 0 ? 'text-red-500' : 'text-green-500'}`}>
                         {fmt(r.balance_remaining ?? 0)}
                       </span>
                     </td>
 
                     <td className="px-2 py-1 text-right">
-                      <span className={`font-bold ${(r.running_balance || 0) > 0 ? 'text-blue-600' : 'text-green-600'}`}>
+                      <span className={`font-bold ${(r.running_balance || 0) > 0 ? 'text-blue-500' : 'text-green-500'}`}>
                         {fmt(r.running_balance ?? 0)}
                       </span>
                     </td>
@@ -765,7 +778,7 @@ export default function CustomerLedgerPage() {
                         value={r.description ?? ""}
                         onChange={(e) => handleField(r.__i, "description", e.target.value)}
                         placeholder="..."
-                        className="w-full text-xs border rounded px-1 py-1"
+                        className={`w-full text-xs border rounded px-1 py-1 ${isDark ? "border-slate-600 bg-slate-700 text-slate-200" : "border-gray-300 bg-white text-gray-800"}`}
                       />
                     </td>
 
@@ -783,8 +796,8 @@ export default function CustomerLedgerPage() {
 
               {customerId && !rows.length && (
                 <tr>
-                  <td colSpan={10} className="px-2 py-8 text-center text-gray-500">
-                    No entries. Click <b>Refresh</b> or add a payment.
+                  <td colSpan={10} className={`px-2 py-8 text-center ${isDark ? "text-slate-400" : "text-gray-500"}`}>
+                    No entries. Click <b className={isDark ? "text-slate-300" : "text-gray-700"}>Refresh</b> or add a payment.
                   </td>
                 </tr>
               )}
@@ -804,7 +817,7 @@ export default function CustomerLedgerPage() {
                 right={<GlassBtn className={`h-8 px-3 ${tintGlass}`} onClick={closeAddModal}><XMarkIcon className="w-5 h-5" /></GlassBtn>}
               />
               <div className="px-4 py-4">
-                <p className="text-sm text-gray-700">
+                <p className={`text-sm ${isDark ? "text-slate-300" : "text-gray-700"}`}>
                   A new <b>{addModal.type}</b> row will be appended for the selected customer.
                 </p>
                 <div className="mt-4 flex justify-end gap-2">
@@ -861,7 +874,7 @@ export default function CustomerLedgerPage() {
               <div className="px-4 py-4 space-y-4">
                 {deleteStep === 1 ? (
                   <>
-                    <p className="text-sm text-gray-700">
+                    <p className={`text-sm ${isDark ? "text-slate-300" : "text-gray-700"}`}>
                       Are you sure you want to delete this row? This action cannot be undone.
                     </p>
                     <div className="flex justify-end gap-2">
@@ -871,7 +884,7 @@ export default function CustomerLedgerPage() {
                   </>
                 ) : (
                   <>
-                    <p className="text-sm text-gray-700">
+                    <p className={`text-sm ${isDark ? "text-slate-300" : "text-gray-700"}`}>
                       For security, please re-enter your password to delete this row.
                     </p>
                     <GlassInput
@@ -923,11 +936,11 @@ export default function CustomerLedgerPage() {
   );
 }
 
-function Stat({ label, value }) {
+function Stat({ isDark, label, value }) {
   return (
-    <div className="bg-white/60 ring-1 ring-gray-200/60 px-2 py-1.5 rounded shadow-sm">
-      <div className="text-[10px] text-gray-600">{label}</div>
-      <div className="text-sm font-semibold">{value}</div>
+    <div className={`${isDark ? "bg-slate-800/60 ring-slate-700" : "bg-white/60 ring-gray-200/60"} px-2 py-1.5 rounded shadow-sm`}>
+      <div className={`text-[10px] ${isDark ? "text-slate-400" : "text-gray-600"}`}>{label}</div>
+      <div className={`text-sm font-semibold ${isDark ? "text-slate-200" : "text-gray-800"}`}>{value}</div>
     </div>
   );
 }

@@ -13,6 +13,7 @@ import {
   GlassInput,
   GlassBtn,
 } from "@/components/glass.jsx";
+import { useTheme } from "@/context/ThemeContext";
 
 import { ArrowDownOnSquareIcon, ArrowPathIcon } from "@heroicons/react/24/solid";
 
@@ -66,6 +67,63 @@ const selectStyles = {
   }),
 };
 
+// Helper to merge dark mode styles - returns function-based styles for react-select
+const getSelectStyles = (isDarkMode = false) => ({
+  control: (base) => ({
+    ...base,
+    minHeight: 36,
+    height: 36,
+    borderColor: isDarkMode ? "rgba(71,85,105,0.8)" : "rgba(229,231,235,0.8)",
+    backgroundColor: isDarkMode ? "rgba(51,65,85,0.7)" : "rgba(255,255,255,0.7)",
+    backdropFilter: "blur(6px)",
+    boxShadow: isDarkMode ? "0 1px 2px rgba(0,0,0,0.2)" : "0 1px 2px rgba(15,23,42,0.06)",
+    borderRadius: 12,
+    transition: "all .2s ease",
+    "&:hover": {
+      borderColor: isDarkMode ? "rgba(100,116,139,0.9)" : "rgba(148,163,184,0.9)",
+      backgroundColor: isDarkMode ? "rgba(51,65,85,0.85)" : "rgba(255,255,255,0.85)",
+    },
+  }),
+  valueContainer: (base) => ({ ...base, height: 36, padding: "0 10px" }),
+  indicatorsContainer: (base) => ({ ...base, height: 36 }),
+  input: (base) => ({
+    ...base,
+    margin: 0,
+    padding: 0,
+    color: isDarkMode ? "#f1f5f9" : "#111827",
+  }),
+  menuPortal: (base) => ({ ...base, zIndex: 9999 }),
+  menu: (base) => ({
+    ...base,
+    borderRadius: 12,
+    overflow: "hidden",
+    backgroundColor: isDarkMode ? "rgba(30,41,59,0.95)" : "rgba(255,255,255,0.9)",
+    backdropFilter: "blur(10px)",
+    boxShadow: isDarkMode ? "0 10px 30px -10px rgba(0,0,0,0.4)" : "0 10px 30px -10px rgba(30,64,175,0.18)",
+    border: isDarkMode ? "1px solid rgba(71,85,105,0.5)" : "none",
+  }),
+  option: (base, state) => ({
+    ...base,
+    backgroundColor: isDarkMode
+      ? state.isFocused
+        ? "rgba(71,85,105,1)"
+        : "rgba(51,65,85,1)"
+      : state.isFocused
+        ? "rgba(241,245,249,1)"
+        : "rgba(255,255,255,1)",
+    color: isDarkMode ? "#f1f5f9" : "#111827",
+    cursor: "pointer",
+  }),
+  singleValue: (base) => ({
+    ...base,
+    color: isDarkMode ? "#f1f5f9" : "#111827",
+  }),
+  placeholder: (base) => ({
+    ...base,
+    color: isDarkMode ? "#64748b" : "#9ca3af",
+  }),
+});
+
 // helper to try /api/... then /...
 async function tryEndpoints(paths, params) {
   let lastErr;
@@ -95,6 +153,9 @@ export default function ProductComprehensiveReport() {
   const perms = usePermissions();
   const canView = perms?.has?.("report.product-comprehensive.view");
   const canExport = perms?.has?.("report.product-comprehensive.export");
+
+  // Get dark mode state
+  const { isDark } = useTheme();
 
   // tints
   const tintPrimary =
@@ -305,7 +366,7 @@ export default function ProductComprehensiveReport() {
 
             {/* Product Selector */}
             <div className="md:col-span-4">
-              <label className="text-sm text-gray-700 mb-1 block">Product</label>
+              <label className="text-sm text-gray-700 dark:text-gray-300 mb-1 block">Product</label>
               <AsyncSelect
                 cacheOptions
                 loadOptions={loadProducts}
@@ -315,7 +376,7 @@ export default function ProductComprehensiveReport() {
                   setProductValue(opt);
                   setProductId(opt?.value || "");
                 }}
-                styles={selectStyles}
+                styles={getSelectStyles(isDark)}
                 menuPortalTarget={document.body}
                 filterOption={createFilter({
                   matchFrom: "start",

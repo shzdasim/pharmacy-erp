@@ -3,8 +3,11 @@ import axios from "axios";
 import toast from "react-hot-toast";
 import ProductSearchInput from "../../components/ProductSearchInput.jsx";
 import BatchSearchInput from "../../components/BatchSearchInput.jsx";
+import { useTheme } from "@/context/ThemeContext.jsx";
 
 export default function StockAdjustmentForm({ adjustmentId, onSuccess }){
+  const { isDark } = useTheme();
+  
   const [products, setProducts] = useState([]);
   const [batchesByProduct, setBatchesByProduct] = useState({}); // { [productId]: [{batch_number, expiry, available_units}, ...] }
 
@@ -207,7 +210,7 @@ export default function StockAdjustmentForm({ adjustmentId, onSuccess }){
         product_id: it.product_id,
         batch_number: it.batch_number || "",
         expiry: it.expiry || "",
-        pack_size: it.pack_size || "",            // might be empty in DB — we’ll hydrate below
+        pack_size: it.pack_size || "",            // might be empty in DB — we'll hydrate below
         available_qty: it.previous_qty,
         actual_qty: it.actual_qty,
         diff_qty: it.diff_qty,
@@ -510,30 +513,52 @@ export default function StockAdjustmentForm({ adjustmentId, onSuccess }){
 
   // ---------- Render ----------
   return (
-    <form className="flex flex-col" style={{ minHeight: '74vh', maxHeight: '80vh' }}>
+    <form className={`flex flex-col ${isDark ? "bg-slate-900" : "bg-gray-50"}`} style={{ minHeight: '74vh', maxHeight: '80vh' }}>
       {/* Header */}
-      <div className="sticky top-0 bg-white shadow p-2 z-10">
-        <h2 className="text-sm font-bold mb-2">Stock Adjustment (Enter to move, Alt+S to save)</h2>
+      <div className={`sticky top-0 shadow p-2 z-10 ${isDark ? "bg-slate-800 border-b border-slate-700" : "bg-white border-b border-gray-200"}`}>
+        <h2 className={`text-sm font-bold mb-2 ${isDark ? "text-slate-200" : "text-gray-800"}`}>Stock Adjustment (Enter to move, Alt+S to save)</h2>
         <table className="w-full border-collapse text-xs">
           <tbody>
             <tr>
-              <td className="border p-1 w-1/6">
-                <label className="block text-[10px]">Posted Number</label>
-                <input type="text" readOnly value={form.posted_number||""} className="bg-gray-100 border rounded w-full p-1 h-7 text-xs" />
+              <td className={`border p-1 w-1/6 ${isDark ? "border-slate-700" : "border-gray-200"}`}>
+                <label className={`block text-[10px] ${isDark ? "text-slate-400" : "text-gray-600"}`}>Posted Number</label>
+                <input 
+                  type="text" 
+                  readOnly 
+                  value={form.posted_number||""} 
+                  className={`border rounded w-full p-1 h-7 text-xs ${
+                    isDark 
+                      ? "border-slate-600 bg-slate-700 text-slate-300" 
+                      : "border-gray-300 bg-gray-100 text-gray-700"
+                  }`} 
+                />
               </td>
-              <td className="border p-1 w-1/6">
-                <label className="block text-[10px]">Posted Date</label>
-                <input type="date" value={form.posted_date} onChange={e=>setForm(prev=>({ ...prev, posted_date: e.target.value }))} className="border rounded w-full p-1 h-7 text-xs" />
+              <td className={`border p-1 w-1/6 ${isDark ? "border-slate-700" : "border-gray-200"}`}>
+                <label className={`block text-[10px] ${isDark ? "text-slate-400" : "text-gray-600"}`}>Posted Date</label>
+                <input 
+                  type="date" 
+                  value={form.posted_date} 
+                  onChange={e=>setForm(prev=>({ ...prev, posted_date: e.target.value }))} 
+                  className={`border rounded w-full p-1 h-7 text-xs ${
+                    isDark 
+                      ? "border-slate-600 bg-slate-700 text-slate-200" 
+                      : "border-gray-300 text-gray-800"
+                  }`} 
+                />
               </td>
-              <td className="border p-1">
-                <label className="block text-[10px]">Note (Reason) *</label>
+              <td className={`border p-1 ${isDark ? "border-slate-700" : "border-gray-200"}`}>
+                <label className={`block text-[10px] ${isDark ? "text-slate-400" : "text-gray-600"}`}>Note (Reason) *</label>
                 <input
                   ref={noteRef}
                   type="text"
                   value={form.note}
                   onChange={e=>setForm(prev=>({ ...prev, note: e.target.value }))}
                   onKeyDown={onNoteKeyDown}
-                  className="border rounded w-full p-1 h-7 text-xs"
+                  className={`border rounded w-full p-1 h-7 text-xs ${
+                    isDark 
+                      ? "border-slate-600 bg-slate-700 text-slate-200" 
+                      : "border-gray-300 text-gray-800"
+                  }`}
                 />
               </td>
             </tr>
@@ -542,22 +567,22 @@ export default function StockAdjustmentForm({ adjustmentId, onSuccess }){
       </div>
 
       {/* Items */}
-      <div className="flex-1 overflow-auto p-1">
-        <h2 className="text-xs font-bold mb-1">Items</h2>
-        <table className="w-full border-collapse text-[11px]">
-          <thead className="sticky top-0 bg-gray-100 z-5">
+      <div className={`flex-1 overflow-auto p-1 ${isDark ? "bg-slate-900" : "bg-gray-50"}`}>
+        <h2 className={`text-xs font-bold mb-1 ${isDark ? "text-slate-300" : "text-gray-700"}`}>Items</h2>
+        <table className={`w-full border-collapse text-[11px] ${isDark ? "bg-slate-800" : "bg-white"}`}>
+          <thead className={`sticky top-0 z-5 ${isDark ? "bg-slate-700" : "bg-gray-100"}`}>
             <tr>
-              <th className="border w-6">#</th>
-              <th className="border w-[220px] text-left">Product</th>
-              <th className="border w-28">Batch</th>
-              <th className="border w-24">Expiry</th>
-              <th className="border w-24">Pack Size</th>
-              <th className="border w-24">Available Qty</th>
-              <th className="border w-24">Actual Qty *</th>
-              <th className="border w-24">Diff</th>
-              <th className="border w-28">Unit Cost</th>
-              <th className="border w-28">Worth Adjusted</th>
-              <th className="border w-6">+</th>
+              <th className={`border ${isDark ? "border-slate-600" : "border-gray-200"} w-6`}>#</th>
+              <th className={`border ${isDark ? "border-slate-600" : "border-gray-200"} w-[220px] text-left`}>Product</th>
+              <th className={`border ${isDark ? "border-slate-600" : "border-gray-200"} w-28`}>Batch</th>
+              <th className={`border ${isDark ? "border-slate-600" : "border-gray-200"} w-24`}>Expiry</th>
+              <th className={`border ${isDark ? "border-slate-600" : "border-gray-200"} w-24`}>Pack Size</th>
+              <th className={`border ${isDark ? "border-slate-600" : "border-gray-200"} w-24`}>Available Qty</th>
+              <th className={`border ${isDark ? "border-slate-600" : "border-gray-200"} w-24`}>Actual Qty *</th>
+              <th className={`border ${isDark ? "border-slate-600" : "border-gray-200"} w-24`}>Diff</th>
+              <th className={`border ${isDark ? "border-slate-600" : "border-gray-200"} w-28`}>Unit Cost</th>
+              <th className={`border ${isDark ? "border-slate-600" : "border-gray-200"} w-28`}>Worth Adjusted</th>
+              <th className={`border ${isDark ? "border-slate-600" : "border-gray-200"} w-6`}>+</th>
             </tr>
           </thead>
           <tbody>
@@ -570,14 +595,14 @@ export default function StockAdjustmentForm({ adjustmentId, onSuccess }){
               const batchCellError = rowErrors.batch?.[i];
 
               return (
-              <tr key={i} className="text-center">
-                <td className="border">
+              <tr key={i} className={`text-center ${isDark ? "hover:bg-slate-700/50" : "hover:bg-gray-50"}`}>
+                <td className={`border ${isDark ? "border-slate-600" : "border-gray-200"}`}>
                   <button type="button" onClick={()=>removeRow(i)} className="bg-red-500 text-white px-1 rounded text-[10px]">X</button>
                 </td>
 
                 {/* PRODUCT */}
                 <td
-                  className={`border text-left ${productCellError ? "ring-2 ring-red-500" : ""}`}
+                  className={`border text-left ${productCellError ? "ring-2 ring-red-500" : ""} ${isDark ? "border-slate-600" : "border-gray-200"}`}
                   ref={el => (productCellRefs.current[i] = el)}
                   title={productCellError ? "Duplicate product not allowed" : ""}
                 >
@@ -591,7 +616,7 @@ export default function StockAdjustmentForm({ adjustmentId, onSuccess }){
 
                 {/* BATCH */}
                 <td
-                  className={`border ${batchCellError ? "ring-2 ring-red-500" : ""}`}
+                  className={`border ${batchCellError ? "ring-2 ring-red-500" : ""} ${isDark ? "border-slate-600" : "border-gray-200"}`}
                   title={batchCellError ? "Duplicate batch for this product not allowed" : ""}
                 >
                   <BatchSearchInput
@@ -603,62 +628,90 @@ export default function StockAdjustmentForm({ adjustmentId, onSuccess }){
                   />
                 </td>
 
-                <td className="border">
+                <td className={`border ${isDark ? "border-slate-600" : "border-gray-200"}`}>
                   <input
                     type="date"
                     value={it.expiry ?? ''}
                     onChange={e=>onItemChange(i,'expiry',e.target.value)}
-                    className="border w-full h-6 text-[11px] px-1"
+                    className={`border w-full h-6 text-[11px] px-1 ${
+                      isDark 
+                        ? "border-slate-600 bg-slate-700 text-slate-200" 
+                        : "border-gray-300 bg-white text-gray-800"
+                    }`}
                   />
                 </td>
-                <td className="border">
+                <td className={`border ${isDark ? "border-slate-600" : "border-gray-200"}`}>
                   <input
                     value={it.pack_size ?? ''}
                     readOnly
-                    className="border w-full h-6 text-[11px] px-1 bg-gray-100"
+                    className={`border w-full h-6 text-[11px] px-1 ${
+                      isDark 
+                        ? "border-slate-600 bg-slate-700 text-slate-300" 
+                        : "border-gray-200 bg-gray-100 text-gray-700"
+                    }`}
                   />
                 </td>
-                <td className="border">
+                <td className={`border ${isDark ? "border-slate-600" : "border-gray-200"}`}>
                   <input
                     readOnly
                     value={it.available_qty ?? ''}
-                    className="border w-full h-6 text-[11px] px-1 bg-gray-100"
+                    className={`border w-full h-6 text-[11px] px-1 ${
+                      isDark 
+                        ? "border-slate-600 bg-slate-700 text-slate-300" 
+                        : "border-gray-200 bg-gray-100 text-gray-700"
+                    }`}
                   />
                 </td>
-                <td className="border">
+                <td className={`border ${isDark ? "border-slate-600" : "border-gray-200"}`}>
                   <input
                     id={`actual-${i}`}
                     ref={el => (actualRefs.current[i] = el)}
                     value={it.actual_qty ?? ''}
                     onChange={e=>onItemChange(i,'actual_qty', e.target.value)}
                     onKeyDown={onActualKeyDown(i)}
-                    className="border w-full h-6 text-[11px] px-1"
+                    className={`border w-full h-6 text-[11px] px-1 ${
+                      isDark 
+                        ? "border-slate-600 bg-slate-700 text-slate-200" 
+                        : "border-gray-300 bg-white text-gray-800"
+                    }`}
                   />
                 </td>
-                <td className="border">
+                <td className={`border ${isDark ? "border-slate-600" : "border-gray-200"}`}>
                   <input
                     readOnly
                     value={it.diff_qty ?? ''}
-                    className="border w-full h-6 text-[11px] px-1 bg-gray-100"
+                    className={`border w-full h-6 text-[11px] px-1 ${
+                      isDark 
+                        ? "border-slate-600 bg-slate-700 text-slate-300" 
+                        : "border-gray-200 bg-gray-100 text-gray-700"
+                    }`}
                   />
                 </td>
-                <td className="border">
+                <td className={`border ${isDark ? "border-slate-600" : "border-gray-200"}`}>
                   <input
                     value={to2(it.unit_purchase_price ?? '')}
                     readOnly
                     onChange={e=>onItemChange(i,'unit_purchase_price', e.target.value)}
                     onBlur={()=>onUnitCostBlur(i)}
-                    className="border w-full h-6 text-[11px] px-1"
+                    className={`border w-full h-6 text-[11px] px-1 ${
+                      isDark 
+                        ? "border-slate-600 bg-slate-700 text-slate-300" 
+                        : "border-gray-300 bg-white text-gray-800"
+                    }`}
                   />
                 </td>
-                <td className="border">
+                <td className={`border ${isDark ? "border-slate-600" : "border-gray-200"}`}>
                   <input
                     readOnly
                     value={to2(it.worth_adjusted)}
-                    className="border w-full h-6 text-[11px] px-1 bg-gray-100"
+                    className={`border w-full h-6 text-[11px] px-1 ${
+                      isDark 
+                        ? "border-slate-600 bg-slate-700 text-slate-300" 
+                        : "border-gray-200 bg-gray-100 text-gray-700"
+                    }`}
                   />
                 </td>
-                <td className="border">
+                <td className={`border ${isDark ? "border-slate-600" : "border-gray-200"}`}>
                   <button type="button" onClick={()=>{ addRow(); setTimeout(()=>focusProduct(i+1),0); }} className="bg-blue-500 text-white px-1 rounded text-[10px]">+</button>
                 </td>
               </tr>
@@ -668,15 +721,23 @@ export default function StockAdjustmentForm({ adjustmentId, onSuccess }){
       </div>
 
       {/* Footer */}
-      <div className="sticky bottom-0 bg-white shadow p-2 z-10">
+      <div className={`sticky bottom-0 shadow p-2 z-10 ${isDark ? "bg-slate-800 border-t border-slate-700" : "bg-white border-t border-gray-200"}`}>
         <table className="w-full border-collapse text-xs">
           <tbody>
             <tr>
-              <td className="border p-1 w-1/6">
-                <label className="block text-[10px]">Total Worth Adjusted</label>
-                <input readOnly value={to2(form.total_worth)} className="border rounded w-full p-1 h-7 text-xs bg-gray-100" />
+              <td className={`border p-1 w-1/6 ${isDark ? "border-slate-700" : "border-gray-200"}`}>
+                <label className={`block text-[10px] ${isDark ? "text-slate-400" : "text-gray-600"}`}>Total Worth Adjusted</label>
+                <input 
+                  readOnly 
+                  value={to2(form.total_worth)} 
+                  className={`border rounded w-full p-1 h-7 text-xs ${
+                    isDark 
+                      ? "border-slate-600 bg-slate-700 text-slate-300" 
+                      : "border-gray-300 bg-gray-100 text-gray-700"
+                  }`} 
+                />
               </td>
-              <td className="border p-1 text-right align-middle">
+              <td className={`border p-1 text-right align-middle ${isDark ? "border-slate-700" : "border-gray-200"}`}>
                 <button
                   type="button"
                   onClick={handleSubmit}
@@ -694,3 +755,4 @@ export default function StockAdjustmentForm({ adjustmentId, onSuccess }){
     </form>
   );
 }
+

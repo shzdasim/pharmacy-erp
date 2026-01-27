@@ -5,6 +5,7 @@ import AsyncSelect from "react-select/async";
 import { createFilter } from "react-select";
 import toast from "react-hot-toast";
 import { usePermissions } from "@/api/usePermissions";
+import { useTheme } from "@/context/ThemeContext";
 import {
   GlassCard,
   GlassSectionHeader,
@@ -42,10 +43,100 @@ const smallSelectStyles = {
     backdropFilter: "blur(6px)",
     boxShadow: "0 1px 2px rgba(15,23,42,0.06)",
   }),
+  controlDark: (base) => ({
+    ...base,
+    minHeight: 32,
+    height: 32,
+    borderRadius: 12,
+    borderColor: "rgba(71,85,105,0.8)",
+    backgroundColor: "rgba(51,65,85,0.7)",
+    backdropFilter: "blur(6px)",
+    boxShadow: "0 1px 2px rgba(0,0,0,0.2)",
+  }),
   valueContainer: (base) => ({ ...base, height: 32, padding: "0 8px" }),
   indicatorsContainer: (base) => ({ ...base, height: 32 }),
   menuPortal: (base) => ({ ...base, zIndex: 9999 }),
+  menu: (base) => ({
+    ...base,
+    borderRadius: 12,
+    overflow: "hidden",
+    backgroundColor: "rgba(255,255,255,0.95)",
+    backdropFilter: "blur(10px)",
+    boxShadow: "0 10px 30px -10px rgba(30,64,175,0.18)",
+  }),
+  menuDark: (base) => ({
+    ...base,
+    borderRadius: 12,
+    overflow: "hidden",
+    backgroundColor: "rgba(30,41,59,0.95)",
+    backdropFilter: "blur(10px)",
+    boxShadow: "0 10px 30px -10px rgba(0,0,0,0.4)",
+    border: "1px solid rgba(71,85,105,0.5)",
+  }),
+  option: (base) => ({
+    ...base,
+    backgroundColor: "rgba(255,255,255,1)",
+    color: "#111827",
+  }),
+  optionDark: (base) => ({
+    ...base,
+    backgroundColor: "rgba(51,65,85,1)",
+    color: "#f1f5f9",
+  }),
+  singleValue: (base) => ({ ...base, color: "#111827" }),
+  singleValueDark: (base) => ({ ...base, color: "#f1f5f9" }),
+  placeholder: (base) => ({ ...base, color: "#9ca3af" }),
+  placeholderDark: (base) => ({ ...base, color: "#64748b" }),
+  input: (base) => ({ ...base, color: "#111827" }),
+  inputDark: (base) => ({ ...base, color: "#f1f5f9" }),
 };
+
+// Helper to merge dark mode styles - returns function-based styles for react-select
+const getSmallSelectStyles = (isDark = false) => ({
+  control: (base) => ({
+    ...base,
+    minHeight: 32,
+    height: 32,
+    borderRadius: 12,
+    borderColor: isDark ? "rgba(71,85,105,0.8)" : "rgba(229,231,235,0.8)",
+    backgroundColor: isDark ? "rgba(51,65,85,0.7)" : "rgba(255,255,255,0.7)",
+    backdropFilter: "blur(6px)",
+    boxShadow: isDark ? "0 1px 2px rgba(0,0,0,0.2)" : "0 1px 2px rgba(15,23,42,0.06)",
+  }),
+  valueContainer: (base) => ({ ...base, height: 32, padding: "0 8px" }),
+  indicatorsContainer: (base) => ({ ...base, height: 32 }),
+  input: (base) => ({ ...base, margin: 0, padding: 0, color: isDark ? "#f1f5f9" : "#111827" }),
+  menuPortal: (base) => ({ ...base, zIndex: 9999 }),
+  menu: (base) => ({
+    ...base,
+    borderRadius: 12,
+    overflow: "hidden",
+    backgroundColor: isDark ? "rgba(30,41,59,0.95)" : "rgba(255,255,255,0.95)",
+    backdropFilter: "blur(10px)",
+    boxShadow: isDark ? "0 10px 30px -10px rgba(0,0,0,0.4)" : "0 10px 30px -10px rgba(30,64,175,0.18)",
+    border: isDark ? "1px solid rgba(71,85,105,0.5)" : "none",
+  }),
+  option: (base, state) => ({
+    ...base,
+    backgroundColor: isDark
+      ? state.isFocused
+        ? "rgba(71,85,105,1)"
+        : "rgba(51,65,85,1)"
+      : state.isFocused
+        ? "rgba(241,245,249,1)"
+        : "rgba(255,255,255,1)",
+    color: isDark ? "#f1f5f9" : "#111827",
+    cursor: "pointer",
+  }),
+  singleValue: (base) => ({
+    ...base,
+    color: isDark ? "#f1f5f9" : "#111827",
+  }),
+  placeholder: (base) => ({
+    ...base,
+    color: isDark ? "#64748b" : "#9ca3af",
+  }),
+});
 
 /* ------------------ Helper to try multiple endpoints ------------------ */
 async function tryEndpoints(paths, params) {
@@ -77,6 +168,9 @@ export default function PurchaseDetailReport() {
   const perms = usePermissions();
   const canView = perms?.has?.("report.purchase-detail.view");
   const canExport = perms?.has?.("report.purchase-detail.export");
+
+  // Get dark mode state
+  const { isDark } = useTheme();
 
   /* ------------------ Async Selects ------------------ */
   const loadSuppliers = useMemo(
@@ -132,9 +226,9 @@ export default function PurchaseDetailReport() {
 
   /* ------------------ Fetch report ------------------ */
   const fetchReport = async () => {
-    if (!canView) return toast.error("You don’t have permission to view this report.");
+    if (!canView) return toast.error("You don't have permission to view this report.");
     if (fromDate > toDate)
-      return toast.error("‘From’ date cannot be after ‘To’ date.");
+      return toast.error("'From' date cannot be after 'To' date.");
 
     setLoading(true);
     try {
@@ -163,7 +257,7 @@ export default function PurchaseDetailReport() {
   };
 
   const exportPdf = async () => {
-    if (!canExport) return toast.error("You don’t have permission to export PDF.");
+    if (!canExport) return toast.error("You don't have permission to export PDF.");
     setPdfLoading(true);
     try {
       const res = await axios.get("/api/reports/purchase-detail/pdf", {
@@ -233,7 +327,7 @@ export default function PurchaseDetailReport() {
         >
           <GlassToolbar className="grid grid-cols-1 md:grid-cols-12 gap-3">
             <div className="md:col-span-2">
-              <label className="text-sm text-gray-700 mb-1 block">From</label>
+              <label className="text-sm text-gray-700 dark:text-gray-300 mb-1 block">From</label>
               <GlassInput
                 type="date"
                 value={fromDate}
@@ -242,7 +336,7 @@ export default function PurchaseDetailReport() {
             </div>
 
             <div className="md:col-span-2">
-              <label className="text-sm text-gray-700 mb-1 block">To</label>
+              <label className="text-sm text-gray-700 dark:text-gray-300 mb-1 block">To</label>
               <GlassInput
                 type="date"
                 value={toDate}
@@ -251,7 +345,7 @@ export default function PurchaseDetailReport() {
             </div>
 
             <div className="md:col-span-4">
-              <label className="text-sm text-gray-700 mb-1 block">Supplier</label>
+              <label className="text-sm text-gray-700 dark:text-gray-300 mb-1 block">Supplier</label>
               <AsyncSelect
                 cacheOptions
                 defaultOptions={[{ value: "", label: "All Suppliers" }]}
@@ -264,7 +358,8 @@ export default function PurchaseDetailReport() {
                   setProductId("");
                   setProductValue(null);
                 }}
-                styles={smallSelectStyles}
+                styles={getSmallSelectStyles(isDark)}
+                menuPortalTarget={document.body}
                 filterOption={createFilter({
                   matchFrom: "start",
                   trim: true,
@@ -273,7 +368,7 @@ export default function PurchaseDetailReport() {
             </div>
 
             <div className="md:col-span-4">
-              <label className="text-sm text-gray-700 mb-1 block">Product</label>
+              <label className="text-sm text-gray-700 dark:text-gray-300 mb-1 block">Product</label>
               <AsyncSelect
                 cacheOptions
                 defaultOptions={[{ value: "", label: "All Products" }]}
@@ -284,7 +379,8 @@ export default function PurchaseDetailReport() {
                   setProductValue(opt);
                   setProductId(opt?.value || "");
                 }}
-                styles={smallSelectStyles}
+                styles={getSmallSelectStyles(isDark)}
+                menuPortalTarget={document.body}
                 filterOption={createFilter({
                   matchFrom: "start",
                   trim: true,
@@ -360,12 +456,12 @@ export default function PurchaseDetailReport() {
       {/* ===== Permission states ===== */}
       {canView === null && (
         <GlassCard>
-          <div className="px-4 py-3 text-sm text-gray-700">Checking permissions…</div>
+          <div className="px-4 py-3 text-sm text-gray-700 dark:text-gray-300">Checking permissions…</div>
         </GlassCard>
       )}
       {canView === false && (
         <GlassCard>
-          <div className="px-4 py-3 text-sm text-gray-700">You don’t have permission to view this report.</div>
+          <div className="px-4 py-3 text-sm text-gray-700 dark:text-gray-300">You don't have permission to view this report.</div>
         </GlassCard>
       )}
 
@@ -374,7 +470,7 @@ export default function PurchaseDetailReport() {
         <>
           {data.length === 0 && !loading && (
             <GlassCard>
-              <div className="px-4 py-4 text-sm text-gray-600">No data found for the selected filters.</div>
+              <div className="px-4 py-4 text-sm text-gray-600 dark:text-gray-400">No data found for the selected filters.</div>
             </GlassCard>
           )}
 
@@ -382,7 +478,7 @@ export default function PurchaseDetailReport() {
             {data.map((inv) => (
               <GlassCard
                 key={inv.id || `${inv.posted_number}-${inv.invoice_number}-${inv.invoice_date}`}
-                className="overflow-hidden transition-all duration-200 hover:bg-white/70 hover:backdrop-blur-md hover:shadow-[0_12px_30px_-12px_rgba(37,99,235,0.25)]"
+                className="overflow-hidden transition-all duration-200 hover:bg-white/70 hover:backdrop-blur-md hover:shadow-[0_12px_30px_-12px_rgba(37,99,235,0.25)] dark:hover:bg-slate-800/70 dark:hover:backdrop-blur-md"
               >
                 {/* Header (glassy band) */}
                 <GlassSectionHeader
@@ -399,7 +495,7 @@ export default function PurchaseDetailReport() {
 
                 {/* Items table */}
                 <div className="relative max-w-full overflow-x-auto">
-                  <table className="w-full min-w-[900px] text-sm text-gray-900">
+                  <table className="w-full min-w-[900px] text-sm text-gray-900 dark:text-gray-100">
                     <colgroup>
                       <col style={{ width: 180 }} />
                       <col style={{ width: 100 }} />
@@ -409,7 +505,7 @@ export default function PurchaseDetailReport() {
                       ))}
                     </colgroup>
 
-                    <thead className="sticky top-0 bg-white/85 backdrop-blur-sm border-b border-gray-200/70">
+                    <thead className="sticky top-0 bg-white/85 backdrop-blur-sm border-b border-gray-200/70 dark:bg-slate-800/90 dark:border-slate-700/60">
                       <tr className="text-left">
                         <Th>Product Name</Th>
                         <Th>Batch</Th>
@@ -430,7 +526,7 @@ export default function PurchaseDetailReport() {
                       {(inv.items || []).map((it, idx) => (
                         <tr
                           key={(it.id ?? idx) + "-" + (it.product_id ?? "p") + "-" + idx}
-                          className="transition-all duration-150 odd:bg-white/90 even:bg-white/70 hover:bg-white/80 hover:backdrop-blur-[2px]"
+                          className="transition-all duration-150 odd:bg-white/90 even:bg-white/70 hover:bg-white/80 hover:backdrop-blur-[2px] dark:odd:bg-slate-800/60 dark:even:bg-slate-700/40 dark:hover:bg-slate-700/70 dark:backdrop-blur-sm"
                         >
                           <Td>{it.product_name || "-"}</Td>
                           <Td>{it.batch || "-"}</Td>
@@ -449,14 +545,14 @@ export default function PurchaseDetailReport() {
 
                       {(!inv.items || !inv.items.length) && (
                         <tr>
-                          <td colSpan={12} className="px-3 py-6 text-center text-gray-500">
+                          <td colSpan={12} className="px-3 py-6 text-center text-gray-500 dark:text-slate-400">
                             No items match this filter in this invoice.
                           </td>
                         </tr>
                       )}
                     </tbody>
 
-                    <tfoot className="bg-white/70 backdrop-blur-[2px]">
+                    <tfoot className="bg-white/70 backdrop-blur-[2px] dark:bg-slate-700/50 dark:backdrop-blur-sm">
                       <tr>
                         <Td colSpan={6} align="right" strong>Tax %</Td>
                         <Td colSpan={2} align="right">{(inv.tax_percentage ?? 0).toFixed(2)}</Td>
@@ -499,15 +595,15 @@ export default function PurchaseDetailReport() {
 function KV({ label, value }) {
   return (
     <div className="text-sm">
-      <span className="text-gray-600">{label}</span>{" "}
-      <span className="font-semibold text-gray-900">{value}</span>
+      <span className="text-gray-600 dark:text-slate-400">{label}</span>{" "}
+      <span className="font-semibold text-gray-900 dark:text-gray-100">{value}</span>
     </div>
   );
 }
 
 function Th({ children, align = "left" }) {
   return (
-    <th className={`px-3 py-2 font-medium ${align === "right" ? "text-right" : "text-left"}`}>
+    <th className={`px-3 py-2 font-medium ${align === "right" ? "text-right" : "text-left"} dark:text-gray-200`}>
       {children}
     </th>
   );
@@ -518,9 +614,9 @@ function Td({ children, align = "left", colSpan, strong = false, className = "" 
     <td
       colSpan={colSpan}
       className={[
-        "px-3 py-2 border-t border-gray-200/70",
+        "px-3 py-2 border-t border-gray-200/70 dark:border-slate-700/60 dark:text-gray-200",
         align === "right" ? "text-right" : "text-left",
-        strong ? "font-medium text-gray-800" : "",
+        strong ? "font-medium text-gray-800 dark:text-gray-100" : "",
         className,
       ].join(" ")}
     >
@@ -528,3 +624,4 @@ function Td({ children, align = "left", colSpan, strong = false, className = "" 
     </td>
   );
 }
+

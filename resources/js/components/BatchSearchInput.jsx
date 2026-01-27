@@ -95,13 +95,13 @@ const BatchSearchInput = forwardRef(
           }}
           onFocus={() => setShowDropdown(true)}
           onKeyDown={handleKeyDown}
-          className="border w-full h-6 text-[11px] px-1"
+          className="border w-full h-6 text-[11px] px-1 rounded-lg bg-white dark:bg-slate-700 border-gray-200 dark:border-slate-600 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-400/40 dark:focus:ring-indigo-400/40"
           placeholder="Search batch..."
         />
         {showDropdown && filtered.length > 0 && (
           <div
             className="absolute left-0 right-0 max-h-40 overflow-auto 
-                       border bg-white shadow-lg z-20 text-[11px]"
+                       border bg-white dark:bg-slate-800 shadow-lg z-20 text-[11px] rounded-lg border-gray-200 dark:border-slate-600"
           >
             <ul>
               {filtered.map((b, idx) => (
@@ -109,10 +109,10 @@ const BatchSearchInput = forwardRef(
                   key={b.batch_number}
                   onClick={() => handleSelect(b)}
                   className={`px-2 py-1 cursor-pointer ${
-                    idx === highlightIndex ? "bg-blue-100" : ""
+                    idx === highlightIndex ? "bg-blue-100 dark:bg-slate-600" : "hover:bg-gray-100 dark:hover:bg-slate-700"
                   }`}
                 >
-                  {b.batch_number}
+                  <span className="text-gray-900 dark:text-gray-100">{b.batch_number}</span>
                 </li>
               ))}
             </ul>

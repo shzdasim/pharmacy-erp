@@ -259,7 +259,7 @@ const ProductSearchInput = forwardRef(
           value={display}
           readOnly
           placeholder="Search product…"
-          className="border w-full h-6 text-[11px] px-1 cursor-text"
+          className="border w-full h-6 text-[11px] px-1 cursor-text rounded-lg bg-white dark:bg-slate-700 border-gray-200 dark:border-slate-600 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-400/40 dark:focus:ring-indigo-400/40"
           onFocus={() => openModal()}
           onClick={() => openModal()}
           onKeyDown={(e) => {
@@ -289,7 +289,7 @@ const ProductSearchInput = forwardRef(
               {/* Draggable + Resizable Dialog */}
               <div
                 ref={modalRef}
-                className="absolute bg-white rounded-xl shadow-2xl border flex flex-col"
+                className="absolute bg-white dark:bg-slate-800 rounded-xl shadow-2xl border border-gray-200 dark:border-slate-600 flex flex-col"
                 style={{
                   left: `${windowPos.x}px`,
                   top: `${windowPos.y}px`,
@@ -301,14 +301,14 @@ const ProductSearchInput = forwardRef(
               >
                 {/* Header (Draggable) */}
                 <div
-                  className="px-4 py-3 border-b flex items-center justify-between cursor-move bg-gray-50 rounded-t-xl"
+                  className="px-4 py-3 border-b flex items-center justify-between cursor-move bg-gray-50 dark:bg-slate-700 rounded-t-xl border-gray-200 dark:border-slate-600"
                   onMouseDown={startDrag}
                 >
-                  <h3 className="text-sm font-semibold">Select Product</h3>
+                  <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Select Product</h3>
                   <button
                     type="button"
                     onClick={closeModal}
-                    className="text-xs px-2 py-1 rounded hover:bg-gray-100"
+                    className="text-xs px-2 py-1 rounded hover:bg-gray-100 dark:hover:bg-slate-600 text-gray-900 dark:text-gray-100"
                   >
                     ✕
                   </button>
@@ -324,7 +324,7 @@ const ProductSearchInput = forwardRef(
                       value={search}
                       onChange={handleSearchChange}
                       placeholder="Type to search… (Enter to select, Esc to close)"
-                      className={`border w-full h-8 text-sm px-2 rounded ${
+                      className={`border w-full h-8 text-sm px-2 rounded-lg bg-white dark:bg-slate-700 border-gray-200 dark:border-slate-600 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-400/40 dark:focus:ring-indigo-400/40 ${
                         isInvalidInput ? "animate-shake border-red-400" : ""
                       }`}
                     />
@@ -332,24 +332,22 @@ const ProductSearchInput = forwardRef(
 
                   {/* Results */}
                   <div className="px-3 pb-3 flex-1 overflow-auto">
-                    <div className="border rounded overflow-hidden h-full">
+                    <div className="border rounded overflow-hidden h-full border-gray-200 dark:border-slate-600 bg-white dark:bg-slate-800">
                       <div className="max-h-full overflow-auto">
                         <table ref={tableRef} className="w-full border-collapse text-[11px]">
-                          <thead className="bg-gray-100 sticky top-0">
+                          <thead className="bg-gray-100 dark:bg-slate-700 sticky top-0">
                             <tr className="text-left text-[10px]">
-                              <th colSpan="3" className="border px-1 w-1/3">
-                                Name
-                              </th>
-                              <th className="border px-1">Pack Size</th>
-                              <th className="border px-1 font-bold">Quantity</th>
-                              <th className="border px-1">Pack Purchase</th>
-                              <th className="border px-1">Unit Purchase Price</th>
-                              <th className="border px-1">Pack Sale</th>
-                              <th className="border px-1">Unit Sale Price</th>
-                              <th className="border px-1">Supplier</th>
-                              <th className="border px-1">Brand</th>
-                              <th className="border px-1">Margin %</th>
-                              <th className="border px-1">Avg. Price</th>
+                              <th colSpan="3" className="border px-1 w-1/3 text-gray-900 dark:text-gray-100 border-gray-200 dark:border-slate-600">Name</th>
+                              <th className="border px-1 text-gray-900 dark:text-gray-100 border-gray-200 dark:border-slate-600">Pack Size</th>
+                              <th className="border px-1 font-bold text-gray-900 dark:text-gray-100 border-gray-200 dark:border-slate-600">Quantity</th>
+                              <th className="border px-1 text-gray-900 dark:text-gray-100 border-gray-200 dark:border-slate-600">Pack Purchase</th>
+                              <th className="border px-1 text-gray-900 dark:text-gray-100 border-gray-200 dark:border-slate-600">Unit Purchase Price</th>
+                              <th className="border px-1 text-gray-900 dark:text-gray-100 border-gray-200 dark:border-slate-600">Pack Sale</th>
+                              <th className="border px-1 text-gray-900 dark:text-gray-100 border-gray-200 dark:border-slate-600">Unit Sale Price</th>
+                              <th className="border px-1 text-gray-900 dark:text-gray-100 border-gray-200 dark:border-slate-600">Supplier</th>
+                              <th className="border px-1 text-gray-900 dark:text-gray-100 border-gray-200 dark:border-slate-600">Brand</th>
+                              <th className="border px-1 text-gray-900 dark:text-gray-100 border-gray-200 dark:border-slate-600">Margin %</th>
+                              <th className="border px-1 text-gray-900 dark:text-gray-100 border-gray-200 dark:border-slate-600">Avg. Price</th>
                             </tr>
                           </thead>
                           <tbody>
@@ -360,30 +358,28 @@ const ProductSearchInput = forwardRef(
                                 className={`cursor-pointer ${
                                   idx === highlightIndex
                                     ? "bg-green-600 text-white"
-                                    : ""
+                                    : "odd:bg-white/90 even:bg-white/70 dark:odd:bg-slate-700/60 dark:even:bg-slate-800/60 hover:bg-gray-100 dark:hover:bg-slate-600"
                                 }`}
                                 onMouseEnter={() => setHighlightIndex(idx)}
                               >
-                                <td colSpan="3" className="border px-1 text-[13px] w-1/3">
-                                  {p?.name}
-                                </td>
-                                <td className="border px-1">{getPackSize(p)}</td>
-                                <td className="border px-1 font-bold">{p?.quantity}</td>
-                                <td className="border px-1">{p?.pack_purchase_price}</td>
-                                <td className="border px-1">{p?.unit_purchase_price}</td>
-                                <td className="border px-1">{p?.pack_sale_price}</td>
-                                <td className="border px-1">{p?.unit_sale_price}</td>
-                                <td className="border px-1">{getSupplierName(p)}</td>
-                                <td className="border px-1">{getBrandName(p)}</td>
-                                <td className="border px-1">{getMargin(p)}</td>
-                                <td className="border px-1">{getAvgPrice(p)}</td>
+                                <td colSpan="3" className="border px-1 text-[13px] w-1/3 text-gray-900 dark:text-gray-100 border-gray-200 dark:border-slate-600">{p?.name}</td>
+                                <td className="border px-1 text-gray-900 dark:text-gray-100 border-gray-200 dark:border-slate-600">{getPackSize(p)}</td>
+                                <td className="border px-1 font-bold text-gray-900 dark:text-gray-100 border-gray-200 dark:border-slate-600">{p?.quantity}</td>
+                                <td className="border px-1 text-gray-900 dark:text-gray-100 border-gray-200 dark:border-slate-600">{p?.pack_purchase_price}</td>
+                                <td className="border px-1 text-gray-900 dark:text-gray-100 border-gray-200 dark:border-slate-600">{p?.unit_purchase_price}</td>
+                                <td className="border px-1 text-gray-900 dark:text-gray-100 border-gray-200 dark:border-slate-600">{p?.pack_sale_price}</td>
+                                <td className="border px-1 text-gray-900 dark:text-gray-100 border-gray-200 dark:border-slate-600">{p?.unit_sale_price}</td>
+                                <td className="border px-1 text-gray-900 dark:text-gray-100 border-gray-200 dark:border-slate-600">{getSupplierName(p)}</td>
+                                <td className="border px-1 text-gray-900 dark:text-gray-100 border-gray-200 dark:border-slate-600">{getBrandName(p)}</td>
+                                <td className="border px-1 text-gray-900 dark:text-gray-100 border-gray-200 dark:border-slate-600">{getMargin(p)}</td>
+                                <td className="border px-1 text-gray-900 dark:text-gray-100 border-gray-200 dark:border-slate-600">{getAvgPrice(p)}</td>
                               </tr>
                             ))}
                             {filtered.length === 0 && (
                               <tr>
                                 <td
                                   colSpan={13}
-                                  className="text-center py-6 text-gray-500"
+                                  className="text-center py-6 text-gray-500 dark:text-gray-400"
                                 >
                                   No products found
                                 </td>
@@ -396,7 +392,7 @@ const ProductSearchInput = forwardRef(
                   </div>
 
                   {/* Footer */}
-                  <div className="px-4 py-2 border-t text-[10px] text-gray-600">
+                  <div className="px-4 py-2 border-t text-[10px] text-gray-600 dark:text-gray-400 border-gray-200 dark:border-slate-600">
                     ↑/↓ to navigate • Enter to select • Esc to close
                   </div>
                 </div>
@@ -404,13 +400,14 @@ const ProductSearchInput = forwardRef(
                 {/* Resize Handle */}
                 <div
                   onMouseDown={startResize}
-                  className="absolute bottom-1 right-1 w-3 h-3 bg-gray-400 cursor-se-resize rounded-sm"
+                  className="absolute bottom-1 right-1 w-3 h-3 bg-gray-400 dark:bg-slate-500 cursor-se-resize rounded-sm"
                   title="Resize"
                 />
               </div>
             </div>,
             document.body
           )}
+
       </>
     );
   }
