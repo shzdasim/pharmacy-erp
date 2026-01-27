@@ -30,13 +30,6 @@ export default function Topbar() {
   // License status
   const { loading: licLoading, valid: licValid, remainingMs } = useLicense();
   const leftTxt = formatRemaining(remainingMs);
-  const badgeClass = (() => {
-    if (!licValid) return "bg-rose-600";
-    if (remainingMs == null) return "bg-emerald-600";           // perpetual
-    if (remainingMs <= 24 * 3600 * 1000) return "bg-rose-600";  // <1 day
-    if (remainingMs <= 3 * 24 * 3600 * 1000) return "bg-amber-500";
-    return "bg-emerald-600";
-  })();
 
   const openInNewTab = (path) => window.open(path, "_blank", "noopener,noreferrer");
 
@@ -100,7 +93,7 @@ export default function Topbar() {
       >
         <div className="flex flex-wrap items-center justify-between gap-3">
           {/* Left: Search */}
-          <div className="flex-1 min-w-[260px] max-w-[720px]">
+          <div className="flex-1 min-w-[200px] max-w-[480px]">
             <ProductSearch />
           </div>
 
@@ -110,33 +103,28 @@ export default function Topbar() {
             <button
               onClick={() => navigate("/activate")}
               className={[
-                "inline-flex items-center gap-2 rounded-xl px-3 py-1.5 text-white text-xs",
-                badgeClass, "shadow-sm ring-1 ring-white/15",
-                "transition-all hover:opacity-95 focus:outline-none focus:ring-2 focus:ring-white/50",
+                "inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-white text-xs font-semibold",
+                "bg-gradient-to-r from-emerald-500 to-emerald-600 shadow-lg shadow-emerald-500/30",
+                "transition-all hover:shadow-emerald-500/40 hover:scale-105 active:scale-95 focus:outline-none focus:ring-2 focus:ring-emerald-400/50",
               ].join(" ")}
               title={licValid ? "License is active" : "License required – click to activate"}
             >
-              <ClockIcon className="w-4 h-4" />
-              {licLoading ? "Checking…" : licValid ? `${leftTxt} left` : "Activate license"}
+              <ClockIcon className="w-3.5 h-3.5" />
+              {licLoading ? "Checking…" : licValid ? `${leftTxt} left` : "Activate"}
             </button>
-
-            <div className="mx-1 h-6 w-px bg-gradient-to-b from-transparent via-slate-300/60 to-transparent" />
 
             <button
               onClick={() => openInNewTab("/purchase-invoices/create")}
               aria-keyshortcuts="Alt+1"
               title="Open Purchase Invoice (Alt+1) in a new tab"
               className={[
-                "inline-flex items-center gap-2 rounded-xl px-3 py-2 text-white",
-                "bg-emerald-600 shadow-sm ring-1 ring-white/15",
-                "transition-all hover:bg-emerald-500 hover:shadow-[0_10px_30px_-10px_rgba(16,185,129,0.45)] focus:outline-none focus:ring-2 focus:ring-emerald-400/70",
+                "inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-white text-xs font-semibold",
+                "bg-gradient-to-r from-emerald-500 to-emerald-600 shadow-lg shadow-emerald-500/30",
+                "transition-all hover:shadow-emerald-500/40 hover:scale-105 active:scale-95 focus:outline-none focus:ring-2 focus:ring-emerald-400/50",
               ].join(" ")}
             >
-              <ClipboardDocumentListIcon className="w-5 h-5" />
+              <ClipboardDocumentListIcon className="w-3.5 h-3.5" />
               <span className="hidden sm:inline">Purchase</span>
-              <kbd className="ml-1 text-[11px] opacity-95 border border-white/40 rounded px-1 py-0.5 bg-white/10">
-                Alt+1
-              </kbd>
             </button>
 
             <button
@@ -144,16 +132,13 @@ export default function Topbar() {
               aria-keyshortcuts="Alt+2"
               title="Open Sale Invoice (Alt+2) in a new tab"
               className={[
-                "inline-flex items-center gap-2 rounded-xl px-3 py-2 text-white",
-                "bg-indigo-600 shadow-sm ring-1 ring-white/15",
-                "transition-all hover:bg-indigo-500 hover:shadow-[0_10px_30px_-10px_rgba(79,70,229,0.45)] focus:outline-none focus:ring-2 focus:ring-indigo-400/70",
+                "inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-white text-xs font-semibold",
+                "bg-gradient-to-r from-indigo-500 to-indigo-600 shadow-lg shadow-indigo-500/30",
+                "transition-all hover:shadow-indigo-500/40 hover:scale-105 active:scale-95 focus:outline-none focus:ring-2 focus:ring-indigo-400/50",
               ].join(" ")}
             >
-              <ShoppingCartIcon className="w-5 h-5" />
+              <ShoppingCartIcon className="w-3.5 h-3.5" />
               <span className="hidden sm:inline">Sale</span>
-              <kbd className="ml-1 text-[11px] opacity-95 border border-white/40 rounded px-1 py-0.5 bg-white/10">
-                Alt+2
-              </kbd>
             </button>
 
             <div className="mx-1 h-6 w-px bg-gradient-to-b from-transparent via-slate-300/60 to-transparent" />
@@ -164,21 +149,21 @@ export default function Topbar() {
                 ref={btnRef}
                 onClick={() => setOpen((v) => !v)}
                 className={[
-                  "flex items-center gap-2 rounded-xl px-2.5 py-1.5",
-                  "bg-white/55 ring-1 ring-white/40 shadow-sm",
-                  "transition-all hover:bg-white/80 hover:backdrop-blur-md hover:shadow-md focus:outline-none focus:ring-2 focus:ring-blue-400/60",
+                  "flex items-center gap-1.5 rounded-full px-3 py-1",
+                  "bg-gradient-to-r from-blue-500 to-indigo-600 shadow-lg shadow-blue-500/30",
+                  "transition-all hover:shadow-blue-500/40 hover:scale-105 active:scale-95 focus:outline-none focus:ring-2 focus:ring-blue-400/50",
                 ].join(" ")}
                 aria-haspopup="menu"
                 aria-expanded={open}
                 aria-controls="topbar-user-menu"
               >
-                <span className="inline-grid h-8 w-8 place-items-center rounded-full bg-gradient-to-br from-blue-500 to-indigo-500 text-white font-semibold shadow">
+                <span className="inline-grid h-5 w-5 place-items-center rounded-full bg-white/90 text-blue-600 text-xs font-bold shadow">
                   {(user?.name || "U").slice(0, 1).toUpperCase()}
                 </span>
-                <span className="hidden sm:inline text-sm font-medium text-slate-800">
+                <span className="hidden sm:inline text-xs font-semibold text-white">
                   {user?.name || "User"}
                 </span>
-                <svg className="w-4 h-4 text-slate-700 transition-transform group-aria-expanded:rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-3 h-3 text-white/90" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
                 </svg>
               </button>
@@ -228,3 +213,4 @@ export default function Topbar() {
     </div>
   );
 }
+

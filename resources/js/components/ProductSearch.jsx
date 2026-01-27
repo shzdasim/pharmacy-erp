@@ -275,7 +275,7 @@ export default function ProductSearch() {
   };
 
   return (
-    <div className="relative z-40 w-full max-w-3xl bg-white" ref={boxRef}>
+    <div className="relative z-40 w-full max-w-md bg-white" ref={boxRef}>
       {/* Search bar (glassy input) */}
       <div
         className={[
@@ -328,7 +328,7 @@ export default function ProductSearch() {
 
       {/* Results panel (solid card for readability; still using GlassCard infra) */}
       {panelOpen && (
-        <GlassCard className="absolute left-0 right-0 mt-2 overflow-hidden bg-white">
+        <GlassCard className="absolute left-0 mt-2 overflow-hidden bg-white w-[900px] max-w-[calc(100vw-2rem)]">
           <GlassToolbar className="items-center justify-between pb-2 pt-2 bg-white">
             <div className="text-sm text-slate-600">
               {q ? (
