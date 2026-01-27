@@ -320,7 +320,7 @@ export default function Brands() {
   const tintSlate  = "bg-slate-900/80 text-white shadow-[0_6px_20px_-6px_rgba(15,23,42,0.45)] ring-1 ring-white/15 hover:bg-slate-900/90";
   const tintAmber  = "bg-amber-500/85 text-white shadow-[0_6px_20px_-6px_rgba(245,158,11,0.45)] ring-1 ring-white/20 hover:bg-amber-500/95";
   const tintRed    = "bg-rose-500/85 text-white shadow-[0_6px_20px_-6px_rgba(244,63,94,0.45)] ring-1 ring-white/20 hover:bg-rose-500/95";
-  const tintGlass  = "bg-white/60 text-slate-700 ring-1 ring-white/30 hover:bg-white/75";
+  const tintGlass  = "bg-white/60 text-gray-900 ring-1 ring-white/30 hover:bg-white/75 dark:text-gray-100";
 
   return (
     <div className="p-4 md:p-6 space-y-4">
@@ -535,20 +535,20 @@ export default function Brands() {
           />
 
           <div className="px-3 pb-3">
-            <div className="w-full overflow-x-auto rounded-2xl ring-1 ring-gray-200/60 bg-white/60 backdrop-blur-sm">
-              <table className="w-full text-sm text-gray-900">
-                <thead className="sticky top-0 bg-white/85 backdrop-blur-sm z-10 border-b border-gray-200/70">
+            <div className="w-full overflow-x-auto rounded-2xl ring-1 ring-gray-200/60 bg-white/60 dark:bg-slate-800/60 backdrop-blur-sm">
+              <table className="w-full text-sm text-gray-900 dark:text-gray-100">
+                <thead className="sticky top-0 bg-white/85 dark:bg-slate-700/85 backdrop-blur-sm z-10 border-b border-gray-200/70 dark:border-slate-600/70">
                   <tr className="text-left">
-                    <th className="px-4 py-3 font-medium">Name</th>
-                    <th className="px-4 py-3 font-medium">Image</th>
-                    {hasActions && <th className="px-4 py-3 font-medium text-center">Actions</th>}
+                    <th className="px-4 py-3 font-medium text-gray-900 dark:text-gray-100">Name</th>
+                    <th className="px-4 py-3 font-medium text-gray-900 dark:text-gray-100">Image</th>
+                    {hasActions && <th className="px-4 py-3 font-medium text-center text-gray-900 dark:text-gray-100">Actions</th>}
                   </tr>
                 </thead>
 
                 <tbody>
                   {rows.length === 0 && !loading && (
                     <tr>
-                      <td className="px-4 py-10 text-center text-gray-600" colSpan={hasActions ? 3 : 2}>
+                      <td className="px-4 py-10 text-center text-gray-600 dark:text-gray-400" colSpan={hasActions ? 3 : 2}>
                         No brands found.
                       </td>
                     </tr>
@@ -557,17 +557,17 @@ export default function Brands() {
                   {rows.map((b) => {
                     const used = Number(b.products_count || 0) > 0;
                     return (
-                      <tr key={b.id} className="odd:bg-white/60 even:bg-white/40 hover:bg-blue-50/70 transition-colors">
-                        <td className="px-4 py-3">{b.name}</td>
+                      <tr key={b.id} className="odd:bg-white/60 even:bg-white/40 hover:bg-blue-50/70 dark:odd:bg-slate-700/60 dark:even:bg-slate-800/60 dark:hover:bg-slate-600/70 transition-colors">
+                        <td className="px-4 py-3 text-gray-900 dark:text-gray-100">{b.name}</td>
                         <td className="px-4 py-3">
                           {b.image ? (
                             <img
                               src={`/storage/${b.image}`}
                               alt={b.name}
-                              className="w-16 h-16 rounded-2xl object-contain ring-1 ring-gray-200/70 bg-white/70"
+                              className="w-16 h-16 rounded-2xl object-contain ring-1 ring-gray-200/70 bg-white/70 dark:bg-slate-700/70"
                             />
                           ) : (
-                            <span className="text-gray-500 text-sm">No image</span>
+                            <span className="text-gray-500 dark:text-gray-400 text-sm">No image</span>
                           )}
                         </td>
 

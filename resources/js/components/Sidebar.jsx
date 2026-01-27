@@ -149,20 +149,20 @@ export default function Sidebar() {
 
   const card =
     "relative flex h-full flex-col rounded-2xl " +
-    "bg-white/70 backdrop-blur-sm ring-1 ring-gray-200/60 shadow-xl " +
+    "bg-white/70 dark:bg-slate-800/70 backdrop-blur-sm ring-1 ring-gray-200/60 dark:ring-white/10 shadow-xl " +
     "transition-[width] duration-300 overflow-hidden " + widthCls;
 
   // Scroll shadows (top & bottom) using ::before/::after style masks
   const scrollShadow =
-    "before:pointer-events-none before:content-[''] before:absolute before:left-0 before:right-0 before:top-[64px] before:h-4 before:bg-gradient-to-b before:from-white/70 before:to-transparent " +
-    "after:pointer-events-none after:content-[''] after:absolute after:left-0 after:right-0 after:bottom-[56px] after:h-6 after:bg-gradient-to-t after:from-white/70 after:to-transparent";
+    "before:pointer-events-none before:content-[''] before:absolute before:left-0 before:right-0 before:top-[64px] before:h-4 before:bg-gradient-to-b before:from-white/70 before:to-transparent dark:before:from-slate-800/70 dark:before:to-transparent " +
+    "after:pointer-events-none after:content-[''] after:absolute after:left-0 after:right-0 after:bottom-[56px] after:h-6 after:bg-gradient-to-t after:from-white/70 after:to-transparent dark:after:from-slate-800/70 dark:after:to-transparent";
 
   // Item styles
   const itemBase =
-    "group relative mx-2 mt-2 flex items-center gap-3 rounded-xl px-3 py-2 text-gray-900 " +
-    "hover:translate-y-[-2px] hover:bg-white/80 hover:shadow-md transition focus:outline-none " +
+    "group relative mx-2 mt-2 flex items-center gap-3 rounded-xl px-3 py-2 text-gray-900 dark:text-gray-100 " +
+    "hover:translate-y-[-2px] hover:bg-white/80 dark:hover:bg-slate-700/80 hover:shadow-md transition focus:outline-none " +
     "focus:ring-2 focus:ring-blue-400/60 focus:ring-offset-2 focus:ring-offset-transparent";
-  const itemActive = "bg-white shadow-md ring-1 ring-blue-200/70";
+  const itemActive = "bg-white dark:bg-slate-700 shadow-md ring-1 ring-blue-200/70 dark:ring-blue-800/50";
   const leftRail =
     "absolute left-0 top-1/2 -translate-y-1/2 h-6 w-1 rounded-full transition-all";
 
@@ -177,7 +177,7 @@ export default function Sidebar() {
     <aside className={shell}>
       <div className={`${card} ${scrollShadow}`}>
         {/* Sticky header */}
-        <div className="sticky top-0 z-10 bg-white/80 backdrop-blur-sm border-b border-gray-200/60 px-4 py-3">
+        <div className="sticky top-0 z-10 bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm border-b border-gray-200/60 dark:border-white/10 px-4 py-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2 overflow-hidden">
               <picture>
@@ -195,7 +195,7 @@ export default function Sidebar() {
                   />
                 ))}
               </picture>
-              {!collapsed && <span className="text-base font-semibold truncate">{brandName}</span>}
+              {!collapsed && <span className="text-base font-semibold truncate text-gray-900 dark:text-gray-100">{brandName}</span>}
             </div>
           </div>
         </div>
@@ -245,7 +245,7 @@ export default function Sidebar() {
                 <span
                   className={[
                     "shrink-0",
-                    active ? "text-blue-600" : "text-gray-700 group-hover:text-blue-600",
+                    active ? "text-blue-600 dark:text-blue-400" : "text-gray-700 dark:text-gray-300 group-hover:text-blue-600 dark:group-hover:text-blue-400",
                   ].join(" ")}
                 >
                   {item.icon}
@@ -260,7 +260,7 @@ export default function Sidebar() {
                     collapsed
                       ? "pointer-events-none select-none translate-x-2 opacity-0 group-hover:opacity-100 group-hover:translate-x-0 transition"
                       : "",
-                    active ? "text-blue-700 font-medium" : "text-gray-900",
+                    active ? "text-blue-700 dark:text-blue-300 font-medium" : "text-gray-900 dark:text-gray-100",
                   ].join(" ")}
                 >
                   {!collapsed && item.name}
@@ -273,10 +273,10 @@ export default function Sidebar() {
         </nav>
 
         {/* Sticky footer (collapse/expand) */}
-        <div className="sticky bottom-0 z-10 bg-white/80 backdrop-blur-sm border-t border-gray-200/60 px-2 py-2">
+        <div className="sticky bottom-0 z-10 bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm border-t border-gray-200/60 dark:border-white/10 px-2 py-2">
           <button
             onClick={() => setCollapsed((v) => !v)}
-            className="w-full flex items-center justify-center gap-2 rounded-xl px-3 py-2 text-sm font-medium text-gray-700 hover:bg-white hover:shadow focus:outline-none focus:ring-2 focus:ring-blue-400/60"
+            className="w-full flex items-center justify-center gap-2 rounded-xl px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-white dark:hover:bg-slate-700 hover:shadow focus:outline-none focus:ring-2 focus:ring-blue-400/60"
             aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
           >
             {collapsed ? <ChevronRightIcon className="w-5 h-5" /> : <ChevronLeftIcon className="w-5 h-5" />}

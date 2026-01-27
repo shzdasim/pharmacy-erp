@@ -449,8 +449,8 @@ useEffect(() => {
       {/* ===== Table card (single column layout) ===== */}
       <GlassCard>
         <div className="max-h-[70vh] overflow-auto rounded-b-2xl">
-          <table className="w-full text-sm text-gray-900">
-            <thead className="sticky top-0 bg-white/90 backdrop-blur-sm z-10 border-b border-gray-200/70">
+          <table className="w-full text-sm text-gray-900 dark:text-gray-100">
+            <thead className="sticky top-0 bg-white/90 dark:bg-slate-700/90 backdrop-blur-sm z-10 border-b border-gray-200/70 dark:border-slate-600/70">
               {(can.import || can.export) && (
                 <tr>
                   <th colSpan={visibleColumns} className="px-3 py-2">
@@ -459,7 +459,7 @@ useEffect(() => {
                 </tr>
               )}
               <tr className="text-left">
-                <th className="px-3 py-2">
+                <th className="px-3 py-2 text-gray-900 dark:text-gray-100">
                   <input
                     type="checkbox"
                     aria-label="Select all on this page"
@@ -470,20 +470,20 @@ useEffect(() => {
                     onChange={(e) => togglePageAll(e.target.checked)}
                   />
                 </th>
-                <th className="px-3 py-2 font-medium">Code</th>
-                <th className="px-3 py-2 font-medium">Name</th>
-                <th className="px-3 py-2 font-medium">Image</th>
-                <th className="px-3 py-2 font-medium">Category</th>
-                <th className="px-3 py-2 font-medium">Brand</th>
-                <th className="px-3 py-2 font-medium">Supplier</th>
-                {hasActions && <th className="px-3 py-2 font-medium text-center">Actions</th>}
+                <th className="px-3 py-2 font-medium text-gray-900 dark:text-gray-100">Code</th>
+                <th className="px-3 py-2 font-medium text-gray-900 dark:text-gray-100">Name</th>
+                <th className="px-3 py-2 font-medium text-gray-900 dark:text-gray-100">Image</th>
+                <th className="px-3 py-2 font-medium text-gray-900 dark:text-gray-100">Category</th>
+                <th className="px-3 py-2 font-medium text-gray-900 dark:text-gray-100">Brand</th>
+                <th className="px-3 py-2 font-medium text-gray-900 dark:text-gray-100">Supplier</th>
+                {hasActions && <th className="px-3 py-2 font-medium text-center text-gray-900 dark:text-gray-100">Actions</th>}
               </tr>
             </thead>
 
             <tbody>
               {rows.length === 0 && !loading && (
                 <tr>
-                  <td className="px-3 py-10 text-center text-gray-600" colSpan={visibleColumns}>
+                  <td className="px-3 py-10 text-center text-gray-600 dark:text-gray-400" colSpan={visibleColumns}>
                     No products found.
                   </td>
                 </tr>
@@ -501,7 +501,7 @@ useEffect(() => {
                 return (
                   <tr
                     key={p.id}
-                    className={`transition-colors ${selectedIds.has(p.id) ? "bg-blue-50" : "odd:bg-white/90 even:bg-white/70"} hover:bg-blue-50`}
+                    className={`transition-colors ${selectedIds.has(p.id) ? "bg-blue-50 dark:bg-slate-600/50" : "odd:bg-white/90 even:bg-white/70 dark:odd:bg-slate-700/60 dark:even:bg-slate-800/60"} hover:bg-blue-50 dark:hover:bg-slate-600/70`}
                   >
                     <td className="px-3 py-2">
                       <input
@@ -511,11 +511,11 @@ useEffect(() => {
                         aria-label={`Select product ${p.name}`}
                       />
                     </td>
-                    <td className="px-3 py-2">{p.product_code}</td>
+                    <td className="px-3 py-2 text-gray-900 dark:text-gray-100">{p.product_code}</td>
 
                     {/* Name cell clickable for selection */}
                     <td
-                      className="px-3 py-2 cursor-pointer select-none"
+                      className="px-3 py-2 cursor-pointer select-none text-gray-900 dark:text-gray-100"
                       role="button"
                       tabIndex={0}
                       title="Click to select"
@@ -535,15 +535,15 @@ useEffect(() => {
                         <img
                           src={`/storage/${p.image}`}
                           alt={p.name}
-                          className="w-12 h-12 object-cover rounded-xl ring-1 ring-gray-200/60 bg-white/70"
+                          className="w-12 h-12 object-cover rounded-xl ring-1 ring-gray-200/60 bg-white/70 dark:bg-slate-700/70"
                         />
                       ) : (
-                        <span className="text-gray-500">No image</span>
+                        <span className="text-gray-500 dark:text-gray-400">No image</span>
                       )}
                     </td>
-                    <td className="px-3 py-2">{p.category?.name}</td>
-                    <td className="px-3 py-2">{p.brand?.name}</td>
-                    <td className="px-3 py-2">{p.supplier?.name}</td>
+                    <td className="px-3 py-2 text-gray-900 dark:text-gray-100">{p.category?.name}</td>
+                    <td className="px-3 py-2 text-gray-900 dark:text-gray-100">{p.brand?.name}</td>
+                    <td className="px-3 py-2 text-gray-900 dark:text-gray-100">{p.supplier?.name}</td>
 
                     {hasActions && (
                       <td className="px-3 py-2">

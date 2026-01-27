@@ -250,7 +250,7 @@ export default function Customers() {
   const tintSlate  = "bg-slate-900/80 text-white shadow-[0_6px_20px_-6px_rgba(15,23,42,0.45)] ring-1 ring-white/15 hover:bg-slate-900/90";
   const tintAmber  = "bg-amber-500/85 text-white shadow-[0_6px_20px_-6px_rgba(245,158,11,0.45)] ring-1 ring-white/20 hover:bg-amber-500/95";
   const tintRed    = "bg-rose-500/85 text-white shadow-[0_6px_20px_-6px_rgba(244,63,94,0.45)] ring-1 ring-white/20 hover:bg-rose-500/95";
-  const tintGlass  = "bg-white/60 text-slate-700 ring-1 ring-white/30 hover:bg-white/75";
+  const tintGlass  = "bg-white/60 text-gray-900 ring-1 ring-white/30 hover:bg-white/75 dark:text-gray-100";
 
   return (
     <div className="p-4 md:p-6 space-y-4">
@@ -476,20 +476,20 @@ export default function Customers() {
 
           {/* Table */}
           <div className="px-3 pb-3">
-            <div className="w-full overflow-x-auto rounded-2xl ring-1 ring-gray-200/60 bg-white/60 backdrop-blur-sm max-h-[60vh]">
-              <table className="w-full text-sm text-gray-900">
-                <thead className="sticky top-0 bg-white/85 backdrop-blur-sm z-10 border-b border-gray-200/70">
+            <div className="w-full overflow-x-auto rounded-2xl ring-1 ring-gray-200/60 bg-white/60 dark:bg-slate-800/60 backdrop-blur-sm max-h-[60vh]">
+              <table className="w-full text-sm text-gray-900 dark:text-gray-100">
+                <thead className="sticky top-0 bg-white/85 dark:bg-slate-700/85 backdrop-blur-sm z-10 border-b border-gray-200/70 dark:border-slate-600/70">
                   <tr className="text-left">
-                    <th className="px-4 py-3 font-medium">Name</th>
-                    <th className="px-4 py-3 font-medium">Email</th>
-                    {hasActions && <th className="px-4 py-3 font-medium text-center">Actions</th>}
+                    <th className="px-4 py-3 font-medium text-gray-900 dark:text-gray-100">Name</th>
+                    <th className="px-4 py-3 font-medium text-gray-900 dark:text-gray-100">Email</th>
+                    {hasActions && <th className="px-4 py-3 font-medium text-center text-gray-900 dark:text-gray-100">Actions</th>}
                   </tr>
                 </thead>
 
                 <tbody>
                   {paged.length === 0 && !loading && (
                     <tr>
-                      <td className="px-4 py-10 text-center text-gray-600" colSpan={hasActions ? 5 : 4}>
+                      <td className="px-4 py-10 text-center text-gray-600 dark:text-gray-400" colSpan={hasActions ? 5 : 4}>
                         No customers found.
                       </td>
                     </tr>
@@ -498,9 +498,9 @@ export default function Customers() {
                   {paged.map((c) => {
                     const inUse = Number(c.transactions_count || 0) > 0;
                     return (
-                      <tr key={c.id} className="odd:bg-white/60 even:bg-white/40 hover:bg-blue-50/70 transition-colors">
-                        <td className="px-4 py-3">{c.name}</td>
-                        <td className="px-4 py-3 break-all">{c.email}</td>
+                      <tr key={c.id} className="odd:bg-white/60 even:bg-white/40 hover:bg-blue-50/70 dark:odd:bg-slate-700/60 dark:even:bg-slate-800/60 dark:hover:bg-slate-600/70 transition-colors">
+                        <td className="px-4 py-3 text-gray-900 dark:text-gray-100">{c.name}</td>
+                        <td className="px-4 py-3 break-all text-gray-900 dark:text-gray-100">{c.email}</td>
 
                         {hasActions && (
                           <td className="px-4 py-3">

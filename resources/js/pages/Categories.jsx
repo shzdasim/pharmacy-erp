@@ -373,18 +373,18 @@ export default function Categories() {
           />
 
           <div className="px-3 pb-3">
-            <div className="w-full overflow-x-auto rounded-2xl ring-1 ring-gray-200/60 bg-white/60 backdrop-blur-sm">
-              <table className="w-full text-sm">
-                <thead className="bg-white/80 sticky top-0 z-10">
-                  <tr className="border-b border-gray-200/70">
-                    <th className="text-left font-medium px-4 py-3">Name</th>
-                    {hasActions && <th className="text-center font-medium px-4 py-3">Actions</th>}
+            <div className="w-full overflow-x-auto rounded-2xl ring-1 ring-gray-200/60 bg-white/60 dark:bg-slate-800/60 backdrop-blur-sm">
+              <table className="w-full text-sm text-gray-900 dark:text-gray-100">
+                <thead className="bg-white/80 dark:bg-slate-700/80 sticky top-0 z-10">
+                  <tr className="border-b border-gray-200/70 dark:border-slate-600/70">
+                    <th className="text-left font-medium px-4 py-3 text-gray-900 dark:text-gray-100">Name</th>
+                    {hasActions && <th className="text-center font-medium px-4 py-3 text-gray-900 dark:text-gray-100">Actions</th>}
                   </tr>
                 </thead>
                 <tbody>
                   {paged.length === 0 && !loading && (
                     <tr>
-                      <td className="px-4 py-10 text-center text-gray-500" colSpan={colSpan}>
+                      <td className="px-4 py-10 text-center text-gray-500 dark:text-gray-400" colSpan={colSpan}>
                         No categories found.
                       </td>
                     </tr>
@@ -393,8 +393,8 @@ export default function Categories() {
                   {paged.map((c) => {
                     const used = Number(c.products_count || 0) > 0;
                     return (
-                      <tr key={c.id} className="odd:bg-white/60 even:bg-white/40 hover:bg-blue-50/70 transition-colors">
-                        <td className="px-4 py-3">{c.name}</td>
+                      <tr key={c.id} className="odd:bg-white/60 even:bg-white/40 hover:bg-blue-50/70 dark:odd:bg-slate-700/60 dark:even:bg-slate-800/60 dark:hover:bg-slate-600/70 transition-colors">
+                        <td className="px-4 py-3 text-gray-900 dark:text-gray-100">{c.name}</td>
                         {hasActions && (
                           <td className="px-4 py-3">
                             <div className="flex flex-wrap gap-2 justify-center">

@@ -67,7 +67,7 @@ export default function DashboardLayout({ children }) {
   return (
     <div
       className="
-        h-screen bg-gray-100
+        h-screen bg-gray-100 dark:bg-slate-900
         grid grid-rows-[auto,1fr] grid-cols-[auto,1fr]
         overflow-hidden
       "

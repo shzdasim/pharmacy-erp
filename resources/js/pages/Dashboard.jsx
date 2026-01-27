@@ -286,9 +286,9 @@ export default function Dashboard() {
   }
 
   return (
-    <div className="p-4 space-y-4 bg-gradient-to-br from-slate-50 via-white to-blue-50/30">
+    <div className="p-4 space-y-4 bg-gradient-to-br from-slate-50 via-white to-blue-50/30 dark:from-slate-900 dark:via-slate-800 dark:to-slate-900">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">Business Dashboard</h1>
+        <h1 className="text-2xl font-semibold text-gray-900 dark:text-gray-100">Business Dashboard</h1>
         <GlassBtn onClick={fetchAll} disabled={loading} variant="primary" title="Alt+R">
           {loading ? "Loading…" : "Refresh"}
         </GlassBtn>
@@ -298,11 +298,11 @@ export default function Dashboard() {
       <GlassCard>
         <GlassToolbar className="grid grid-cols-1 md:grid-cols-6 gap-3">
           <div className="flex flex-col">
-            <label className="text-gray-700 text-sm">From</label>
+            <label className="text-gray-700 dark:text-gray-300 text-sm">From</label>
             <GlassInput type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
           </div>
           <div className="flex flex-col">
-            <label className="text-gray-700 text-sm">To</label>
+            <label className="text-gray-700 dark:text-gray-300 text-sm">To</label>
             <GlassInput type="date" value={to} onChange={(e) => setTo(e.target.value)} />
           </div>
           <div className="md:col-span-3 col-span-1 flex items-end gap-2 overflow-x-auto whitespace-nowrap">
@@ -432,7 +432,7 @@ export default function Dashboard() {
                 ))}
               </div>
               <div className="flex items-center gap-2 shrink-0" style={{ minWidth: 220 }}>
-                <span className="text-gray-700 text-sm">Supplier</span>
+                <span className="text-gray-700 dark:text-gray-300 text-sm">Supplier</span>
                 <div className="w-44 relative z-50">
                   <Select
                     classNamePrefix="rs"
@@ -455,7 +455,7 @@ export default function Dashboard() {
                 </div>
               </div>
               <div className="flex items-center gap-2 shrink-0" style={{ minWidth: 200 }}>
-                <span className="text-gray-700 text-sm">Brand</span>
+                <span className="text-gray-700 dark:text-gray-300 text-sm">Brand</span>
                 <div className="w-44 relative z-50">
                   <Select
                     classNamePrefix="rs"
@@ -493,8 +493,8 @@ export default function Dashboard() {
         />
         <div className="p-0 overflow-auto">
           <table className="min-w-full text-sm">
-            <thead className="sticky top-[56px] bg-white/80 backdrop-blur-sm z-10 border-b border-gray-200/70">
-              <tr className="text-left text-gray-700">
+            <thead className="sticky top-[56px] bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm z-10 border-b border-gray-200/70 dark:border-white/10">
+              <tr className="text-left text-gray-700 dark:text-gray-300">
                 <th className="px-3 py-2 font-medium">Product</th>
                 <th className="px-3 py-2 font-medium">Supplier</th>
                 <th className="px-3 py-2 font-medium">Brand</th>
@@ -541,8 +541,8 @@ export default function Dashboard() {
               <ArrowTrendingUpIcon className="w-5 h-5 text-white" />
             </div>
             <div>
-              <h3 className="text-lg font-semibold text-gray-800">Net Sales Trend</h3>
-              <p className="text-sm text-gray-500">Sales − Sale Returns</p>
+              <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-100">Net Sales Trend</h3>
+              <p className="text-sm text-gray-500 dark:text-gray-400">Sales − Sale Returns</p>
             </div>
           </div>
         </div>
@@ -581,8 +581,8 @@ export default function Dashboard() {
                 <ShoppingCartIcon className="w-5 h-5 text-white" />
               </div>
               <div>
-                <h3 className="text-lg font-semibold text-gray-800">Purchases vs Returns</h3>
-                <p className="text-sm text-gray-500">Track your purchase efficiency</p>
+                <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-100">Purchases vs Returns</h3>
+                <p className="text-sm text-gray-500 dark:text-gray-400">Track your purchase efficiency</p>
               </div>
             </div>
           </div>
@@ -616,8 +616,8 @@ export default function Dashboard() {
                 <CurrencyDollarIcon className="w-5 h-5 text-white" />
               </div>
               <div>
-                <h3 className="text-lg font-semibold text-gray-800">Sales vs Sale Returns</h3>
-                <p className="text-sm text-gray-500">Monitor your revenue health</p>
+                <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-100">Sales vs Sale Returns</h3>
+                <p className="text-sm text-gray-500 dark:text-gray-400">Monitor your revenue health</p>
               </div>
             </div>
           </div>

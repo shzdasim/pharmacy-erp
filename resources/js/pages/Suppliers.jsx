@@ -204,15 +204,15 @@ export default function Suppliers() {
   // While perms load
   if (permsLoading) return <div className="p-6">Loading…</div>;
   // No view permission → hide everything
-  if (!can.view) return <div className="p-6 text-sm text-gray-700">You don’t have permission to view suppliers.</div>;
+  if (!can.view) return <div className="p-6 text-sm text-gray-700 dark:text-gray-300">You don't have permission to view suppliers.</div>;
 
-  // 🧊 iOS-tinted glass (same palette used in Categories)
+  // 🧊 iOS-tinted glass (same palette used in Categories) - with dark mode support
   const tintBlue   = "bg-blue-500/85 text-white shadow-[0_6px_20px_-6px_rgba(37,99,235,0.45)] ring-1 ring-white/20 hover:bg-blue-500/95";
   const tintIndigo = "bg-indigo-500/85 text-white shadow-[0_6px_20px_-6px_rgba(99,102,241,0.45)] ring-1 ring-white/20 hover:bg-indigo-500/95";
   const tintSlate  = "bg-slate-900/80 text-white shadow-[0_6px_20px_-6px_rgba(15,23,42,0.45)] ring-1 ring-white/15 hover:bg-slate-900/90";
   const tintAmber  = "bg-amber-500/85 text-white shadow-[0_6px_20px_-6px_rgba(245,158,11,0.45)] ring-1 ring-white/20 hover:bg-amber-500/95";
   const tintRed    = "bg-rose-500/85 text-white shadow-[0_6px_20px_-6px_rgba(244,63,94,0.45)] ring-1 ring-white/20 hover:bg-rose-500/95";
-  const tintGlass  = "bg-white/60 text-slate-700 ring-1 ring-white/30 hover:bg-white/75";
+  const tintGlass  = "bg-white/60 text-slate-700 dark:text-slate-200 ring-1 ring-white/30 hover:bg-white/75 dark:hover:bg-slate-700/60";
 
   return (
     <div className="p-4 md:p-6 space-y-4">
@@ -221,8 +221,8 @@ export default function Suppliers() {
         <GlassSectionHeader
           title={
             <span className="inline-flex items-center gap-2">
-              <BuildingStorefrontIcon className="w-5 h-5 text-blue-600" />
-              <span>Suppliers</span>
+              <BuildingStorefrontIcon className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+              <span className="text-slate-800 dark:text-slate-100">Suppliers</span>
             </span>
           }
           right={
@@ -296,13 +296,13 @@ export default function Suppliers() {
                 <span className="inline-flex items-center gap-2">
                   {editingId ? (
                     <>
-                      <PencilSquareIcon className="w-5 h-5 text-amber-600" />
-                      <span>Edit Supplier</span>
+                      <PencilSquareIcon className="w-5 h-5 text-amber-600 dark:text-amber-400" />
+                      <span className="text-slate-800 dark:text-slate-100">Edit Supplier</span>
                     </>
                   ) : (
                     <>
-                      <PlusIcon className="w-5 h-5 text-blue-600" />
-                      <span>Add Supplier</span>
+                      <PlusIcon className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+                      <span className="text-slate-800 dark:text-slate-100">Add Supplier</span>
                     </>
                   )}
                 </span>
@@ -321,7 +321,7 @@ export default function Suppliers() {
             <div className="px-4 pb-4 pt-2">
               <form onSubmit={(e) => e.preventDefault()} className="space-y-3">
                 <div>
-                  <label className="block text-xs text-gray-700 mb-1">Name</label>
+                  <label className="block text-xs text-gray-700 dark:text-gray-300 mb-1">Name</label>
                   <GlassInput
                     type="text"
                     placeholder="Name"
@@ -336,7 +336,7 @@ export default function Suppliers() {
                 </div>
 
                 <div>
-                  <label className="block text-xs text-gray-700 mb-1">Address</label>
+                  <label className="block text-xs text-gray-700 dark:text-gray-300 mb-1">Address</label>
                   <GlassInput
                     type="text"
                     placeholder="Address"
@@ -349,7 +349,7 @@ export default function Suppliers() {
                 </div>
 
                 <div>
-                  <label className="block text-xs text-gray-700 mb-1">Phone</label>
+                  <label className="block text-xs text-gray-700 dark:text-gray-300 mb-1">Phone</label>
                   <GlassInput
                     type="text"
                     placeholder="Phone"
@@ -388,7 +388,7 @@ export default function Suppliers() {
                   </GlassBtn>
                 </div>
 
-                <div className="text-[11px] text-gray-500 text-right">Shortcut: Alt+S</div>
+                <div className="text-[11px] text-gray-500 dark:text-gray-400 text-right">Shortcut: Alt+S</div>
               </form>
             </div>
           </GlassCard>
@@ -399,12 +399,12 @@ export default function Suppliers() {
           <GlassSectionHeader
             title={
               <span className="inline-flex items-center gap-2">
-                <BuildingStorefrontIcon className="w-5 h-5 text-blue-600" />
-                <span>Supplier List</span>
+                <BuildingStorefrontIcon className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+                <span className="text-slate-800 dark:text-slate-100">Supplier List</span>
               </span>
             }
             right={
-              <div className="text-sm text-gray-700">
+              <div className="text-sm text-gray-700 dark:text-gray-300">
                 {loading ? (
                   "Loading…"
                 ) : (
@@ -425,15 +425,15 @@ export default function Suppliers() {
 
           {/* Table */}
           <div className="px-3 pb-3">
-            <div className="w-full overflow-x-auto rounded-2xl ring-1 ring-gray-200/60 bg-white/60 backdrop-blur-sm">
-              <table className="w-full text-sm text-gray-900">
-                <thead className="sticky top-0 bg-white/85 backdrop-blur-sm z-10 border-b border-gray-200/70">
+            <div className="w-full overflow-x-auto rounded-2xl ring-1 ring-gray-200/60 bg-white/60 dark:bg-slate-800/60 backdrop-blur-sm">
+              <table className="w-full text-sm text-gray-900 dark:text-gray-100">
+                <thead className="sticky top-0 bg-white/85 dark:bg-slate-700/85 backdrop-blur-sm z-10 border-b border-gray-200/70 dark:border-white/10">
                   <tr className="text-left">
-                    <th className="px-4 py-3 font-medium">Name</th>
-                    <th className="px-4 py-3 font-medium">Address</th>
-                    <th className="px-4 py-3 font-medium">Phone</th>
+                    <th className="px-4 py-3 font-medium text-slate-700 dark:text-slate-200">Name</th>
+                    <th className="px-4 py-3 font-medium text-slate-700 dark:text-slate-200">Address</th>
+                    <th className="px-4 py-3 font-medium text-slate-700 dark:text-slate-200">Phone</th>
                     {(can.update || can.delete) && (
-                      <th className="px-4 py-3 font-medium text-center">Actions</th>
+                      <th className="px-4 py-3 font-medium text-center text-slate-700 dark:text-slate-200">Actions</th>
                     )}
                   </tr>
                 </thead>
@@ -441,7 +441,7 @@ export default function Suppliers() {
                 <tbody>
                   {paged.length === 0 && !loading && (
                     <tr>
-                      <td className="px-4 py-10 text-center text-gray-600" colSpan={(can.update || can.delete) ? 4 : 3}>
+                      <td className="px-4 py-10 text-center text-gray-600 dark:text-gray-400" colSpan={(can.update || can.delete) ? 4 : 3}>
                         No suppliers found.
                       </td>
                     </tr>
@@ -450,10 +450,10 @@ export default function Suppliers() {
                   {paged.map((s) => {
                     const used = Number(s.products_count || 0) > 0;
                     return (
-                      <tr key={s.id} className="odd:bg-white/60 even:bg-white/40 hover:bg-blue-50/70 transition-colors">
-                        <td className="px-4 py-3">{s.name}</td>
-                        <td className="px-4 py-3">{s.address}</td>
-                        <td className="px-4 py-3">{s.phone}</td>
+                      <tr key={s.id} className="odd:bg-white/60 even:bg-white/40 dark:odd:bg-slate-700/40 dark:even:bg-slate-700/20 hover:bg-blue-50/70 dark:hover:bg-blue-900/30 transition-colors">
+                        <td className="px-4 py-3 text-slate-800 dark:text-slate-200">{s.name}</td>
+                        <td className="px-4 py-3 text-slate-600 dark:text-slate-400">{s.address}</td>
+                        <td className="px-4 py-3 text-slate-600 dark:text-slate-400">{s.phone}</td>
 
                         {(can.update || can.delete) && (
                           <td className="px-4 py-3">
@@ -508,7 +508,7 @@ export default function Suppliers() {
 
             {/* ===== Footer toolbar (pagination + page size) — mirrors Categories ===== */}
             <div className="mt-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-              <div className="text-sm text-gray-700">Page {page} of {pageCount}</div>
+              <div className="text-sm text-gray-700 dark:text-gray-300">Page {page} of {pageCount}</div>
               <div className="flex items-center gap-2">
                 <GlassBtn
                   className={`h-9 px-3 ${tintGlass}`}
@@ -540,11 +540,11 @@ export default function Suppliers() {
                 </GlassBtn>
 
                 <div className="ml-2 flex items-center gap-2">
-                  <label className="text-sm text-gray-600">Rows per page</label>
+                  <label className="text-sm text-gray-600 dark:text-gray-400">Rows per page</label>
                   <select
                     value={pageSize}
                     onChange={(e) => setPageSize(Number(e.target.value))}
-                    className="h-9 px-2 rounded-xl bg-white/70 backdrop-blur-sm border border-gray-200/70 ring-1 ring-transparent focus:ring-blue-400/40 shadow-sm focus:outline-none text-sm"
+                    className="h-9 px-2 rounded-xl bg-white/70 dark:bg-slate-700/70 backdrop-blur-sm border border-gray-200/70 dark:border-slate-600/70 ring-1 ring-transparent focus:ring-blue-400/40 shadow-sm focus:outline-none text-sm text-gray-900 dark:text-gray-100"
                   >
                     <option value={10}>10</option>
                     <option value={25}>25</option>
@@ -566,3 +566,5 @@ export default function Suppliers() {
     </div>
   );
 }
+
+

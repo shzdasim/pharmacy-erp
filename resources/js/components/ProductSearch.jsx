@@ -26,16 +26,16 @@ function ResultRow({ p, active, onHover, onOpen }) {
       onMouseEnter={onHover}
       className={[
         "px-4 py-3 transition select-none cursor-pointer",
-        active ? "bg-slate-50" : "hover:bg-slate-50",
+        active ? "bg-slate-100 dark:bg-slate-700" : "hover:bg-slate-50 dark:hover:bg-slate-700/50",
       ].join(" ")}
       onClick={onOpen}
       title="Open product"
       aria-label="Open product"
     >
-      <div className="flex items-start justify-between gap-3 bg-white">
+      <div className="flex items-start justify-between gap-3 bg-white dark:bg-slate-800">
         <div className="min-w-0">
-          <div className="font-medium text-slate-800 truncate">{p.name || "—"}</div>
-          <div className="flex flex-wrap gap-x-3 gap-y-1 mt-0.5 text-xs text-slate-600">
+          <div className="font-medium text-slate-800 dark:text-slate-100 truncate">{p.name || "—"}</div>
+          <div className="flex flex-wrap gap-x-3 gap-y-1 mt-0.5 text-xs text-slate-600 dark:text-slate-400">
             {p.brand?.name && (
               <span>
                 Brand: <b>{p.brand.name}</b>
@@ -54,11 +54,11 @@ function ResultRow({ p, active, onHover, onOpen }) {
           </div>
         </div>
         <div className="shrink-0 text-right">
-          <div className="text-[11px] text-slate-500">Pack Prices</div>
+          <div className="text-[11px] text-slate-500 dark:text-slate-400">Pack Prices</div>
           <div className="text-sm">
-            <span className="text-slate-700">{fmtMoney(p.pack_sale_price)}</span>
+            <span className="text-slate-700 dark:text-slate-200">{fmtMoney(p.pack_sale_price)}</span>
             <span className="text-slate-400"> / </span>
-            <span className="text-slate-500">{fmtMoney(p.pack_purchase_price)}</span>
+            <span className="text-slate-500 dark:text-slate-400">{fmtMoney(p.pack_purchase_price)}</span>
           </div>
         </div>
       </div>
@@ -69,18 +69,18 @@ function ResultRow({ p, active, onHover, onOpen }) {
 /* ─────────────── Detail Pane ─────────────── */
 function DetailPane({ detail, loading, error, onOpen }) {
   return (
-    <div className="hidden md:block border-l border-slate-200 min-h-[280px] bg-white">
-      {loading && <div className="p-6 text-sm text-slate-500">Loading details…</div>}
-      {!loading && error && <div className="p-6 text-sm text-rose-600">{error}</div>}
+    <div className="hidden md:block border-l border-slate-200 dark:border-white/10 min-h-[280px] bg-white dark:bg-slate-800">
+      {loading && <div className="p-6 text-sm text-slate-500 dark:text-slate-400">Loading details…</div>}
+      {!loading && error && <div className="p-6 text-sm text-rose-600 dark:text-rose-400">{error}</div>}
       {!loading && !detail && !error && (
-        <div className="p-6 text-sm text-slate-500">
+        <div className="p-6 text-sm text-slate-500 dark:text-slate-400">
           Hover or select a product to preview details.
         </div>
       )}
       {!loading && detail && (
         <div className="p-4">
           <div className="flex items-start gap-4">
-            <div className="w-24 h-24 rounded-xl overflow-hidden bg-white ring-1 ring-slate-200">
+            <div className="w-24 h-24 rounded-xl overflow-hidden bg-white dark:bg-slate-700 ring-1 ring-slate-200 dark:ring-white/10">
               {detail.image ? (
                 <img
                   src={
@@ -98,34 +98,34 @@ function DetailPane({ detail, loading, error, onOpen }) {
               )}
             </div>
             <div className="min-w-0">
-              <div className="font-semibold text-slate-800">{detail.name}</div>
-              <div className="mt-0.5 text-sm text-slate-600">
+              <div className="font-semibold text-slate-800 dark:text-slate-100">{detail.name}</div>
+              <div className="mt-0.5 text-sm text-slate-600 dark:text-slate-400">
                 {detail.formulation || "—"}
               </div>
               <div className="mt-2 grid grid-cols-2 gap-x-6 gap-y-1 text-sm">
                 <div>
-                  <span className="text-slate-500">Category:</span>{" "}
-                  <b>{detail.category?.name || "—"}</b>
+                  <span className="text-slate-500 dark:text-slate-400">Category:</span>{" "}
+                  <b className="text-slate-700 dark:text-slate-200">{detail.category?.name || "—"}</b>
                 </div>
                 <div>
-                  <span className="text-slate-500">Brand:</span>{" "}
-                  <b>{detail.brand?.name || "—"}</b>
+                  <span className="text-slate-500 dark:text-slate-400">Brand:</span>{" "}
+                  <b className="text-slate-700 dark:text-slate-200">{detail.brand?.name || "—"}</b>
                 </div>
                 <div>
-                  <span className="text-slate-500">Supplier:</span>{" "}
-                  <b>{detail.supplier?.name || "—"}</b>
+                  <span className="text-slate-500 dark:text-slate-400">Supplier:</span>{" "}
+                  <b className="text-slate-700 dark:text-slate-200">{detail.supplier?.name || "—"}</b>
                 </div>
                 <div>
-                  <span className="text-slate-500">Pack Size:</span>{" "}
-                  <b>{detail.pack_size ?? "—"}</b>
+                  <span className="text-slate-500 dark:text-slate-400">Pack Size:</span>{" "}
+                  <b className="text-slate-700 dark:text-slate-200">{detail.pack_size ?? "—"}</b>
                 </div>
                 <div>
-                  <span className="text-slate-500">Pack Purchase:</span>{" "}
-                  <b>{fmtMoney(detail.pack_purchase_price)}</b>
+                  <span className="text-slate-500 dark:text-slate-400">Pack Purchase:</span>{" "}
+                  <b className="text-slate-700 dark:text-slate-200">{fmtMoney(detail.pack_purchase_price)}</b>
                 </div>
                 <div>
-                  <span className="text-slate-500">Pack Sale:</span>{" "}
-                  <b>{fmtMoney(detail.pack_sale_price)}</b>
+                  <span className="text-slate-500 dark:text-slate-400">Pack Sale:</span>{" "}
+                  <b className="text-slate-700 dark:text-slate-200">{fmtMoney(detail.pack_sale_price)}</b>
                 </div>
               </div>
             </div>
@@ -140,8 +140,8 @@ function DetailPane({ detail, loading, error, onOpen }) {
               onClick={onOpen}
               className="inline-flex items-center gap-2"
             >
-              <ArrowTopRightOnSquareIcon className="w-5 h-5 text-blue-600" />
-              <span className="text-slate-800">Open Product</span>
+              <ArrowTopRightOnSquareIcon className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+              <span className="text-slate-800 dark:text-slate-100">Open Product</span>
             </GlassBtn>
           </div>
         </div>
@@ -275,12 +275,12 @@ export default function ProductSearch() {
   };
 
   return (
-    <div className="relative z-40 w-full max-w-md bg-white" ref={boxRef}>
+    <div className="relative z-40 w-full max-w-md bg-white dark:bg-slate-800" ref={boxRef}>
       {/* Search bar (glassy input) */}
       <div
         className={[
           "flex items-center gap-2 rounded-2xl px-3 h-10",
-          "bg-white ring-1 ring-slate-200 shadow-sm",
+          "bg-white dark:bg-slate-700 ring-1 ring-slate-200 dark:ring-slate-600 shadow-sm",
           "transition-all hover:-translate-y-[1px] hover:shadow-md",
         ].join(" ")}
       >
@@ -295,7 +295,7 @@ export default function ProductSearch() {
           onFocus={() => setPanelOpen(true)}
           onKeyDown={onKeyDown}
           placeholder="Search products… (Alt+/)"
-          className="w-full bg-white border-0 ring-0 focus:ring-0 focus:border-0 placeholder:text-slate-400"
+          className="w-full bg-white dark:bg-slate-700 border-0 ring-0 focus:ring-0 focus:border-0 placeholder:text-slate-400 dark:placeholder:text-slate-500 text-slate-900 dark:text-slate-100"
           title="Search products (Alt+/)"
           aria-label="Search products"
         />
@@ -320,7 +320,7 @@ export default function ProductSearch() {
             Clear
           </GlassBtn>
         ) : (
-          <kbd className="text-[11px] border border-slate-300 rounded px-1 py-0.5 bg-white">
+          <kbd className="text-[11px] border border-slate-300 dark:border-slate-600 rounded px-1 py-0.5 bg-white dark:bg-slate-700 text-slate-600 dark:text-slate-400">
             Alt+/
           </kbd>
         )}
@@ -328,18 +328,18 @@ export default function ProductSearch() {
 
       {/* Results panel (solid card for readability; still using GlassCard infra) */}
       {panelOpen && (
-        <GlassCard className="absolute left-0 mt-2 overflow-hidden bg-white w-[900px] max-w-[calc(100vw-2rem)]">
-          <GlassToolbar className="items-center justify-between pb-2 pt-2 bg-white">
-            <div className="text-sm text-slate-600">
+        <GlassCard className="absolute left-0 mt-2 overflow-hidden bg-white dark:bg-slate-800 w-[900px] max-w-[calc(100vw-2rem)]">
+          <GlassToolbar className="items-center justify-between pb-2 pt-2 bg-white dark:bg-slate-800">
+            <div className="text-sm text-slate-600 dark:text-slate-300">
               {q ? (
                 <>
-                  Showing results for <span className="font-medium">“{q}”</span>
+                  Showing results for <span className="font-medium">"{q}"</span>
                 </>
               ) : (
                 <>Type to search products…</>
               )}
             </div>
-            <div className="flex items-center gap-3 text-[11px] text-slate-500">
+            <div className="flex items-center gap-3 text-[11px] text-slate-500 dark:text-slate-400">
               <span>
                 <kbd className="border px-1 rounded">↑</kbd>/
                 <kbd className="border px-1 rounded">↓</kbd> navigate
@@ -353,16 +353,16 @@ export default function ProductSearch() {
             </div>
           </GlassToolbar>
 
-          <div className="grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)] border-t border-gray-200/60 bg-white">
+          <div className="grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)] border-t border-gray-200/60 dark:border-white/10 bg-white dark:bg-slate-800">
             {/* Left list */}
-            <div className="max-h-[56vh] overflow-auto bg-white">
+            <div className="max-h-[56vh] overflow-auto bg-white dark:bg-slate-800">
               {!loading && q && results.length === 0 && (
-                <div className="px-4 py-6 text-sm text-slate-500 flex items-center gap-2 bg-white">
+                <div className="px-4 py-6 text-sm text-slate-500 dark:text-slate-400 flex items-center gap-2 bg-white dark:bg-slate-800">
                   <ExclamationTriangleIcon className="w-4 h-4" />
                   No products found.
                 </div>
               )}
-              <ul role="list" className="divide-y divide-slate-200 bg-white">
+              <ul role="list" className="divide-y divide-slate-200 dark:divide-white/10 bg-white dark:bg-slate-800">
                 {results.map((p, idx) => (
                   <ResultRow
                     key={p.id}
@@ -388,3 +388,4 @@ export default function ProductSearch() {
     </div>
   );
 }
+

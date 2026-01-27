@@ -1,28 +1,98 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
 /* ---- Glass UI primitives live here and won't be purged ---- */
 @layer components {
   .g-card {
     @apply rounded-2xl bg-white/60 backdrop-blur-sm ring-1 ring-gray-200/60 shadow-xl transition-colors;
+    @apply dark:bg-slate-800/60 dark:ring-gray-700/60 dark:text-gray-100;
+  }
+  .g-card table {
+    @apply text-gray-900;
+    @apply dark:text-gray-100;
+  }
+  .g-card table thead {
+    @apply bg-white/85 text-gray-900;
+    @apply dark:bg-slate-700/85 dark:text-gray-100;
+  }
+  .g-card table tbody td {
+    @apply text-gray-900;
+    @apply dark:text-gray-100;
+  }
+  /* Table row backgrounds with dark mode support */
+  .g-card table tbody tr.odd {
+    @apply bg-white/60;
+    @apply dark:bg-slate-700/60;
+  }
+  .g-card table tbody tr.even {
+    @apply bg-white/40;
+    @apply dark:bg-slate-800/40;
+  }
+  .g-card table tbody tr:hover {
+    @apply bg-blue-50/70;
+    @apply dark:bg-slate-600/70;
+  }
+  /* Generic table styles for all tables (not just inside g-card) */
+  table {
+    @apply text-gray-900 dark:text-gray-100;
+  }
+  table thead {
+    @apply bg-white/85 text-gray-900 dark:bg-slate-700/85 dark:text-gray-100;
+  }
+  table tbody td {
+    @apply text-gray-900 dark:text-gray-100;
+  }
+  table tbody tr.odd {
+    @apply bg-white/60 dark:bg-slate-700/60;
+  }
+  table tbody tr.even {
+    @apply bg-white/40 dark:bg-slate-800/40;
+  }
+  table tbody tr:hover {
+    @apply bg-blue-50/70 dark:bg-slate-600/70;
+  }
+  /* Sticky table header with dark mode */
+  table thead.sticky,
+  table thead[class*="sticky"] {
+    @apply bg-white/85 dark:bg-slate-700/85;
   }
   .g-section-header {
-    @apply sticky top-0 z-10 px-4 py-3 bg-white/70 backdrop-blur-sm border-b border-gray-200/60 rounded-t-2xl;
+    @apply sticky top-0 z-10 px-4 py-3 bg-white/70 backdrop-blur-sm border-b border-gray-200/60 rounded-t-2xl text-gray-900;
+    @apply dark:bg-slate-800/70 dark:border-slate-700/60 dark:text-gray-100;
   }
   .g-toolbar {
     @apply flex flex-wrap items-end gap-2 px-4 pb-3 pt-2;
   }
+  /* Form labels and general text in glass components */
+  .g-card label,
+  .g-card .g-label {
+    @apply text-gray-700;
+    @apply dark:text-gray-300;
+  }
+  /* Note: For muted text colors in dark mode, use inline classes or style directly */
   .g-input {
     @apply h-9 px-3 rounded-xl bg-white/70 backdrop-blur-sm border border-gray-200/70 ring-1 ring-transparent
            focus:ring-blue-400/40 shadow-sm focus:outline-none;
+    @apply dark:bg-slate-700/70 dark:border-slate-600/70 dark:text-gray-100 dark:placeholder-gray-400
+           dark:focus:ring-indigo-400/40;
   }
   .g-btn-base {
     @apply h-9 px-3 rounded-xl text-sm font-medium transition focus:outline-none
            ring-1 ring-transparent focus:ring-blue-400/40;
   }
-  .g-btn-ghost { @apply g-btn-base bg-white/70 backdrop-blur-sm border border-gray-200/70 hover:bg-white shadow-sm; }
-  .g-btn-primary { @apply g-btn-base bg-blue-600 text-white hover:bg-blue-700 shadow; }
-  .g-btn-chip { @apply px-2 bg-white/70 backdrop-blur-sm border border-gray-200/70 hover:bg-white shadow-sm rounded-xl text-sm; }
+  .g-btn-ghost { 
+    @apply g-btn-base bg-white/70 backdrop-blur-sm border border-gray-200/70 hover:bg-white shadow-sm text-gray-900; 
+    @apply dark:bg-slate-700/70 dark:border-slate-600/70 dark:hover:bg-slate-600/70 dark:text-gray-100;
+  }
+  .g-btn-primary { 
+    @apply g-btn-base bg-blue-600 text-white hover:bg-blue-700 shadow; 
+    @apply dark:bg-indigo-600 dark:hover:bg-indigo-700;
+  }
+  .g-btn-chip { 
+    @apply px-2 bg-white/70 backdrop-blur-sm border border-gray-200/70 hover:bg-white shadow-sm rounded-xl text-sm text-gray-900; 
+    @apply dark:bg-slate-700/70 dark:border-slate-600/70 dark:hover:bg-slate-600/70 dark:text-gray-100;
+  }
 }
 
 /* Add this animation in your global CSS (Tailwind supports it) */
@@ -35,4 +105,33 @@
 
 .animate-shake {
   animation: shake 0.4s ease-in-out;
+}
+
+/* Theme transition styles */
+html {
+  @apply transition-colors duration-300;
+}
+
+body {
+  @apply bg-gray-100 text-gray-900;
+  @apply dark:bg-slate-900 dark:text-gray-100;
+}
+
+/* Dark mode scrollbar styles */
+.dark ::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.dark ::-webkit-scrollbar-track {
+  background: rgb(30, 41, 59);
+}
+
+.dark ::-webkit-scrollbar-thumb {
+  background: rgb(71, 85, 105);
+  border-radius: 4px;
+}
+
+.dark ::-webkit-scrollbar-thumb:hover {
+  background: rgb(100, 116, 139);
 }

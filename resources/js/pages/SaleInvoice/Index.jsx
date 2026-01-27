@@ -318,22 +318,22 @@ const confirmAndDelete = async () => {
       {/* ===== Table card (glassy, sticky header) ===== */}
       <GlassCard>
         <div className="max-h-[70vh] overflow-auto rounded-b-2xl">
-          <table className="w-full text-sm text-gray-900">
-            <thead className="sticky top-0 bg-white/90 backdrop-blur-sm z-10 border-b border-gray-200/70">
+          <table className="w-full text-sm text-gray-900 dark:text-gray-100">
+            <thead className="sticky top-0 bg-white/90 dark:bg-slate-700/90 backdrop-blur-sm z-10 border-b border-gray-200/70 dark:border-slate-600/70">
               <tr className="text-left">
-                <th className="px-3 py-2 font-medium">#</th>
-                <th className="px-3 py-2 font-medium">Posted No</th>
-                <th className="px-3 py-2 font-medium">Customer</th>
-                <th className="px-3 py-2 font-medium">Date</th>
-                <th className="px-3 py-2 font-medium text-right">Total</th>
-                <th className="px-3 py-2 font-medium text-center">Actions</th>
+                <th className="px-3 py-2 font-medium text-gray-900 dark:text-gray-100">#</th>
+                <th className="px-3 py-2 font-medium text-gray-900 dark:text-gray-100">Posted No</th>
+                <th className="px-3 py-2 font-medium text-gray-900 dark:text-gray-100">Customer</th>
+                <th className="px-3 py-2 font-medium text-gray-900 dark:text-gray-100">Date</th>
+                <th className="px-3 py-2 font-medium text-right text-gray-900 dark:text-gray-100">Total</th>
+                <th className="px-3 py-2 font-medium text-center text-gray-900 dark:text-gray-100">Actions</th>
               </tr>
             </thead>
 
             <tbody>
               {(!loading && filtered.length === 0) && (
                 <tr>
-                  <td className="px-3 py-10 text-center text-gray-600" colSpan={6}>
+                  <td className="px-3 py-10 text-center text-gray-600 dark:text-gray-400" colSpan={6}>
                     No sale invoices found.
                   </td>
                 </tr>
@@ -342,13 +342,13 @@ const confirmAndDelete = async () => {
               {paged.map((invoice, idx) => (
                 <tr
                   key={invoice.id}
-                  className={`transition-colors odd:bg-white/90 even:bg-white/70 hover:bg-blue-50`}
+                  className={`transition-colors odd:bg-white/90 even:bg-white/70 hover:bg-blue-50 dark:odd:bg-slate-700/60 dark:even:bg-slate-800/60 dark:hover:bg-slate-600/70`}
                 >
-                  <td className="px-3 py-2">{start + idx + 1}</td>
-                  <td className="px-3 py-2">{invoice.posted_number || "-"}</td>
-                  <td className="px-3 py-2">{invoice.customer?.name ?? "N/A"}</td>
-                  <td className="px-3 py-2">{invoice.date}</td>
-                  <td className="px-3 py-2 text-right">{Number(invoice.total ?? 0).toLocaleString()}</td>
+                  <td className="px-3 py-2 text-gray-900 dark:text-gray-100">{start + idx + 1}</td>
+                  <td className="px-3 py-2 text-gray-900 dark:text-gray-100">{invoice.posted_number || "-"}</td>
+                  <td className="px-3 py-2 text-gray-900 dark:text-gray-100">{invoice.customer?.name ?? "N/A"}</td>
+                  <td className="px-3 py-2 text-gray-900 dark:text-gray-100">{invoice.date}</td>
+                  <td className="px-3 py-2 text-right text-gray-900 dark:text-gray-100">{Number(invoice.total ?? 0).toLocaleString()}</td>
                   <td className="px-3 py-2">
                     <div className="flex flex-wrap gap-2 justify-center">
                       <Guard when={can.update}>

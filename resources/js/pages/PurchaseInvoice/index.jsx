@@ -301,17 +301,17 @@ useEffect(() => {
       {/* ===== Table card ===== */}
       <GlassCard>
         <div className="max-h-[70vh] overflow-auto rounded-b-2xl">
-          <table className="w-full text-sm text-gray-900">
-            <thead className="sticky top-0 bg-white/90 backdrop-blur-sm z-10 border-b border-gray-200/70">
+          <table className="w-full text-sm text-gray-900 dark:text-gray-100">
+            <thead className="sticky top-0 bg-white/90 dark:bg-slate-700/90 backdrop-blur-sm z-10 border-b border-gray-200/70 dark:border-slate-600/70">
               <tr className="text-left">
-                <th className="px-3 py-2 font-medium">#</th>
-                <th className="px-3 py-2 font-medium">Posted No</th>
-                <th className="px-3 py-2 font-medium">Invoice No</th>
-                <th className="px-3 py-2 font-medium">Supplier</th>
-                <th className="px-3 py-2 font-medium">Date</th>
-                <th className="px-3 py-2 font-medium text-right">Amount</th>
+                <th className="px-3 py-2 font-medium text-gray-900 dark:text-gray-100">#</th>
+                <th className="px-3 py-2 font-medium text-gray-900 dark:text-gray-100">Posted No</th>
+                <th className="px-3 py-2 font-medium text-gray-900 dark:text-gray-100">Invoice No</th>
+                <th className="px-3 py-2 font-medium text-gray-900 dark:text-gray-100">Supplier</th>
+                <th className="px-3 py-2 font-medium text-gray-900 dark:text-gray-100">Date</th>
+                <th className="px-3 py-2 font-medium text-right text-gray-900 dark:text-gray-100">Amount</th>
                 {(can.update || can.delete) && (
-                  <th className="px-3 py-2 font-medium text-center">Actions</th>
+                  <th className="px-3 py-2 font-medium text-center text-gray-900 dark:text-gray-100">Actions</th>
                 )}
               </tr>
             </thead>
@@ -319,7 +319,7 @@ useEffect(() => {
             <tbody>
               {rows.length === 0 && !loading && (
                 <tr>
-                  <td className="px-3 py-10 text-center text-gray-600" colSpan={7}>
+                  <td className="px-3 py-10 text-center text-gray-600 dark:text-gray-400" colSpan={7}>
                     No invoices found.
                   </td>
                 </tr>
@@ -328,14 +328,14 @@ useEffect(() => {
               {rows.map((inv, idx) => (
                 <tr
                   key={inv.id}
-                  className={`transition-colors odd:bg-white/90 even:bg-white/70 hover:bg-blue-50`}
+                  className={`transition-colors odd:bg-white/90 even:bg-white/70 hover:bg-blue-50 dark:odd:bg-slate-700/60 dark:even:bg-slate-800/60 dark:hover:bg-slate-600/70`}
                 >
-                  <td className="px-3 py-2">{(page - 1) * pageSize + idx + 1}</td>
-                  <td className="px-3 py-2">{inv.posted_number || "-"}</td>
-                  <td className="px-3 py-2">{inv.invoice_number}</td>
-                  <td className="px-3 py-2">{inv.supplier?.name ?? "N/A"}</td>
-                  <td className="px-3 py-2">{inv.posted_date}</td>
-                  <td className="px-3 py-2 text-right">
+                  <td className="px-3 py-2 text-gray-900 dark:text-gray-100">{(page - 1) * pageSize + idx + 1}</td>
+                  <td className="px-3 py-2 text-gray-900 dark:text-gray-100">{inv.posted_number || "-"}</td>
+                  <td className="px-3 py-2 text-gray-900 dark:text-gray-100">{inv.invoice_number}</td>
+                  <td className="px-3 py-2 text-gray-900 dark:text-gray-100">{inv.supplier?.name ?? "N/A"}</td>
+                  <td className="px-3 py-2 text-gray-900 dark:text-gray-100">{inv.posted_date}</td>
+                  <td className="px-3 py-2 text-right text-gray-900 dark:text-gray-100">
                     {Number(inv.total_amount ?? 0).toLocaleString()}
                   </td>
 
