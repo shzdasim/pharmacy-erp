@@ -29,7 +29,9 @@ import {
   ClipboardDocumentIcon,
   KeyIcon,
   LockClosedIcon,
-  LockOpenIcon,
+  CogIcon,
+  PrinterIcon,
+  DocumentTextIcon,
 } from "@heroicons/react/24/solid";
 
 registerPlugin(FilePondPluginImagePreview, FilePondPluginFileValidateType);
@@ -50,6 +52,9 @@ export default function Setting() {
 
   // FilePond files (supports remote preload)
   const [files, setFiles] = useState([]);
+  
+  // Tab state
+  const [activeTab, setActiveTab] = useState("general");
 
   // License management state
   const [licenseStatus, setLicenseStatus] = useState(null);
@@ -330,8 +335,55 @@ export default function Setting() {
         </GlassToolbar>
       </GlassCard>
 
-      {/* ===== Identity + Contact ===== */}
-      <GlassCard>
+      {/* ===== Tab Navigation ===== */}
+      <GlassCard className="!py-0 !px-0 overflow-hidden">
+        <div className="flex border-b border-gray-200/60 bg-gray-50/50">
+          {/* General Tab */}
+          <button
+            onClick={() => setActiveTab("general")}
+            className={`flex items-center gap-2 px-5 py-3 text-sm font-medium transition-all duration-200 border-b-2 ${
+              activeTab === "general"
+                ? "border-blue-600 text-blue-700 bg-white/70"
+                : "border-transparent text-gray-600 hover:text-gray-800 hover:bg-white/50"
+            }`}
+          >
+            <CogIcon className="w-5 h-5" />
+            <span>General</span>
+          </button>
+          
+          {/* Printer Settings Tab */}
+          <button
+            onClick={() => setActiveTab("printer")}
+            className={`flex items-center gap-2 px-5 py-3 text-sm font-medium transition-all duration-200 border-b-2 ${
+              activeTab === "printer"
+                ? "border-blue-600 text-blue-700 bg-white/70"
+                : "border-transparent text-gray-600 hover:text-gray-800 hover:bg-white/50"
+            }`}
+          >
+            <PrinterIcon className="w-5 h-5" />
+            <span>Printer Settings</span>
+          </button>
+          
+          {/* License Settings Tab */}
+          <button
+            onClick={() => setActiveTab("license")}
+            className={`flex items-center gap-2 px-5 py-3 text-sm font-medium transition-all duration-200 border-b-2 ${
+              activeTab === "license"
+                ? "border-blue-600 text-blue-700 bg-white/70"
+                : "border-transparent text-gray-600 hover:text-gray-800 hover:bg-white/50"
+            }`}
+          >
+            <DocumentTextIcon className="w-5 h-5" />
+            <span>License Settings</span>
+          </button>
+        </div>
+      </GlassCard>
+
+      {/* ===== Tab Content ===== */}
+      {activeTab === "general" && (
+        <>
+          {/* ===== Identity + Contact ===== */}
+          <GlassCard>
         <GlassSectionHeader title="Store Identity & Contact" />
         <GlassToolbar className="grid grid-cols-1 md:grid-cols-2 gap-3">
           {/* Store Name */}
@@ -429,6 +481,33 @@ export default function Setting() {
         </GlassToolbar>
       </GlassCard>
 
+      {/* ===== Logo (FilePond) ===== */}
+      <GlassCard className="relative z-10">
+        <GlassSectionHeader title="Brand Logo" />
+        <div className="px-4 pb-4">
+          <div className="rounded-2xl bg-white/60 backdrop-blur-sm ring-1 ring-gray-200/60 p-3 shadow-sm">
+            <FilePond
+              files={files}
+              onupdatefiles={(fl) => {
+                if (!can.update) { toast.error("No permission to update settings."); return; }
+                setFiles(fl);
+              }}
+              allowMultiple={false}
+              acceptedFileTypes={["image/*"]}
+              disabled={disableInputs}
+              labelIdle='Drag & Drop your logo or <span class="filepond--label-action">Browse</span>'
+              credits={false}
+            />
+            <p className="text-xs text-gray-500 mt-2">PNG/JPG/WEBP, up to 2 MB.</p>
+          </div>
+        </div>
+      </GlassCard>
+        </>
+      )}
+
+      {/* ===== Printer Settings Tab ===== */}
+      {activeTab === "printer" && (
+        <>
       {/* ===== Printer ===== */}
       <GlassCard>
         <GlassSectionHeader title="Printing Preference" />
@@ -482,29 +561,12 @@ export default function Setting() {
           </div>
         </GlassToolbar>
       </GlassCard>
+        </>
+      )}
 
-      {/* ===== Logo (FilePond) ===== */}
-      <GlassCard className="relative z-10">
-        <GlassSectionHeader title="Brand Logo" />
-        <div className="px-4 pb-4">
-          <div className="rounded-2xl bg-white/60 backdrop-blur-sm ring-1 ring-gray-200/60 p-3 shadow-sm">
-            <FilePond
-              files={files}
-              onupdatefiles={(fl) => {
-                if (!can.update) { toast.error("No permission to update settings."); return; }
-                setFiles(fl);
-              }}
-              allowMultiple={false}
-              acceptedFileTypes={["image/*"]}
-              disabled={disableInputs}
-              labelIdle='Drag & Drop your logo or <span class="filepond--label-action">Browse</span>'
-              credits={false}
-            />
-            <p className="text-xs text-gray-500 mt-2">PNG/JPG/WEBP, up to 2 MB.</p>
-          </div>
-        </div>
-      </GlassCard>
-
+      {/* ===== License Settings Tab ===== */}
+      {activeTab === "license" && (
+        <>
       {/* ===== License Management ===== */}
       <GlassCard>
         <GlassSectionHeader
@@ -524,18 +586,7 @@ export default function Setting() {
                   View Details
                 </span>
               </GlassBtn>
-              {licenseStatus?.valid && (
-                <GlassBtn
-                  onClick={() => openPasswordModal("deactivate")}
-                  className={`h-8 px-3 ${tintSlate}`}
-                  title="Deactivate license"
-                >
-                  <span className="inline-flex items-center gap-1 text-xs">
-                    <LockOpenIcon className="w-4 h-4" />
-                    Deactivate
-                  </span>
-                </GlassBtn>
-              )}
+              {/* Deactivate button removed */}
             </div>
           }
         />
@@ -590,6 +641,8 @@ export default function Setting() {
           </div>
         </GlassToolbar>
       </GlassCard>
+        </>
+      )}
 
       {/* ===== Bottom Save ===== */}
       <div className="flex justify-end">
