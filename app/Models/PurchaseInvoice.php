@@ -8,6 +8,7 @@ class PurchaseInvoice extends Model
 {
     protected $fillable = [
         'supplier_id',
+        'invoice_type',
         'posted_number',
         'posted_date',
         'remarks',

@@ -5,7 +5,9 @@ namespace App\Http\Controllers;
 use App\Models\Batch;
 use App\Models\Product;
 use App\Models\PurchaseInvoice;
+use App\Models\SupplierLedger;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 
 class PurchaseInvoiceController extends Controller
@@ -63,6 +65,7 @@ class PurchaseInvoiceController extends Controller
         $this->authorize('create', PurchaseInvoice::class);
         $data = $request->validate([
             'supplier_id'          => 'required|exists:suppliers,id',
+            'invoice_type'         => 'nullable|string|in:credit,debit,default:debit',
             // 'posted_number'      => now generated server-side
             'posted_date'          => 'required|date',
             'remarks'              => 'nullable|string',
@@ -119,6 +122,7 @@ class PurchaseInvoiceController extends Controller
 
                 $invoice = PurchaseInvoice::create(array_merge($data, [
                     'posted_number' => $nextCode,
+                    'invoice_type'  => $data['invoice_type'] ?? 'debit',
                 ]));
 
                 $this->processInvoiceItems($invoice, $data['items']);
@@ -126,6 +130,27 @@ class PurchaseInvoiceController extends Controller
                 $this->recalcProductsByIds(
                     collect($data['items'])->pluck('product_id')->unique()->all()
                 );
+
+                // Create supplier ledger entry ONLY for credit purchases
+                $invoiceType = $data['invoice_type'] ?? 'debit';
+if ($invoiceType === 'credit') {
+                    $ledger = new SupplierLedger();
+                    $ledger->supplier_id       = $data['supplier_id'];
+                    $ledger->purchase_invoice_id = $invoice->id;
+                    $ledger->entry_type        = 'invoice';
+                    $ledger->is_manual         = false;
+                    $ledger->entry_date        = $data['posted_date'];
+                    $ledger->posted_number     = $nextCode;
+                    $ledger->invoice_number    = $data['invoice_number'];
+                    $ledger->invoice_total     = $data['total_amount'];
+                    $ledger->total_paid        = $data['total_paid'] ?? 0;
+                    $ledger->debited_amount    = 0;
+                    $ledger->credit_remaining  = max((float)$data['total_amount'] - (float)($data['total_paid'] ?? 0), 0);
+                    $ledger->payment_ref       = null;
+                    $ledger->description       = 'Purchase invoice ' . $nextCode;
+                    $ledger->created_by        = optional(Auth::user())->id;
+                    $ledger->save();
+                }
 
                 // Return the created invoice including items and supplier for the client
                 return response()->json($invoice->load('items.product', 'supplier'), 201);
@@ -149,6 +174,7 @@ class PurchaseInvoiceController extends Controller
         $this->authorize('update', $purchaseInvoice);
         $data = $request->validate([
             'supplier_id'          => 'required|exists:suppliers,id',
+            'invoice_type'         => 'nullable|string|in:credit,debit',
             // 'posted_number'      => not user-editable on update
             'posted_date'          => 'required|date',
             'remarks'              => 'nullable|string',
@@ -186,7 +212,27 @@ class PurchaseInvoiceController extends Controller
                 // Keep existing posted_number intact
                 $data['posted_number'] = $purchaseInvoice->posted_number;
 
-                $purchaseInvoice->update($data);
+                // Store old invoice type before update
+                $oldInvoiceType = $purchaseInvoice->invoice_type ?? 'debit';
+                $newInvoiceType = $data['invoice_type'] ?? $oldInvoiceType;
+
+                // Update invoice with explicit invoice_type
+                $purchaseInvoice->update([
+                    'supplier_id'        => $data['supplier_id'],
+                    'invoice_type'       => $newInvoiceType,
+                    'posted_number'      => $data['posted_number'],
+                    'posted_date'        => $data['posted_date'],
+                    'remarks'            => $data['remarks'] ?? null,
+                    'invoice_number'     => $data['invoice_number'],
+                    'invoice_amount'     => $data['invoice_amount'],
+                    'tax_percentage'     => $data['tax_percentage'] ?? 0,
+                    'tax_amount'         => $data['tax_amount'] ?? 0,
+                    'discount_percentage'=> $data['discount_percentage'] ?? 0,
+                    'discount_amount'    => $data['discount_amount'] ?? 0,
+                    'total_amount'       => $data['total_amount'],
+                    'total_paid'         => $data['total_paid'] ?? 0,
+                ]);
+
                 $purchaseInvoice->load('items');
 
                 $affectedIds = $purchaseInvoice->items->pluck('product_id')->merge(
@@ -201,6 +247,48 @@ class PurchaseInvoiceController extends Controller
                 $this->processInvoiceItems($purchaseInvoice, $data['items']);
 
                 $this->recalcProductsByIds($affectedIds);
+
+                // Handle supplier ledger entries
+                // If invoice was previously credit but is now debit, delete the ledger entry
+                if ($oldInvoiceType === 'credit' && $newInvoiceType !== 'credit') {
+                    // Remove existing ledger entry for this invoice
+                    SupplierLedger::where('purchase_invoice_id', $purchaseInvoice->id)->delete();
+                }
+                // If invoice is now credit, create or update ledger entry
+                elseif ($newInvoiceType === 'credit') {
+                    // Check if a ledger entry already exists for this invoice
+                    $existingLedger = SupplierLedger::where('purchase_invoice_id', $purchaseInvoice->id)->first();
+                    
+                    if ($existingLedger) {
+                        // Update existing ledger entry
+                        $existingLedger->update([
+                            'supplier_id'        => $data['supplier_id'],
+                            'entry_date'         => $data['posted_date'],
+                            'invoice_total'      => $data['total_amount'],
+                            'total_paid'         => $data['total_paid'] ?? 0,
+                            'credit_remaining'   => max((float)$data['total_amount'] - (float)($data['total_paid'] ?? 0), 0),
+                            'description'        => 'Purchase invoice ' . $data['posted_number'],
+                        ]);
+                    } else {
+                        // Create new ledger entry
+                        $ledger = new SupplierLedger();
+                        $ledger->supplier_id         = $data['supplier_id'];
+                        $ledger->purchase_invoice_id = $purchaseInvoice->id;
+                        $ledger->entry_type          = 'invoice';
+                        $ledger->is_manual           = false;
+                        $ledger->entry_date          = $data['posted_date'];
+                        $ledger->posted_number       = $data['posted_number'];
+                        $ledger->invoice_number      = $data['invoice_number'];
+                        $ledger->invoice_total       = $data['total_amount'];
+                        $ledger->total_paid          = $data['total_paid'] ?? 0;
+                        $ledger->debited_amount      = 0;
+                        $ledger->credit_remaining    = max((float)$data['total_amount'] - (float)($data['total_paid'] ?? 0), 0);
+                        $ledger->payment_ref         = null;
+                        $ledger->description         = 'Purchase invoice ' . $data['posted_number'];
+                        $ledger->created_by          = optional(Auth::user())->id;
+                        $ledger->save();
+                    }
+                }
 
                 return response()->json($purchaseInvoice->load('items.product', 'supplier'));
             });
