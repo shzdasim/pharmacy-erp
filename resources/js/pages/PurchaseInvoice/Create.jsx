@@ -15,7 +15,7 @@ export default function CreatePurchaseInvoice() {
     [canFor]
   );
 
-  const onSubmit = async (payload) => {
+  const handleSubmit = async (payload) => {
     if (!can.create) {
       toast.error("You don't have permission to create purchase invoices.");
       return;
@@ -23,21 +23,24 @@ export default function CreatePurchaseInvoice() {
     try {
       const { data } = await axios.post("/api/purchase-invoices", payload);
       toast.success("Purchase invoice created");
-      navigate("/purchase-invoices");
+      // Navigate to the show page
+      navigate(`/purchase-invoices/${data.id}`, { replace: true });
       return data;
     } catch (e) {
       const msg = e?.response?.data?.message || "Create failed";
       toast.error(msg);
+      throw e;
     }
   };
 
   if (permsLoading) return <div className="p-6">Loading…</div>;
-  if (!can.create) return <div className="p-6 text-sm text-gray-700">You don’t have permission to create purchase invoices.</div>;
+  if (!can.create) return <div className="p-6 text-sm text-gray-700">You don't have permission to create purchase invoices.</div>;
 
   return (
     <div className="p-6">
       <h1 className="text-2xl font-bold mb-4">Create Purchase Invoice</h1>
-      <PurchaseInvoiceForm onSubmit={onSubmit} onSuccess={() => navigate("/purchase-invoices")} />
+      <PurchaseInvoiceForm onSubmit={handleSubmit} />
     </div>
   );
 }
+

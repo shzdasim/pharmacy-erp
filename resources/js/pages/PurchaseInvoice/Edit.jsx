@@ -50,7 +50,7 @@ export default function EditPurchaseInvoice() {
     try {
       const { data } = await axios.post(`/api/purchase-invoices/${id}?_method=PUT`, payload);
       toast.success("Purchase invoice updated");
-      navigate("/purchase-invoices");
+      navigate(`/purchase-invoices/${id}`);
       return data;
     } catch (e) {
       const msg = e?.response?.data?.message || "Update failed";
@@ -71,7 +71,12 @@ export default function EditPurchaseInvoice() {
       </div>
 
       <Guard when={can.update}>
-        <PurchaseInvoiceForm invoiceId={id} initialData={initial} onSubmit={onSubmit} onSuccess={() => navigate("/purchase-invoices")} />
+        <PurchaseInvoiceForm
+          invoiceId={id}
+          initialData={initial}
+          onSubmit={onSubmit}
+          onSuccess={() => navigate(`/purchase-invoices/${id}`)}
+        />
       </Guard>
       {!can.update && <div className="text-sm text-gray-700">You don’t have permission to update purchase invoices.</div>}
     </div>

@@ -32,7 +32,7 @@ function showAxiosError(err) {
   toast.error(data?.message || "Unable to save invoice");
 }
 
-export default function PurchaseInvoiceForm({ invoiceId, onSuccess }) {
+export default function PurchaseInvoiceForm({ invoiceId, onSuccess, onSubmit }) {
   const [form, setForm] = useState({
     invoice_type: "debit", // "debit" = pay now, "credit" = pay later
     supplier_id: "",
@@ -652,6 +652,15 @@ export default function PurchaseInvoiceForm({ invoiceId, onSuccess }) {
         delete payloadToSend.posted_number;
       }
 
+      // If onSubmit prop is provided, use it for API calls
+      if (onSubmit) {
+        const result = await onSubmit(payloadToSend);
+        toast.success("Invoice saved successfully");
+        onSuccess && onSuccess();
+        return result;
+      }
+
+      // Original logic when onSubmit is not provided
       if (invoiceId) {
         await axios.put(`/api/purchase-invoices/${invoiceId}`, payloadToSend);
         toast.success("Invoice updated successfully");
