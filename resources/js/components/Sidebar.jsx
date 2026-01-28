@@ -152,10 +152,10 @@ export default function Sidebar() {
     "bg-white/70 dark:bg-slate-800/70 backdrop-blur-sm ring-1 ring-gray-200/60 dark:ring-white/10 shadow-xl " +
     "transition-[width] duration-300 overflow-hidden " + widthCls;
 
-  // Scroll shadows (top & bottom) using ::before/::after style masks
+  // Scroll shadows (optimized with simpler gradients for better performance)
   const scrollShadow =
-    "before:pointer-events-none before:content-[''] before:absolute before:left-0 before:right-0 before:top-[64px] before:h-4 before:bg-gradient-to-b before:from-white/70 before:to-transparent dark:before:from-slate-800/70 dark:before:to-transparent " +
-    "after:pointer-events-none after:content-[''] after:absolute after:left-0 after:right-0 after:bottom-[56px] after:h-6 after:bg-gradient-to-t after:from-white/70 after:to-transparent dark:after:from-slate-800/70 dark:after:to-transparent";
+    "before:pointer-events-none before:content-[''] before:absolute before:left-0 before:right-0 before:top-[64px] before:h-4 before:bg-gradient-to-b before:from-white/50 before:to-transparent dark:before:from-slate-800/50 dark:before:to-transparent " +
+    "after:pointer-events-none after:content-[''] after:absolute after:left-0 after:right-0 after:bottom-[56px] after:h-4 after:bg-gradient-to-t after:from-white/50 after:to-transparent dark:after:from-slate-800/50 dark:after:to-transparent";
 
   // Item styles
   const itemBase =

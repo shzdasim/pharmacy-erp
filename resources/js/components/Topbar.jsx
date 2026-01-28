@@ -81,15 +81,13 @@ export default function Topbar() {
     <div
       className="sticky top-0 z-40 px-3 pt-3 bg-transparent
       after:content-[''] after:pointer-events-none after:absolute after:left-0 after:right-0 after:top-[78px]
-      after:h-6 after:bg-gradient-to-b after:from-white/70 after:to-transparent
-      dark:after:from-slate-900/70 dark:after:to-transparent"
+      after:h-4 after:bg-gradient-to-b after:from-white/50 after:to-transparent
+      dark:after:from-slate-900/50 dark:after:to-transparent"
     >
       <header
         role="banner"
         className={[
-          "mx-auto rounded-2xl bg-gradient-to-br from-white/55 via-white/45 to-white/55",
-          "dark:from-slate-800/70 dark:via-slate-800/60 dark:to-slate-800/70",
-          "backdrop-blur-md ring-1 ring-white/55 dark:ring-white/10 shadow-[0_10px_30px_-12px_rgba(15,23,42,0.25)]",
+          "mx-auto rounded-2xl bg-white/55 backdrop-blur-sm ring-1 ring-white/30 dark:bg-slate-800/70 dark:ring-white/10 shadow-[0_10px_30px_-12px_rgba(15,23,42,0.25)]",
           "relative px-4 py-3",
           "before:absolute before:inset-0 before:rounded-2xl before:ring-1 before:ring-white/30 dark:before:ring-white/10",
         ].join(" ")}

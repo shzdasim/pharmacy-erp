@@ -2,12 +2,34 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ---- Dark Mode Performance Optimizations ---- */
+
+/* CRITICAL: Remove global theme transitions that cause massive performance overhead */
+/* Only apply transitions to specific interactive elements when needed */
+html {
+  /* Remove the global transition that causes 300ms delay on ALL color changes */
+  /* Individual components will handle their own transitions if needed */
+  transition: none;
+}
+
+/* Optimize backdrop blur performance by using CSS containment */
+.g-card {
+  contain: paint layout style;
+  will-change: transform, background-color;
+  transform: translateZ(0); /* Force GPU acceleration */
+}
+
+/* Use more performant blur values and reduce blur complexity */
+.g-card {
+  @apply rounded-2xl bg-white/60 backdrop-blur-sm ring-1 ring-gray-200/60 shadow-xl;
+  @apply dark:bg-slate-800/60 dark:ring-gray-700/60 dark:text-gray-100;
+  /* Add GPU acceleration */
+  transform: translateZ(0);
+  backface-visibility: hidden;
+}
+
 /* ---- Glass UI primitives live here and won't be purged ---- */
 @layer components {
-  .g-card {
-    @apply rounded-2xl bg-white/60 backdrop-blur-sm ring-1 ring-gray-200/60 shadow-xl transition-colors;
-    @apply dark:bg-slate-800/60 dark:ring-gray-700/60 dark:text-gray-100;
-  }
   .g-card table {
     @apply text-gray-900;
     @apply dark:text-gray-100;
@@ -173,6 +195,11 @@ html {
 body {
   @apply bg-gray-100 text-gray-900;
   @apply dark:bg-slate-900 dark:text-gray-100;
+  /* Optimize body for performance */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  transform: translateZ(0);
+  backface-visibility: hidden;
 }
 
 /* Dark mode scrollbar styles */

@@ -1,6 +1,10 @@
 // Minimal, reusable glass UI primitives for consistency
 export function GlassCard({ className = "", children }) {
-  return <div className={["g-card", className].join(" ")}>{children}</div>;
+  return (
+    <div className={["g-card", className].join(" ")}>
+      {children}
+    </div>
+  );
 }
 
 export function GlassSectionHeader({ title, right = null, className = "" }) {
