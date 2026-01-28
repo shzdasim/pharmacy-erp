@@ -68,15 +68,15 @@ class CustomerLedgerController extends Controller
         $invoices = SaleInvoice::query()
             ->where('customer_id', $customerId)
             ->where('invoice_type', 'credit')
-            ->when($from, fn($q)=>$q->whereDate('invoice_date','>=',$from))
-            ->when($to,   fn($q)=>$q->whereDate('invoice_date','<=',$to))
-            ->orderBy('invoice_date')->orderBy('id')
+            ->when($from, fn($q)=>$q->whereDate('date','>=',$from))
+            ->when($to,   fn($q)=>$q->whereDate('date','<=',$to))
+            ->orderBy('date')->orderBy('id')
             ->get([
                 // include generous set; we’ll pick what exists
                 'id',
                 'invoice_no',
                 'posted_number',
-                'invoice_date',
+                'date',
                 'invoice_total', 'total', 'grand_total', 'net_total', 'gross_amount', 'sub_total',
                 'total_receive', 'total_recieve', 'received', 'amount_received',
             ]);
@@ -103,13 +103,16 @@ class CustomerLedgerController extends Controller
             // Balance remaining for this invoice (what's still owed)
             $balanceRemaining = max($invoiceTotal - $receivedOnInv, 0);
 
+            // Use 'date' column from sale_invoices (not invoice_date which doesn't exist)
+            $entryDate = $inv->date ? Carbon::parse($inv->date)->format('Y-m-d') : null;
+
             return [
                 'id'                => $inv->id,
                 'customer_id'       => $customerId,
                 'sale_invoice_id'   => $inv->id,
                 'entry_type'        => 'invoice',
                 'is_manual'         => false,
-                'entry_date'        => optional($inv->invoice_date)->format('Y-m-d'),
+                'entry_date'        => $entryDate,
                 'posted_number'     => $this->str($inv->posted_number),
                 'invoice_total'     => $invoiceTotal,
                 'total_received'    => $receivedOnInv,
@@ -324,7 +327,7 @@ class CustomerLedgerController extends Controller
             $invoices = SaleInvoice::where('customer_id', $customerId)
                 ->where('invoice_type', 'credit')
                 ->get([
-                    'id','invoice_no','posted_number','invoice_date',
+                    'id','invoice_no','posted_number','date',
                     'invoice_total','total','grand_total','net_total','gross_amount','sub_total',
                     'total_receive','total_recieve','received','amount_received',
                 ]);
@@ -345,6 +348,9 @@ class CustomerLedgerController extends Controller
                     $inv->amount_received ?? null
                 );
 
+                // Use 'date' column from sale_invoices (not invoice_date which doesn't exist)
+                $entryDate = $inv->date ?? now()->toDateString();
+
                 CustomerLedger::updateOrCreate(
                     [
                         'customer_id'     => $customerId,
@@ -353,7 +359,7 @@ class CustomerLedgerController extends Controller
                         'is_manual'       => false,
                     ],
                     [
-                        'entry_date'        => $inv->invoice_date ?? now()->toDateString(),
+                        'entry_date'        => $entryDate,
                         'posted_number'     => $this->str($inv->posted_number),
                         'invoice_total'     => $invTotal,
                         'total_received'    => $recv,
