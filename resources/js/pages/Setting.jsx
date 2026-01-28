@@ -355,13 +355,13 @@ export default function Setting() {
   }, []);
 
   if (permsLoading) {
-    return <div className="p-6"><div className="animate-pulse text-gray-500">Loading…</div></div>;
+    return <div className="p-6"><div className="animate-pulse text-gray-500 dark:text-gray-400">Loading…</div></div>;
   }
   if (!can.view) {
-    return <div className="p-6 text-sm text-gray-700">You don’t have permission to view settings.</div>;
+    return <div className="p-6 text-sm text-gray-700 dark:text-gray-300">You don’t have permission to view settings.</div>;
   }
   if (loading) {
-    return <div className="p-6"><div className="animate-pulse text-gray-500">Loading settings…</div></div>;
+    return <div className="p-6"><div className="animate-pulse text-gray-500 dark:text-gray-400">Loading settings…</div></div>;
   }
 
   const disableInputs = !can.update || saving;
@@ -393,10 +393,10 @@ export default function Setting() {
 
         {/* Top toolbar — optional quick info */}
         <GlassToolbar className="justify-between pt-1">
-          <div className="text-xs text-gray-600">
+          <div className="text-xs text-gray-600 dark:text-gray-400">
             Configure store identity, default printer, and invoice footer.
           </div>
-          <div className="text-[11px] text-gray-500">
+          <div className="text-[11px] text-gray-500 dark:text-gray-400">
             Changes apply across invoices and print templates.
           </div>
         </GlassToolbar>
@@ -404,14 +404,14 @@ export default function Setting() {
 
       {/* ===== Tab Navigation ===== */}
       <GlassCard className="!py-0 !px-0 overflow-hidden">
-        <div className="flex border-b border-gray-200/60 bg-gray-50/50">
+        <div className="flex border-b border-gray-200/60 bg-gray-50/50 dark:bg-slate-800/40 dark:border-slate-700/60">
           {/* General Tab */}
           <button
             onClick={() => setActiveTab("general")}
             className={`flex items-center gap-2 px-5 py-3 text-sm font-medium transition-all duration-200 border-b-2 ${
               activeTab === "general"
-                ? "border-blue-600 text-blue-700 bg-white/70"
-                : "border-transparent text-gray-600 hover:text-gray-800 hover:bg-white/50"
+                ? "border-blue-600 text-blue-700 bg-white/70 dark:bg-slate-800/70 dark:text-blue-400 dark:border-blue-400"
+                : "border-transparent text-gray-600 hover:text-gray-800 hover:bg-white/50 dark:text-gray-300 dark:hover:text-gray-100 dark:hover:bg-slate-700/50"
             }`}
           >
             <CogIcon className="w-5 h-5" />
@@ -423,8 +423,8 @@ export default function Setting() {
             onClick={() => setActiveTab("printer")}
             className={`flex items-center gap-2 px-5 py-3 text-sm font-medium transition-all duration-200 border-b-2 ${
               activeTab === "printer"
-                ? "border-blue-600 text-blue-700 bg-white/70"
-                : "border-transparent text-gray-600 hover:text-gray-800 hover:bg-white/50"
+                ? "border-blue-600 text-blue-700 bg-white/70 dark:bg-slate-800/70 dark:text-blue-400 dark:border-blue-400"
+                : "border-transparent text-gray-600 hover:text-gray-800 hover:bg-white/50 dark:text-gray-300 dark:hover:text-gray-100 dark:hover:bg-slate-700/50"
             }`}
           >
             <PrinterIcon className="w-5 h-5" />
@@ -436,8 +436,8 @@ export default function Setting() {
             onClick={() => setActiveTab("license")}
             className={`flex items-center gap-2 px-5 py-3 text-sm font-medium transition-all duration-200 border-b-2 ${
               activeTab === "license"
-                ? "border-blue-600 text-blue-700 bg-white/70"
-                : "border-transparent text-gray-600 hover:text-gray-800 hover:bg-white/50"
+                ? "border-blue-600 text-blue-700 bg-white/70 dark:bg-slate-800/70 dark:text-blue-400 dark:border-blue-400"
+                : "border-transparent text-gray-600 hover:text-gray-800 hover:bg-white/50 dark:text-gray-300 dark:hover:text-gray-100 dark:hover:bg-slate-700/50"
             }`}
           >
             <DocumentTextIcon className="w-5 h-5" />
@@ -455,7 +455,7 @@ export default function Setting() {
         <GlassToolbar className="grid grid-cols-1 md:grid-cols-2 gap-3">
           {/* Store Name */}
           <div className="w-full">
-            <label className="block text-sm text-gray-700 mb-1">Store Name</label>
+            <label className="block text-sm text-gray-700 mb-1 dark:text-gray-300">Store Name</label>
             <GlassInput
               ref={storeNameRef}
               type="text"
@@ -473,7 +473,7 @@ export default function Setting() {
 
           {/* Phone */}
           <div className="w-full">
-            <label className="block text-sm text-gray-700 mb-1">Phone Number</label>
+            <label className="block text-sm text-gray-700 mb-1 dark:text-gray-300">Phone Number</label>
             <GlassInput
               ref={phoneRef}
               type="text"
@@ -491,7 +491,7 @@ export default function Setting() {
 
           {/* Address */}
           <div className="md:col-span-2">
-            <label className="block text-sm text-gray-700 mb-1">Address</label>
+            <label className="block text-sm text-gray-700 mb-1 dark:text-gray-300">Address</label>
             <GlassInput
               ref={addressRef}
               type="text"
@@ -509,7 +509,7 @@ export default function Setting() {
 
           {/* Licence Number */}
           <div className="w-full">
-            <label className="block text-sm text-gray-700 mb-1">Licence Number</label>
+            <label className="block text-sm text-gray-700 mb-1 dark:text-gray-300">Licence Number</label>
             <GlassInput
               ref={licenseRef}
               type="text"
@@ -527,7 +527,7 @@ export default function Setting() {
 
           {/* Note */}
           <div className="md:col-span-2">
-            <label className="block text-sm text-gray-700 mb-1">Invoice Footer Note</label>
+            <label className="block text-sm text-gray-700 mb-1 dark:text-gray-300">Invoice Footer Note</label>
             <textarea
               ref={noteRef}
               name="note"
@@ -541,7 +541,8 @@ export default function Setting() {
                   if (can.update) handleSave();
                 }
               }}
-              className="w-full h-24 rounded-xl bg-white/70 backdrop-blur-sm border border-gray-200/70 ring-1 ring-transparent focus:ring-blue-400/40 shadow-sm focus:outline-none px-3 py-2"
+              className="w-full h-24 rounded-xl bg-white/70 backdrop-blur-sm border border-gray-200/70 ring-1 ring-transparent focus:ring-blue-400/40 shadow-sm focus:outline-none px-3 py-2
+                dark:bg-slate-700/70 dark:border-slate-600/70 dark:text-gray-100 dark:placeholder-gray-400 dark:focus:ring-indigo-400/40"
               placeholder="This note will be printed at the bottom of the invoice…"
             />
           </div>
@@ -552,7 +553,7 @@ export default function Setting() {
       <GlassCard className="relative z-10">
         <GlassSectionHeader title="Brand Logo" />
         <div className="px-4 pb-4">
-          <div className="rounded-2xl bg-white/60 backdrop-blur-sm ring-1 ring-gray-200/60 p-3 shadow-sm">
+          <div className="rounded-2xl bg-white/60 backdrop-blur-sm ring-1 ring-gray-200/60 p-3 shadow-sm dark:bg-slate-700/60 dark:ring-slate-600/60">
             <FilePond
               files={files}
               onupdatefiles={(fl) => {
@@ -565,7 +566,7 @@ export default function Setting() {
               labelIdle='Drag & Drop your logo or <span class="filepond--label-action">Browse</span>'
               credits={false}
             />
-            <p className="text-xs text-gray-500 mt-2">PNG/JPG/WEBP, up to 2 MB.</p>
+            <p className="text-xs text-gray-500 mt-2 dark:text-gray-400">PNG/JPG/WEBP, up to 2 MB.</p>
           </div>
         </div>
       </GlassCard>
@@ -580,7 +581,7 @@ export default function Setting() {
             <GlassSectionHeader title="Printer Type" />
             <GlassToolbar className="flex flex-wrap gap-4">
               <label className={`inline-flex items-center gap-3 px-4 py-3 rounded-xl ring-1 ring-gray-200/70 cursor-pointer transition-all ${
-                form.printer_type === "thermal" ? "bg-blue-50 ring-blue-300" : "bg-white/70 hover:bg-white/90"
+                form.printer_type === "thermal" ? "bg-blue-50 ring-blue-300 dark:bg-blue-900/30 dark:ring-blue-700" : "bg-white/70 hover:bg-white/90 dark:bg-slate-700/60 dark:ring-slate-600/60 dark:hover:bg-slate-600/60"
               }`}>
                 <input
                   type="radio"
@@ -592,13 +593,13 @@ export default function Setting() {
                   className="w-4 h-4 text-blue-600"
                 />
                 <div className="flex items-center gap-2">
-                  <PrinterIcon className="w-5 h-5 text-gray-600" />
-                  <span className="text-sm font-medium">Thermal Printer</span>
+                  <PrinterIcon className="w-5 h-5 text-gray-600 dark:text-gray-300" />
+                  <span className="text-sm font-medium dark:text-gray-200">Thermal Printer</span>
                 </div>
               </label>
               
               <label className={`inline-flex items-center gap-3 px-4 py-3 rounded-xl ring-1 ring-gray-200/70 cursor-pointer transition-all ${
-                form.printer_type === "a4" ? "bg-blue-50 ring-blue-300" : "bg-white/70 hover:bg-white/90"
+                form.printer_type === "a4" ? "bg-blue-50 ring-blue-300 dark:bg-blue-900/30 dark:ring-blue-700" : "bg-white/70 hover:bg-white/90 dark:bg-slate-700/60 dark:ring-slate-600/60 dark:hover:bg-slate-600/60"
               }`}>
                 <input
                   type="radio"
@@ -610,12 +611,12 @@ export default function Setting() {
                   className="w-4 h-4 text-blue-600"
                 />
                 <div className="flex items-center gap-2">
-                  <DocumentTextIcon className="w-5 h-5 text-gray-600" />
-                  <span className="text-sm font-medium">A4 Printer</span>
+                  <DocumentTextIcon className="w-5 h-5 text-gray-600 dark:text-gray-300" />
+                  <span className="text-sm font-medium dark:text-gray-200">A4 Printer</span>
                 </div>
               </label>
             </GlassToolbar>
-            <p className="mt-3 text-xs text-gray-500">
+            <p className="mt-3 text-xs text-gray-500 dark:text-gray-400">
               {form.printer_type === "thermal" 
                 ? "Select a thermal receipt template below. Thermal printers use 58mm-80mm width paper."
                 : "A4 printer settings will be available in a future update."}
@@ -648,9 +649,9 @@ export default function Setting() {
                     <div
                       key={template.id}
                       className={`relative rounded-xl border-2 transition-all cursor-pointer overflow-hidden group ${
-                        isSelected 
-                          ? "border-blue-500 ring-2 ring-blue-200" 
-                          : "border-gray-200 hover:border-gray-300 hover:shadow-md"
+                        isSelected
+                          ? "border-blue-500 ring-2 ring-blue-200 dark:ring-blue-800"
+                          : "border-gray-200 hover:border-gray-300 hover:shadow-md dark:border-slate-600 dark:hover:border-slate-500 dark:bg-slate-800/50"
                       }`}
                       onClick={() => {
                         if (can.update) {
@@ -678,16 +679,16 @@ export default function Setting() {
                           setPreviewingTemplate(template);
                           setShowPreviewModal(true);
                         }}
-                        className="absolute top-2 left-2 z-10 p-1.5 rounded-lg bg-white/90 hover:bg-white shadow-sm opacity-100 transition-opacity"
+                        className="absolute top-2 left-2 z-10 p-1.5 rounded-lg bg-white/90 hover:bg-white shadow-sm opacity-100 transition-opacity dark:bg-slate-700/90 dark:hover:bg-slate-600"
                         title="Preview template"
                       >
-                        <EyeIcon className="w-4 h-4 text-gray-600" />
+                        <EyeIcon className="w-4 h-4 text-gray-600 dark:text-gray-300" />
                       </button>
                       
                       {/* Template Content */}
                       <div className="p-4">
                         {/* Small Thumbnail Preview */}
-                        <div className="mb-3 bg-white rounded-lg border border-gray-200 overflow-hidden">
+                        <div className="mb-3 bg-white rounded-lg border border-gray-200 overflow-hidden dark:bg-slate-800 dark:border-slate-600">
                           <iframe
                             src={`/print/thermal-preview/${template.id}`}
                             className="w-full h-24 border-0"
@@ -703,18 +704,18 @@ export default function Setting() {
                         
                         {/* Icon and Name */}
                         <div className="flex items-start gap-3 mb-3">
-                          <div className={`p-2 rounded-lg ${isSelected ? "bg-blue-100" : "bg-gray-100"}`}>
-                            <IconComponent className={`w-6 h-6 ${isSelected ? "text-blue-600" : "text-gray-600"}`} />
+                          <div className={`p-2 rounded-lg ${isSelected ? "bg-blue-100 dark:bg-blue-900/50" : "bg-gray-100 dark:bg-slate-700"}`}>
+                            <IconComponent className={`w-6 h-6 ${isSelected ? "text-blue-600" : "text-gray-600 dark:text-gray-300"}`} />
                           </div>
                           <div className="flex-1">
-                            <h4 className="font-semibold text-gray-800">{template.name}</h4>
-                            <p className="text-xs text-gray-500 mt-1">{template.description}</p>
+                            <h4 className="font-semibold text-gray-800 dark:text-gray-100">{template.name}</h4>
+                            <p className="text-xs text-gray-500 mt-1 dark:text-gray-400">{template.description}</p>
                           </div>
                         </div>
                         
                         {/* Preview Info */}
-                        <div className="bg-gray-50 rounded-lg p-2 mb-3">
-                          <p className="text-xs text-gray-600">{template.preview}</p>
+                        <div className="bg-gray-50 rounded-lg p-2 mb-3 dark:bg-slate-700/50">
+                          <p className="text-xs text-gray-600 dark:text-gray-300">{template.preview}</p>
                         </div>
                         
                         {/* Select Button */}
@@ -733,7 +734,7 @@ export default function Setting() {
                           className={`w-full py-2 px-3 rounded-lg text-sm font-medium transition-all ${
                             isSelected
                               ? "bg-blue-500 text-white"
-                              : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                              : "bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-slate-700 dark:text-gray-200 dark:hover:bg-slate-600"
                           } ${!can.update && !isSelected ? "opacity-50 cursor-not-allowed" : ""}`}
                         >
                           {isSelected ? "Selected" : "Select Template"}
@@ -746,14 +747,14 @@ export default function Setting() {
               
               {/* Selected Template Info */}
               <div className="px-4 pb-4">
-                <div className="bg-blue-50 rounded-xl p-4 border border-blue-200">
+                <div className="bg-blue-50 rounded-xl p-4 border border-blue-200 dark:bg-blue-900/30 dark:border-blue-800">
                   <div className="flex items-center gap-2 mb-2">
                     <div className="w-2 h-2 rounded-full bg-blue-500"></div>
-                    <span className="font-medium text-blue-800">
+                    <span className="font-medium text-blue-800 dark:text-blue-300">
                       Selected: {thermalTemplates.find(t => t.id === form.thermal_template)?.name} Template
                     </span>
                   </div>
-                  <p className="text-sm text-blue-700">
+                  <p className="text-sm text-blue-700 dark:text-blue-400">
                     This template will be used for all thermal printer sales invoices.
                   </p>
                 </div>
@@ -803,29 +804,29 @@ export default function Setting() {
         />
         <GlassToolbar className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {/* License Status */}
-          <div className="flex items-center gap-3 p-4 rounded-xl bg-white/60">
+          <div className="flex items-center gap-3 p-4 rounded-xl bg-white/60 dark:bg-slate-700/60">
             {licenseLoading ? (
-              <div className="animate-pulse text-gray-400">Loading license status...</div>
+              <div className="animate-pulse text-gray-400 dark:text-gray-500">Loading license status...</div>
             ) : licenseStatus?.valid ? (
               <>
-                <div className="flex-shrink-0 w-12 h-12 rounded-full bg-emerald-100 flex items-center justify-center">
-                  <ShieldCheckIcon className="w-6 h-6 text-emerald-600" />
+                <div className="flex-shrink-0 w-12 h-12 rounded-full bg-emerald-100 dark:bg-emerald-900/50 flex items-center justify-center">
+                  <ShieldCheckIcon className="w-6 h-6 text-emerald-600 dark:text-emerald-400" />
                 </div>
                 <div>
-                  <div className="font-medium text-emerald-700">License Active</div>
-                  <div className="text-sm text-gray-600">
+                  <div className="font-medium text-emerald-700 dark:text-emerald-400">License Active</div>
+                  <div className="text-sm text-gray-600 dark:text-gray-400">
                     {formatExpiryDate(licenseStatus.expires_at) || "No expiration date"}
                   </div>
                 </div>
               </>
             ) : (
               <>
-                <div className="flex-shrink-0 w-12 h-12 rounded-full bg-red-100 flex items-center justify-center">
-                  <ShieldExclamationIcon className="w-6 h-6 text-red-600" />
+                <div className="flex-shrink-0 w-12 h-12 rounded-full bg-red-100 dark:bg-red-900/50 flex items-center justify-center">
+                  <ShieldExclamationIcon className="w-6 h-6 text-red-600 dark:text-red-400" />
                 </div>
                 <div>
-                  <div className="font-medium text-red-700">No Active License</div>
-                  <div className="text-sm text-gray-600">
+                  <div className="font-medium text-red-700 dark:text-red-400">No Active License</div>
+                  <div className="text-sm text-gray-600 dark:text-gray-400">
                     {licenseStatus?.reason || "License not found or expired"}
                   </div>
                 </div>
@@ -834,19 +835,19 @@ export default function Setting() {
           </div>
 
           {/* Machine ID */}
-          <div className="p-4 rounded-xl bg-white/60">
+          <div className="p-4 rounded-xl bg-white/60 dark:bg-slate-700/60">
             <div className="flex items-center justify-between mb-2">
-              <span className="text-sm font-medium text-gray-700">Machine ID</span>
+              <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Machine ID</span>
               <button
                 onClick={copyMachineId}
-                className="inline-flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800"
+                className="inline-flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300"
                 title="Copy Machine ID"
               >
                 <ClipboardDocumentIcon className="w-4 h-4" />
                 Copy
               </button>
             </div>
-            <div className="text-xs font-mono text-gray-600 bg-gray-50 rounded p-2 break-all">
+            <div className="text-xs font-mono text-gray-600 bg-gray-50 rounded p-2 break-all dark:bg-slate-800 dark:text-gray-400">
               {licenseStatus?.machine_id || "Unable to load"}
             </div>
           </div>

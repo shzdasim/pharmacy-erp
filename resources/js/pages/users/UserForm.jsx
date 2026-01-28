@@ -204,10 +204,10 @@ export default function UserForm({ onSubmit, initial, submitting }) {
   return (
     <div className="p-6">
       <div className="flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between mb-4">
-        <h1 className="text-2xl font-bold">{initial ? "Edit User" : "Create User"}</h1>
-        <div className="text-sm text-gray-600">
+        <h1 className="text-2xl font-bold dark:text-gray-100">{initial ? "Edit User" : "Create User"}</h1>
+        <div className="text-sm text-gray-600 dark:text-gray-400">
           <span className="hidden sm:inline">Shortcut:&nbsp;</span>
-          <span className="border rounded px-1 py-0.5 text-xs">Alt+S</span>&nbsp;to Save
+          <span className="border rounded px-1 py-0.5 text-xs dark:border-gray-600 dark:text-gray-400">Alt+S</span>&nbsp;to Save
         </div>
       </div>
 
@@ -216,35 +216,35 @@ export default function UserForm({ onSubmit, initial, submitting }) {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {/* Name */}
           <div>
-            <label className="block text-sm font-medium mb-1">Name</label>
+            <label className="block text-sm font-medium mb-1 dark:text-gray-300">Name</label>
             <input
               value={form.name}
               onChange={(e) => set("name", e.target.value)}
               required
-              className="w-full border rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full border rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-slate-700/70 dark:border-slate-600 dark:text-gray-100 dark:placeholder-gray-400"
               placeholder="Full name"
             />
           </div>
 
           {/* Email */}
           <div>
-            <label className="block text-sm font-medium mb-1">Email</label>
+            <label className="block text-sm font-medium mb-1 dark:text-gray-300">Email</label>
             <input
               type="email"
               value={form.email}
               onChange={(e) => set("email", e.target.value)}
               required
-              className="w-full border rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full border rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-slate-700/70 dark:border-slate-600 dark:text-gray-100 dark:placeholder-gray-400"
               placeholder="user@example.com"
             />
           </div>
 
           {/* Password */}
           <div>
-            <label className="block text-sm font-medium mb-1">
+            <label className="block text-sm font-medium mb-1 dark:text-gray-300">
               Password{" "}
               {initial ? (
-                <span className="text-xs text-gray-500">(leave blank to keep)</span>
+                <span className="text-xs text-gray-500 dark:text-gray-400">(leave blank to keep)</span>
               ) : null}
             </label>
             <input
@@ -252,17 +252,17 @@ export default function UserForm({ onSubmit, initial, submitting }) {
               value={form.password}
               onChange={(e) => set("password", e.target.value)}
               placeholder={initial ? "••••••" : "Set a password"}
-              className="w-full border rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full border rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-slate-700/70 dark:border-slate-600 dark:text-gray-100 dark:placeholder-gray-400"
             />
           </div>
         </div>
 
         {/* Status */}
         <div>
-          <span className="block text-sm font-medium mb-1">Status</span>
+          <span className="block text-sm font-medium mb-1 dark:text-gray-300">Status</span>
           <div className="flex items-center gap-6">
             {["active", "inactive"].map((s) => (
-              <label key={s} className="inline-flex items-center gap-2">
+              <label key={s} className="inline-flex items-center gap-2 dark:text-gray-300">
                 <input
                   type="radio"
                   name="status"
@@ -279,19 +279,19 @@ export default function UserForm({ onSubmit, initial, submitting }) {
 
         {/* Roles */}
         <div>
-          <label className="block text-sm font-medium mb-1">Roles</label>
+          <label className="block text-sm font-medium mb-1 dark:text-gray-300">Roles</label>
           <div className="flex flex-wrap gap-3">
             {roleOptions.map((r) => (
               <label
                 key={r}
-                className="inline-flex items-center gap-2 border px-2 py-1 rounded"
+                className="inline-flex items-center gap-2 border px-2 py-1 rounded dark:border-slate-600 dark:bg-slate-700/70"
               >
                 <input
                   type="checkbox"
                   checked={form.roles.includes(r)}
                   onChange={() => toggleStrInArray("roles", r)}
                 />
-                <span>{r}</span>
+                <span className="dark:text-gray-300">{r}</span>
               </label>
             ))}
           </div>
@@ -300,12 +300,12 @@ export default function UserForm({ onSubmit, initial, submitting }) {
         {/* Direct Permissions (Grouped) */}
         <div>
           <div className="flex items-center justify-between mb-2">
-            <label className="block text-sm font-medium">Direct Permissions</label>
+            <label className="block text-sm font-medium dark:text-gray-300">Direct Permissions</label>
             <div className="flex gap-2">
               <button
                 type="button"
                 onClick={selectAllPermissions}
-                className="text-xs border rounded px-2 py-1 hover:bg-gray-50"
+                className="text-xs border rounded px-2 py-1 hover:bg-gray-50 dark:border-slate-600 dark:bg-slate-700/70 dark:hover:bg-slate-600 dark:text-gray-300"
                 title="Select all permissions"
               >
                 Select All
@@ -313,7 +313,7 @@ export default function UserForm({ onSubmit, initial, submitting }) {
               <button
                 type="button"
                 onClick={clearAllPermissions}
-                className="text-xs border rounded px-2 py-1 hover:bg-gray-50"
+                className="text-xs border rounded px-2 py-1 hover:bg-gray-50 dark:border-slate-600 dark:bg-slate-700/70 dark:hover:bg-slate-600 dark:text-gray-300"
                 title="Clear all permissions"
               >
                 Clear
@@ -323,10 +323,10 @@ export default function UserForm({ onSubmit, initial, submitting }) {
 
           <div className="space-y-4 max-h-[32rem] overflow-auto pr-1">
             {groupedPerms.map((group) => (
-              <div key={group.module} className="border rounded">
-                <div className="flex items-center justify-between px-3 py-2 bg-gray-50 border-b">
-                  <div className="font-medium">{group.label} Permissions</div>
-                  <label className="text-xs inline-flex items-center gap-2">
+              <div key={group.module} className="border rounded dark:border-slate-600">
+                <div className="flex items-center justify-between px-3 py-2 bg-gray-50 border-b dark:bg-slate-700/60 dark:border-slate-600">
+                  <div className="font-medium dark:text-gray-200">{group.label} Permissions</div>
+                  <label className="text-xs inline-flex items-center gap-2 dark:text-gray-300">
                     <input
                       type="checkbox"
                       checked={moduleAllSelected(group.module)}
@@ -342,7 +342,7 @@ export default function UserForm({ onSubmit, initial, submitting }) {
                     {group.actions.map(({ action, perm }) => (
                       <label
                         key={perm}
-                        className="inline-flex items-center gap-2 border rounded px-2 py-1"
+                        className="inline-flex items-center gap-2 border rounded px-2 py-1 dark:border-slate-600 dark:bg-slate-700/70"
                         title={perm}
                       >
                         <input
@@ -350,7 +350,7 @@ export default function UserForm({ onSubmit, initial, submitting }) {
                           checked={form.permissions.includes(perm)}
                           onChange={() => toggleStrInArray("permissions", perm)}
                         />
-                        <span className="capitalize">
+                        <span className="capitalize dark:text-gray-300">
                           {action
                             ? action.replace(/\./g, " ") // e.g., sync.permissions
                             : perm}
@@ -364,7 +364,7 @@ export default function UserForm({ onSubmit, initial, submitting }) {
 
             {/* Fallback when there are no permissions (still loading or empty) */}
             {groupedPerms.length === 0 && (
-              <div className="text-sm text-gray-500">No permissions found.</div>
+              <div className="text-sm text-gray-500 dark:text-gray-400">No permissions found.</div>
             )}
           </div>
         </div>

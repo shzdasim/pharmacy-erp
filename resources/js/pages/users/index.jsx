@@ -221,7 +221,7 @@ export default function UsersIndex() {
     });
   };
 
-  if (permsLoading) return <div className="p-6">Loading…</div>;
+  if (permsLoading) return <div className="p-6 dark:text-gray-400">Loading…</div>;
   if (!can.view) return <div className="p-6 text-sm text-gray-700">You don’t have permission to view users.</div>;
 
   return (
@@ -275,7 +275,7 @@ export default function UsersIndex() {
 
           {/* Meta + page size (aligned like products) */}
           <div className="md:col-span-2 flex items-center justify-between gap-3">
-            <div className="text-sm text-gray-700">
+            <div className="text-sm text-gray-700 dark:text-gray-300">
               {loading ? "Loading…" : (
                 <>Showing <strong>{rows.length === 0 ? 0 : start}-{end}</strong> of <strong>{total}</strong></>
               )}
@@ -393,7 +393,7 @@ export default function UsersIndex() {
 
         {/* Pagination */}
         <div className="px-3 py-3 flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between">
-          <div className="text-sm text-gray-700">Page {page} of {lastPage}</div>
+          <div className="text-sm text-gray-700 dark:text-gray-300">Page {page} of {lastPage}</div>
           <div className="flex items-center gap-2">
             <GlassBtn onClick={() => setPage(1)} disabled={page === 1} className={`h-9 px-3 ${tintGlass}`}>
               ⏮ First
