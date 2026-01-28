@@ -22,11 +22,11 @@ export default function SaleInvoiceShow() {
   const btnRoseGlass =
     "bg-rose-500/85 text-white ring-1 ring-white/20 backdrop-blur-sm shadow-[0_6px_20px_-6px_rgba(244,63,94,0.45)] hover:bg-rose-500/95";
   const btnSlateGlass =
-    "bg-slate-600/85 text-white ring-1 ring-white/20 backdrop-blur-sm shadow-[0_6px_20px_-6px_rgba(15,23,42,0.45)] hover:bg-slate-600/95";
+    "bg-slate-600/85 text-white ring-1 ring-white/20 backdrop-blur-sm shadow-[0_6px_20px_-6px_rgba(15,23,42,0.45)] hover:bg-slate-600/95 dark:bg-slate-700/85 dark:hover:bg-slate-700/95";
   const btnGreenGlass =
     "bg-green-600/85 text-white ring-1 ring-white/20 backdrop-blur-sm shadow-[0_6px_20px_-6px_rgba(22,163,74,0.45)] hover:bg-green-600/95";
   const chip =
-    "px-1 py-0.5 border rounded bg-gray-50 text-[10px] leading-none";
+    "px-1 py-0.5 border rounded bg-gray-50 dark:bg-slate-700 text-[10px] leading-none text-gray-700 dark:text-gray-300";
 
   // 🔒 permissions
   const { loading: permsLoading, canFor } = usePermissions?.() || {};
@@ -247,13 +247,13 @@ export default function SaleInvoiceShow() {
     return () => document.removeEventListener("keydown", onKey);
   }, [navigate, id, can]);
 
-  if (loading || permsLoading) return <div className="p-4 text-sm">Loading…</div>;
-  if (!inv) return <div className="p-4 text-sm">Invoice not found.</div>;
+  if (loading || permsLoading) return <div className="p-4 text-sm dark:text-gray-400">Loading…</div>;
+  if (!inv) return <div className="p-4 text-sm dark:text-gray-400">Invoice not found.</div>;
 
   const fmt = (v) => ((v ?? "") === "" ? "" : String(v));
 
   return (
-    <div className="h-[calc(95vh-100px)] flex flex-col bg-white">
+    <div className="h-[calc(95vh-100px)] flex flex-col bg-white dark:bg-slate-800">
       <style>{`
         @media print {
           .no-print { display: none !important; }
@@ -262,12 +262,12 @@ export default function SaleInvoiceShow() {
       `}</style>
 
       {/* === Top Bar (glassy, same placement as Form) === */}
-      <div className="shrink-0 sticky top-0 z-30 border-b bg-white/80 backdrop-blur-sm">
+      <div className="shrink-0 sticky top-0 z-30 border-b bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm dark:border-slate-700">
         <div className="px-2 py-1 flex items-center gap-2">
-          <div className="text-xs font-semibold">Sale Invoice</div>
+          <div className="text-xs font-semibold dark:text-gray-200">Sale Invoice</div>
 
           {/* Inline shortcuts (same zone as Alt+S in form) */}
-          <div className="ml-auto flex items-center gap-2 text-[10px] text-gray-600 no-print">
+          <div className="ml-auto flex items-center gap-2 text-[10px] text-gray-600 dark:text-gray-400 no-print">
             <span className="hidden sm:inline-flex items-center gap-1">
               <span className={chip}>Alt</span><span>+</span><span className={chip}>E</span><span>Edit</span>
             </span>
@@ -335,67 +335,67 @@ export default function SaleInvoiceShow() {
         {/* Meta strip (super compact, same grid rhythm as form) */}
         <div className="px-2 pb-1 grid grid-cols-12 gap-1 text-[11px]">
           <div className="col-span-2">
-            <label className="block text-[9px] mb-0.5">Posted #</label>
+            <label className="block text-[9px] mb-0.5 dark:text-gray-400">Posted #</label>
             <input
               type="text"
               value={fmt(inv.posted_number)}
               readOnly
-              className="w-full h-7 border-2 border-black rounded px-1 bg-gray-100"
+              className="w-full h-7 border-2 border-black dark:border-slate-600 rounded px-1 bg-gray-100 dark:bg-slate-700 dark:text-gray-200"
             />
           </div>
           <div className="col-span-2">
-            <label className="block text-[9px] mb-0.5">Date</label>
+            <label className="block text-[9px] mb-0.5 dark:text-gray-400">Date</label>
             <input
               type="text"
               value={fmt(inv.date)}
               readOnly
-              className="w-full h-7 border-2 border-black rounded px-1 bg-gray-100"
+              className="w-full h-7 border-2 border-black dark:border-slate-600 rounded px-1 bg-gray-100 dark:bg-slate-700 dark:text-gray-200"
             />
           </div>
           <div className="col-span-4">
-            <label className="block text-[9px] mb-0.5">Customer</label>
+            <label className="block text-[9px] mb-0.5 dark:text-gray-400">Customer</label>
             <input
               type="text"
               value={inv.customer?.name ?? inv.customer_id ?? ""}
               readOnly
-              className="w-full h-7 border-2 border-black rounded px-1 bg-gray-100"
+              className="w-full h-7 border-2 border-black dark:border-slate-600 rounded px-1 bg-gray-100 dark:bg-slate-700 dark:text-gray-200"
             />
           </div>
           <div className="col-span-2">
-            <label className="block text-[9px] mb-0.5">Doctor</label>
+            <label className="block text-[9px] mb-0.5 dark:text-gray-400">Doctor</label>
             <input
               type="text"
               value={fmt(inv.doctor_name)}
               readOnly
-              className="w-full h-7 border-2 border-black rounded px-1 bg-gray-100"
+              className="w-full h-7 border-2 border-black dark:border-slate-600 rounded px-1 bg-gray-100 dark:bg-slate-700 dark:text-gray-200"
             />
           </div>
             <div className="col-span-2">
-            <label className="block text-[9px] mb-0.5">Patient</label>
+            <label className="block text-[9px] mb-0.5 dark:text-gray-400">Patient</label>
             <input
               type="text"
               value={fmt(inv.patient_name)}
               readOnly
-              className="w-full h-7 border-2 border-black rounded px-1 bg-gray-100"
+              className="w-full h-7 border-2 border-black dark:border-slate-600 rounded px-1 bg-gray-100 dark:bg-slate-700 dark:text-gray-200"
             />
           </div>
 
           <div className="col-span-10">
-            <label className="block text-[9px] mb-0.5">Remarks</label>
+            <label className="block text-[9px] mb-0.5 dark:text-gray-400">Remarks</label>
             <input
               type="text"
               value={fmt(inv.remarks)}
               readOnly
-              className="w-full h-7 border-2 border-black rounded px-1 bg-gray-100"
+              className="w-full h-7 border-2 border-black dark:border-slate-600 rounded px-1 bg-gray-100 dark:bg-slate-700 dark:text-gray-200"
             />
           </div>
           <div className="col-span-2">
-            <label className="block text-[9px] mb-0.5">Items</label>
+            <label className="block text-[9px] mb-0.5 dark:text-gray-400">Items</label>
             <input
               type="text"
               value={(inv.items || []).length}
               readOnly
-              className="w-full h-7 border-2 border-black rounded px-1 bg-gray-100 text-center"
+              className="w-full h-7 border-2 border-black dark:border-slate-600 rounded px-1 bg-gray-100 dark:bg-slate-700 dark:text-gray-200 text-center"
             />
           </div>
         </div>
@@ -405,28 +405,28 @@ export default function SaleInvoiceShow() {
       <div className="flex-1 grid grid-cols-[1fr_240px] gap-2 px-2 py-2 overflow-hidden">
         {/* LEFT: Items table (same scroll & sticky header as form) */}
         <div className="flex flex-col min-h-0">
-          <div className="text-[11px] font-semibold mb-1">Items</div>
+          <div className="text-[11px] font-semibold mb-1 dark:text-gray-200">Items</div>
           <div
             ref={itemsScrollRef}
-            className="flex-1 overflow-auto border-2 rounded relative"
+            className="flex-1 overflow-auto border-2 rounded relative dark:border-slate-600"
           >
             <table className="w-full text-[11px] table-fixed border-collapse print-table">
-              <thead className="sticky top-0 z-20 bg-white/80 backdrop-blur-sm border-b border-gray-200/70">
-                <tr className="[&>th]:py-1 [&>th]:px-1 [&>th]:text-left">
-                  <th className="w-7 text-center">#</th>
-                  <th className="w-[180px]">Product</th>
-                  <th className="w-14 text-center">PSize</th>
-                  <th className="w-24">Batch</th>
-                  <th className="w-15 text-center">Expiry</th>
-                  <th className="w-25 text-center">Qty</th>
-                  <th className="w-22 text-center">Price</th>
-                  <th className="w-18 text-center">Disc%</th>
-                  <th className="w-26 text-center">Sub Total</th>
+              <thead className="sticky top-0 z-20 bg-white/80 dark:bg-slate-700/80 backdrop-blur-sm border-b border-gray-200/70 dark:border-slate-600">
+                <tr className="[&>th]:py-1 [&>th]:px-1 [&>th]:text-left dark:[&>th]:text-gray-200">
+                  <th className="w-7 text-center dark:text-gray-200">#</th>
+                  <th className="w-[180px] dark:text-gray-200">Product</th>
+                  <th className="w-14 text-center dark:text-gray-200">PSize</th>
+                  <th className="w-24 dark:text-gray-200">Batch</th>
+                  <th className="w-15 text-center dark:text-gray-200">Expiry</th>
+                  <th className="w-25 text-center dark:text-gray-200">Qty</th>
+                  <th className="w-22 text-center dark:text-gray-200">Price</th>
+                  <th className="w-18 text-center dark:text-gray-200">Disc%</th>
+                  <th className="w-26 text-center dark:text-gray-200">Sub Total</th>
                 </tr>
               </thead>
-              <tbody className="[&>tr>td]:py-1 [&>tr>td]:px-0.5">
+              <tbody className="[&>tr>td]:py-1 [&>tr>td]:px-0.5 dark:[&>tr>td]:text-gray-300">
                 {(inv.items || []).map((it, i) => (
-                  <tr key={i} className="border-b text-center">
+                  <tr key={i} className="border-b dark:border-slate-600 text-center dark:text-gray-300">
                     <td className="px-1">{i + 1}</td>
                     <td className="px-1 text-left">{it.product?.name ?? it.product_id}</td>
                     <td className="px-1">{fmt(it.pack_size)}</td>
@@ -446,77 +446,77 @@ export default function SaleInvoiceShow() {
         {/* RIGHT: Slim summary (read-only, mirrors form layout) */}
         <div className="min-h-0">
           <div className="sticky top-[20px] space-y-2">
-            <div className="border-2 rounded p-2">
-              <div className="text-[18px] font-semibold mb-1">Summary</div>
+            <div className="border-2 rounded p-2 dark:border-slate-600 dark:bg-slate-800/50">
+              <div className="text-[18px] font-semibold mb-1 dark:text-gray-200">Summary</div>
               <div className="grid grid-cols-2 gap-1 text-[11px]">
-                <label className="text-[13px] font-bold self-center">Tax %</label>
+                <label className="text-[13px] font-bold self-center dark:text-gray-300">Tax %</label>
                 <input
                   type="text"
                   readOnly
                   value={fmt(inv.tax_percentage)}
-                  className="h-7 border-2 border-black rounded px-1 bg-gray-100"
+                  className="h-7 border-2 border-black dark:border-slate-600 rounded px-1 bg-gray-100 dark:bg-slate-700 dark:text-gray-200"
                 />
 
-                <label className="text-[13px] font-bold self-center">Tax Amt</label>
+                <label className="text-[13px] font-bold self-center dark:text-gray-300">Tax Amt</label>
                 <input
                   type="text"
                   readOnly
                   value={fmt(inv.tax_amount)}
-                  className="h-7 border-2 border-black rounded px-1 bg-gray-100"
+                  className="h-7 border-2 border-black dark:border-slate-600 rounded px-1 bg-gray-100 dark:bg-slate-700 dark:text-gray-200"
                 />
 
-                <label className="text-[13px] font-bold self-center">Disc %</label>
+                <label className="text-[13px] font-bold self-center dark:text-gray-300">Disc %</label>
                 <input
                   type="text"
                   readOnly
                   value={fmt(inv.discount_percentage)}
-                  className="h-7 border-2 border-black rounded px-1 bg-gray-100"
+                  className="h-7 border-2 border-black dark:border-slate-600 rounded px-1 bg-gray-100 dark:bg-slate-700 dark:text-gray-200"
                 />
 
-                <label className="text-[13px] font-bold self-center">Disc Amt</label>
+                <label className="text-[13px] font-bold self-center dark:text-gray-300">Disc Amt</label>
                 <input
                   type="text"
                   readOnly
                   value={fmt(inv.discount_amount)}
-                  className="h-7 border-2 border-black rounded px-1 bg-gray-100"
+                  className="h-7 border-2 border-black dark:border-slate-600 rounded px-1 bg-gray-100 dark:bg-slate-700 dark:text-gray-200"
                 />
 
-                <label className="text-[13px] font-bold self-center">Gross</label>
+                <label className="text-[13px] font-bold self-center dark:text-gray-300">Gross</label>
                 <input
                   type="text"
                   readOnly
                   value={fmt(inv.gross_amount)}
-                  className="h-7 border-2 border-black rounded px-1 bg-gray-100"
+                  className="h-7 border-2 border-black dark:border-slate-600 rounded px-1 bg-gray-100 dark:bg-slate-700 dark:text-gray-200"
                 />
 
-                <label className="text-[13px] font-bold self-center">Total</label>
+                <label className="text-[13px] font-bold self-center dark:text-gray-300">Total</label>
                 <input
                   type="text"
                   readOnly
                   value={fmt(inv.total)}
-                  className="h-7 border-2 border-black rounded px-1 bg-gray-100 font-extrabold text-red-600 text-lg"
+                  className="h-7 border-2 border-black dark:border-slate-600 rounded px-1 bg-gray-100 dark:bg-slate-700 dark:text-gray-200 font-extrabold text-red-600 dark:text-red-400 text-lg"
                 />
 
-                <label className="text-[13px] font-bold self-center">Receive</label>
+                <label className="text-[13px] font-bold self-center dark:text-gray-300">Receive</label>
                 <input
                   type="text"
                   readOnly
                   value={invReceived.toLocaleString()}
-                  className="h-7 border-2 border-black rounded px-1 bg-gray-100"
+                  className="h-7 border-2 border-black dark:border-slate-600 rounded px-1 bg-gray-100 dark:bg-slate-700 dark:text-gray-200"
                 />
 
-                <label className="text-[13px] font-bold self-center">Remaining</label>
+                <label className="text-[13px] font-bold self-center dark:text-gray-300">Remaining</label>
                 <input
                   type="text"
                   readOnly
                   value={invRemaining.toLocaleString()}
-                  className="h-7 border-2 border-black rounded px-1 bg-gray-100"
+                  className="h-7 border-2 border-black dark:border-slate-600 rounded px-1 bg-gray-100 dark:bg-slate-700 dark:text-gray-200"
                 />
               </div>
 
               {/* Printer info (matches your show page) */}
-              <div className="pt-2 text-[11px] text-gray-500">
-                Using printer template: <b>{(printerType || "a4").toUpperCase()}</b>
+              <div className="pt-2 text-[11px] text-gray-500 dark:text-gray-400">
+                Using printer template: <b className="dark:text-gray-300">{(printerType || "a4").toUpperCase()}</b>
               </div>
 
               {/* Primary actions (mirror top bar; kept for convenience on long lists) */}
@@ -580,20 +580,20 @@ export default function SaleInvoiceShow() {
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
           onClick={(e) => { if (e.target === e.currentTarget) closeDeleteModal(); }}
         >
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-5">
+          <div className="bg-white dark:bg-slate-800 rounded-xl shadow-xl w-full max-w-md p-5">
             {/* Step 1: Confirm delete */}
             {deleteStep === 1 && (
               <div>
-                <h2 className="text-lg font-semibold mb-2">Delete sale invoice?</h2>
-                <div className="text-xs text-gray-600 mb-2">
-                  <div><b>Posted #:</b> {inv?.posted_number}</div>
-                  <div><b>Total:</b> {invTotal.toLocaleString()}</div>
-                  <div><b>Received:</b> {invReceived.toLocaleString()}</div>
-                  <div><b>Remaining:</b> {invRemaining.toLocaleString()}</div>
+                <h2 className="text-lg font-semibold mb-2 dark:text-gray-200">Delete sale invoice?</h2>
+                <div className="text-xs text-gray-600 dark:text-gray-400 mb-2">
+                  <div><b className="dark:text-gray-300">Posted #:</b> {inv?.posted_number}</div>
+                  <div><b className="dark:text-gray-300">Total:</b> {invTotal.toLocaleString()}</div>
+                  <div><b className="dark:text-gray-300">Received:</b> {invReceived.toLocaleString()}</div>
+                  <div><b className="dark:text-gray-300">Remaining:</b> {invRemaining.toLocaleString()}</div>
                 </div>
-                <p className="text-sm text-gray-600">This action cannot be undone.</p>
+                <p className="text-sm text-gray-600 dark:text-gray-400">This action cannot be undone.</p>
                 <div className="mt-4 flex justify-end gap-2">
-                  <button className="px-3 py-1 rounded border" onClick={closeDeleteModal}>
+                  <button className="px-3 py-1 rounded border dark:border-slate-600 dark:text-gray-300 dark:bg-slate-700" onClick={closeDeleteModal}>
                     Cancel
                   </button>
                   <button
@@ -609,12 +609,12 @@ export default function SaleInvoiceShow() {
             {/* Step 2: Choose Credit or Refund */}
             {deleteStep === 2 && (
               <div>
-                <h2 className="text-lg font-semibold mb-2">Credit or Refund?</h2>
-                <p className="text-sm text-gray-600 mb-3">
-                  This invoice has <b>Received {invReceived.toLocaleString()}</b> and
-                  <b> Remaining {invRemaining.toLocaleString()}</b>. Choose how to handle the money:
+                <h2 className="text-lg font-semibold mb-2 dark:text-gray-200">Credit or Refund?</h2>
+                <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">
+                  This invoice has <b className="dark:text-gray-300">Received {invReceived.toLocaleString()}</b> and
+                  <b className="dark:text-gray-300"> Remaining {invRemaining.toLocaleString()}</b>. Choose how to handle the money:
                 </p>
-                <div className="space-y-2 text-sm">
+                <div className="space-y-2 text-sm dark:text-gray-300">
                   <label className="flex items-start gap-2">
                     <input
                       type="radio"
@@ -641,7 +641,7 @@ export default function SaleInvoiceShow() {
                   </label>
                 </div>
                 <div className="mt-4 flex justify-between">
-                  <button className="px-3 py-1 rounded border" onClick={() => setDeleteStep(1)}>
+                  <button className="px-3 py-1 rounded border dark:border-slate-600 dark:text-gray-300 dark:bg-slate-700" onClick={() => setDeleteStep(1)}>
                     ← Back
                   </button>
                   <button
@@ -657,8 +657,8 @@ export default function SaleInvoiceShow() {
             {/* Step 3: Password confirm */}
             {deleteStep === 3 && (
               <div>
-                <h2 className="text-lg font-semibold mb-2">Confirm with password</h2>
-                <p className="text-sm text-gray-600">
+                <h2 className="text-lg font-semibold mb-2 dark:text-gray-200">Confirm with password</h2>
+                <p className="text-sm text-gray-600 dark:text-gray-400">
                   For security, please re-enter your password to delete this sale invoice.
                 </p>
                 <input
@@ -667,7 +667,7 @@ export default function SaleInvoiceShow() {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="Your password"
-                  className="mt-3 w-full border rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="mt-3 w-full border rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-slate-700 dark:border-slate-600 dark:text-gray-200 dark:placeholder-gray-500"
                   onKeyDown={(e) => {
                     if (e.key === "Enter") confirmAndDelete();
                     if (e.key === "Escape") closeDeleteModal();
@@ -675,14 +675,14 @@ export default function SaleInvoiceShow() {
                 />
                 <div className="mt-4 flex justify-between">
                   <button
-                    className="px-3 py-1 rounded border"
+                    className="px-3 py-1 rounded border dark:border-slate-600 dark:text-gray-300 dark:bg-slate-700"
                     onClick={() => setDeleteStep(needsChoice ? 2 : 1)}
                     disabled={deleting}
                   >
                     ← Back
                   </button>
                   <div className="flex gap-2">
-                    <button className="px-3 py-1 rounded border" onClick={closeDeleteModal} disabled={deleting}>
+                    <button className="px-3 py-1 rounded border dark:border-slate-600 dark:text-gray-300 dark:bg-slate-700" onClick={closeDeleteModal} disabled={deleting}>
                       Cancel
                     </button>
                     <button
@@ -702,3 +702,4 @@ export default function SaleInvoiceShow() {
     </div>
   );
 }
+
