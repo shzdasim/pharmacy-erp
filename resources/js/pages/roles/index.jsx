@@ -57,7 +57,7 @@ export default function RolesIndex() {
   const tintSlate  = "bg-slate-900/80 text-white shadow-[0_6px_20px_-6px_rgba(15,23,42,0.45)] ring-1 ring-white/15 hover:bg-slate-900/90";
   const tintAmber  = "bg-amber-500/85 text-white shadow-[0_6px_20px_-6px_rgba(245,158,11,0.45)] ring-1 ring-white/20 hover:bg-amber-500/95";
   const tintRed    = "bg-rose-500/85 text-white shadow-[0_6px_20px_-6px_rgba(244,63,94,0.45)] ring-1 ring-white/20 hover:bg-rose-500/95";
-  const tintGlass  = "bg-white/60 text-slate-700 ring-1 ring-white/30 hover:bg-white/75";
+  const tintGlass  = "bg-white/60 text-slate-700 ring-1 ring-white/30 hover:bg-white/75 dark:bg-slate-700/60 dark:text-slate-300 dark:ring-slate-600/50 dark:hover:bg-slate-700/75";
 
   // === Alt+N => /roles/create (gated by can.create) ===
   useEffect(() => {
@@ -90,7 +90,7 @@ export default function RolesIndex() {
       if (axios.isCancel?.(err)) return;
       const status = err?.response?.status;
       if (status === 403 || status === 401) {
-        toast.error("You don’t have permission to view roles.");
+        toast.error("You don't have permission to view roles.");
         return;
       }
       toast.error("Failed to load roles");
@@ -169,15 +169,15 @@ export default function RolesIndex() {
       const status = e?.response?.status;
       const apiMsg =
         e?.response?.data?.message ||
-        (status === 422 ? "Incorrect password" : status === 403 ? "You don’t have permission to manage roles." : "Delete failed");
+        (status === 422 ? "Incorrect password" : status === 403 ? "You don't have permission to manage roles." : "Delete failed");
       toast.error(apiMsg);
     } finally {
       setDeleting(false);
     }
   };
 
-  if (permsLoading) return <div className="p-6">Loading…</div>;
-  if (!can.view) return <div className="p-6 text-sm text-gray-700">You don’t have permission to view roles.</div>;
+  if (permsLoading) return <div className="p-6 dark:text-gray-400">Loading…</div>;
+  if (!can.view) return <div className="p-6 text-sm text-gray-700 dark:text-gray-300">You don't have permission to view roles.</div>;
 
   return (
     <div className="p-4 md:p-6 space-y-4">
@@ -186,8 +186,8 @@ export default function RolesIndex() {
         <GlassSectionHeader
           title={
             <span className="inline-flex items-center gap-2">
-              <UsersIcon className="w-5 h-5 text-blue-600" />
-              <span>Roles</span>
+              <UsersIcon className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+              <span className="dark:text-gray-100">Roles</span>
             </span>
           }
           right={
@@ -228,18 +228,18 @@ export default function RolesIndex() {
         <GlassToolbar className="grid grid-cols-1 md:grid-cols-3 gap-3">
           <TextSearch value={qSearch} onChange={setQSearch} placeholder="Search roles…" />
           <div className="md:col-span-2 flex items-center justify-between gap-3">
-            <div className="text-sm text-gray-700">
+            <div className="text-sm text-gray-700 dark:text-gray-300">
               {loading ? "Loading…" : (
                 <>Showing <strong>{rows.length === 0 ? 0 : start}-{end}</strong> of <strong>{total}</strong></>
               )}
             </div>
 
             <div className="flex items-center gap-2">
-              <label className="text-sm text-gray-700">Rows per page</label>
+              <label className="text-sm text-gray-700 dark:text-gray-300">Rows per page</label>
               <select
                 value={pageSize}
                 onChange={(e) => setPageSize(Number(e.target.value))}
-                className="h-9 px-2 rounded-xl bg-white/70 backdrop-blur-sm border border-gray-200/70 ring-1 ring-transparent focus:ring-blue-400/40 shadow-sm text-sm"
+                className="h-9 px-2 rounded-xl bg-white/70 backdrop-blur-sm border border-gray-200/70 ring-1 ring-transparent focus:ring-blue-400/40 shadow-sm text-sm dark:bg-slate-700/70 dark:border-slate-600/70 dark:text-gray-200 dark:focus:ring-blue-400/60"
               >
                 <option value={10}>10</option>
                 <option value={25}>25</option>
@@ -254,19 +254,19 @@ export default function RolesIndex() {
       {/* ===== Table ===== */}
       <GlassCard>
         <div className="max-h-[70vh] overflow-auto rounded-b-2xl">
-          <table className="w-full text-sm text-gray-900">
-            <thead className="sticky top-0 bg-white/90 backdrop-blur-sm z-10 border-b border-gray-200/70">
+          <table className="w-full text-sm text-gray-900 dark:text-gray-100">
+            <thead className="sticky top-0 bg-white/90 backdrop-blur-sm z-10 border-b border-gray-200/70 dark:bg-slate-700/90 dark:border-slate-600/70">
               <tr className="text-left">
-                <th className="px-3 py-2 font-medium">ID</th>
-                <th className="px-3 py-2 font-medium">Name</th>
-                <th className="px-3 py-2 font-medium">Permissions</th>
-                {(can.update || can.delete) && <th className="px-3 py-2 font-medium text-center">Actions</th>}
+                <th className="px-3 py-2 font-medium text-gray-900 dark:text-gray-100">ID</th>
+                <th className="px-3 py-2 font-medium text-gray-900 dark:text-gray-100">Name</th>
+                <th className="px-3 py-2 font-medium text-gray-900 dark:text-gray-100">Permissions</th>
+                {(can.update || can.delete) && <th className="px-3 py-2 font-medium text-center text-gray-900 dark:text-gray-100">Actions</th>}
               </tr>
             </thead>
             <tbody>
               {rows.length === 0 && !loading && (
                 <tr>
-                  <td className="px-3 py-10 text-center text-gray-600" colSpan={4}>
+                  <td className="px-3 py-10 text-center text-gray-600 dark:text-gray-400" colSpan={4}>
                     No roles found.
                   </td>
                 </tr>
@@ -275,12 +275,12 @@ export default function RolesIndex() {
               {rows.map((r) => (
                 <tr
                   key={r.id}
-                  className={`transition-colors odd:bg-white/90 even:bg-white/70 hover:bg-blue-50`}
+                  className={`transition-colors odd:bg-white/90 even:bg-white/70 dark:odd:bg-slate-700/60 dark:even:bg-slate-800/60 hover:bg-blue-50 dark:hover:bg-slate-600/70`}
                 >
-                  <td className="px-3 py-2">{r.id}</td>
-                  <td className="px-3 py-2">{r.name}</td>
+                  <td className="px-3 py-2 text-gray-900 dark:text-gray-100">{r.id}</td>
+                  <td className="px-3 py-2 text-gray-900 dark:text-gray-100">{r.name}</td>
                   <td className="px-3 py-2">
-                    <span className="inline-flex items-center px-2 py-0.5 rounded-xl text-xs ring-1 ring-gray-200/70 bg-white/70">
+                    <span className="inline-flex items-center px-2 py-0.5 rounded-xl text-xs ring-1 ring-gray-200/70 bg-white/70 dark:bg-slate-700/70 dark:ring-slate-600/50">
                       {r.permissions_count ?? 0}
                     </span>
                   </td>
@@ -321,7 +321,7 @@ export default function RolesIndex() {
 
         {/* Pagination */}
         <div className="px-3 py-3 flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between">
-          <div className="text-sm text-gray-700">Page {page} of {lastPage}</div>
+          <div className="text-sm text-gray-700 dark:text-gray-300">Page {page} of {lastPage}</div>
           <div className="flex items-center gap-2">
             <GlassBtn onClick={() => setPage(1)} disabled={page === 1} className={`h-9 px-3 ${tintGlass}`}>
               ⏮ First
@@ -352,8 +352,8 @@ export default function RolesIndex() {
             <GlassCard>
               <GlassSectionHeader
                 title={<span className="inline-flex items-center gap-2">
-                  <ShieldExclamationIcon className="w-5 h-5 text-rose-600" />
-                  <span>Delete role</span>
+                  <ShieldExclamationIcon className="w-5 h-5 text-rose-600 dark:text-rose-400" />
+                  <span className="dark:text-gray-100">Delete role</span>
                 </span>}
                 right={
                   <GlassBtn className={`h-8 px-3 ${tintGlass}`} onClick={closeDeleteModal} title="Close">
@@ -364,14 +364,14 @@ export default function RolesIndex() {
               <div className="px-4 py-4 space-y-4">
                 {deleteStep === 1 && (
                   <>
-                    <p className="text-sm text-gray-700">
+                    <p className="text-sm text-gray-700 dark:text-gray-300">
                       {deletingRole?.name ? (
                         <>Are you sure you want to delete <strong>{deletingRole.name}</strong>? </>
                       ) : "Are you sure you want to delete this role? "}
                       This action cannot be undone.
                     </p>
                     <div className="flex justify-end gap-2">
-                      <GlassBtn className={`min-w=[100px] ${tintGlass}`} onClick={closeDeleteModal}>
+                      <GlassBtn className={`min-w-[100px] ${tintGlass}`} onClick={closeDeleteModal}>
                         Cancel
                       </GlassBtn>
                       <GlassBtn className={`min-w-[140px] ${tintRed}`} onClick={proceedToPassword}>
@@ -383,7 +383,7 @@ export default function RolesIndex() {
 
                 {deleteStep === 2 && (
                   <>
-                    <p className="text-sm text-gray-700">For security, please re-enter your password to delete this role.</p>
+                    <p className="text-sm text-gray-700 dark:text-gray-300">For security, please re-enter your password to delete this role.</p>
                     <GlassInput
                       type="password"
                       autoFocus
@@ -427,7 +427,7 @@ export default function RolesIndex() {
 function TextSearch({ value, onChange, placeholder }) {
   return (
     <div className="relative">
-      <MagnifyingGlassIcon className="w-5 h-5 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+      <MagnifyingGlassIcon className="w-5 h-5 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500" />
       <GlassInput
         value={value}
         onChange={(e) => onChange(e.target.value)}
@@ -437,3 +437,4 @@ function TextSearch({ value, onChange, placeholder }) {
     </div>
   );
 }
+

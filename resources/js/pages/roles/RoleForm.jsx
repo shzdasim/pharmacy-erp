@@ -214,10 +214,10 @@ export default function RoleForm({ onSubmit, initial, submitting }) {
   return (
     <div className="p-6">
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-4">
-        <h1 className="text-2xl font-bold">{initial ? "Edit Role" : "Create Role"}</h1>
-        <div className="text-sm text-gray-600">
+        <h1 className="text-2xl font-bold dark:text-gray-100">{initial ? "Edit Role" : "Create Role"}</h1>
+        <div className="text-sm text-gray-600 dark:text-gray-400">
           <span className="hidden sm:inline">Shortcut:&nbsp;</span>
-          <span className="border rounded px-1 py-0.5 text-xs">Alt+S</span>&nbsp;to Save
+          <span className="border rounded px-1 py-0.5 text-xs dark:border-gray-600 dark:text-gray-400">Alt+S</span>&nbsp;to Save
         </div>
       </div>
 
@@ -225,12 +225,12 @@ export default function RoleForm({ onSubmit, initial, submitting }) {
         {/* Role name */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-w-4xl">
           <div>
-            <label className="block text-sm font-medium mb-1">Role Name</label>
+            <label className="block text-sm font-medium mb-1 dark:text-gray-300">Role Name</label>
             <input
               value={name}
               onChange={(e) => setName(e.target.value)}
               required
-              className="w-full border rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full border rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-slate-700/70 dark:border-slate-600 dark:text-gray-100 dark:placeholder-gray-400"
               placeholder="e.g. Manager"
             />
           </div>
@@ -239,18 +239,18 @@ export default function RoleForm({ onSubmit, initial, submitting }) {
         {/* Permissions */}
         <div className="space-y-3">
           <div className="flex flex-col md:flex-row md:items-center gap-3 justify-between">
-            <label className="block text-sm font-medium">Permissions</label>
+            <label className="block text-sm font-medium dark:text-gray-300">Permissions</label>
             <div className="flex flex-wrap gap-2">
               <input
                 value={filter}
                 onChange={(e) => setFilter(e.target.value)}
                 placeholder="Filter permissions…"
-                className="w-64 border rounded px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-64 border rounded px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-slate-700/70 dark:border-slate-600 dark:text-gray-100 dark:placeholder-gray-400"
               />
               <button
                 type="button"
                 onClick={selectAllPermissions}
-                className="text-xs border rounded px-2 py-1 hover:bg-gray-50"
+                className="text-xs border rounded px-2 py-1 hover:bg-gray-50 dark:border-slate-600 dark:bg-slate-700/70 dark:hover:bg-slate-600 dark:text-gray-300"
                 title="Select all (every permission)"
               >
                 Select All (All)
@@ -258,7 +258,7 @@ export default function RoleForm({ onSubmit, initial, submitting }) {
               <button
                 type="button"
                 onClick={clearAllPermissions}
-                className="text-xs border rounded px-2 py-1 hover:bg-gray-50"
+                className="text-xs border rounded px-2 py-1 hover:bg-gray-50 dark:border-slate-600 dark:bg-slate-700/70 dark:hover:bg-slate-600 dark:text-gray-300"
                 title="Clear all"
               >
                 Clear All
@@ -268,7 +268,7 @@ export default function RoleForm({ onSubmit, initial, submitting }) {
 
           {/* Global select for filtered list */}
           <div className="mb-2 flex items-center gap-3">
-            <label className="inline-flex items-center gap-2">
+            <label className="inline-flex items-center gap-2 dark:text-gray-300">
               <input
                 type="checkbox"
                 checked={allChecked}
@@ -284,10 +284,10 @@ export default function RoleForm({ onSubmit, initial, submitting }) {
           {/* Grouped modules */}
           <div className="space-y-4 max-h-[32rem] overflow-auto pr-1">
             {groupedFiltered.map((group) => (
-              <div key={group.module} className="border rounded">
-                <div className="flex items-center justify-between px-3 py-2 bg-gray-50 border-b">
-                  <div className="font-medium">{group.label} Permissions</div>
-                  <label className="text-xs inline-flex items-center gap-2">
+              <div key={group.module} className="border rounded dark:border-slate-600">
+                <div className="flex items-center justify-between px-3 py-2 bg-gray-50 border-b dark:bg-slate-700/60 dark:border-slate-600">
+                  <div className="font-medium dark:text-gray-200">{group.label} Permissions</div>
+                  <label className="text-xs inline-flex items-center gap-2 dark:text-gray-300">
                     <input
                       type="checkbox"
                       checked={moduleAllSelected(group)}
@@ -307,7 +307,7 @@ export default function RoleForm({ onSubmit, initial, submitting }) {
                     {group.actions.map(({ action, perm }) => (
                       <label
                         key={perm}
-                        className="inline-flex items-center gap-2 border rounded px-2 py-1"
+                        className="inline-flex items-center gap-2 border rounded px-2 py-1 dark:border-slate-600 dark:bg-slate-700/70"
                         title={perm}
                       >
                         <input
@@ -315,7 +315,7 @@ export default function RoleForm({ onSubmit, initial, submitting }) {
                           checked={selected.has(perm)}
                           onChange={(e) => toggle(perm, e.target.checked)}
                         />
-                        <span className="text-sm capitalize">
+                        <span className="text-sm capitalize dark:text-gray-300">
                           {(action || perm).replace(/\./g, " ")}
                         </span>
                       </label>
@@ -326,7 +326,7 @@ export default function RoleForm({ onSubmit, initial, submitting }) {
             ))}
 
             {groupedFiltered.length === 0 && (
-              <div className="text-sm text-gray-500">
+              <div className="text-sm text-gray-500 dark:text-gray-400">
                 No permissions match the filter.
               </div>
             )}
