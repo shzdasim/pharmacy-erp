@@ -4,6 +4,7 @@ use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Auth\MeController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\BatchController;
+use App\Http\Controllers\BackupController;
 use App\Http\Controllers\BrandController;
 use App\Http\Controllers\BrandImportController;
 use App\Http\Controllers\CategoryController;
@@ -160,6 +161,14 @@ Route::middleware(['auth:sanctum', 'licensed'])->group(function () {
     // Settings
     Route::get('/settings',                       [SettingController::class, 'show']);
     Route::post('/settings',                      [SettingController::class, 'update']);
+
+    // Backups
+    Route::get('/backups/stats',                  [BackupController::class, 'stats']);
+    Route::get('/backups',                        [BackupController::class, 'index']);
+    Route::post('/backups',                       [BackupController::class, 'store']);
+    Route::get('/backups/{id}/download',          [BackupController::class, 'download']);
+    Route::post('/backups/{id}/restore',          [BackupController::class, 'restore']);
+    Route::delete('/backups/{id}',                [BackupController::class, 'destroy']);
 
     // Supplier Import
     Route::get('/suppliers/import/template',      [SupplierImportController::class, 'template'])->middleware('permission:supplier.import');
