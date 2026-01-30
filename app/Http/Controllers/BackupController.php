@@ -198,5 +198,134 @@ class BackupController extends Controller
         
         return round($bytes / pow(1024, $i), 2) . ' ' . $units[$i];
     }
+
+    /**
+     * Validate an uploaded backup file
+     * POST /api/backups/upload/validate
+     */
+    public function validateUpload(Request $request)
+    {
+        $this->authorize('upload', BackupLog::class);
+
+        $request->validate([
+            'file' => ['required', 'file'],
+        ]);
+
+        try {
+            $validation = $this->backupService->validateUploadedBackup($request->file('file'));
+
+            return response()->json([
+                'valid' => $validation['valid'],
+                'errors' => $validation['errors'],
+            ]);
+
+        } catch (\Exception $e) {
+            return response()->json([
+                'valid' => false,
+                'errors' => [$e->getMessage()],
+            ], 422);
+        }
+    }
+
+    /**
+     * Upload a backup file
+     * POST /api/backups/upload
+     */
+    public function upload(Request $request)
+    {
+        $this->authorize('upload', BackupLog::class);
+
+        $validator = \Illuminate\Support\Facades\Validator::make($request->all(), [
+            'file' => ['required', 'file'],
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'message' => 'Validation failed',
+                'errors' => $validator->errors()->all(),
+            ], 422);
+        }
+
+        $userId = Auth::id();
+
+        try {
+            $backup = $this->backupService->uploadBackup($request->file('file'), $userId);
+
+            return response()->json([
+                'message' => 'Backup uploaded successfully',
+                'backup' => [
+                    'id' => $backup->id,
+                    'filename' => $backup->filename,
+                    'type' => $backup->type,
+                    'type_label' => $backup->type_label,
+                    'size' => $backup->size,
+                    'formatted_size' => $backup->formatted_size,
+                    'status' => $backup->status,
+                    'created_at' => $backup->created_at->format('M d, Y h:i A'),
+                    'original_name' => $backup->metadata['original_name'] ?? null,
+                ],
+            ], 201);
+
+        } catch (\Illuminate\Database\QueryException $e) {
+            return response()->json([
+                'message' => 'Database error during upload',
+                'error' => 'A backup with a similar filename may already exist. Please try again.',
+            ], 422);
+        } catch (\Exception $e) {
+            return response()->json([
+                'message' => 'Failed to upload backup',
+                'error' => $e->getMessage(),
+            ], 422);
+        }
+    }
+
+    /**
+     * Restore from an uploaded backup file
+     * POST /api/backups/upload/restore
+     */
+    public function restoreFromUpload(Request $request)
+    {
+        $this->authorize('restore', BackupLog::class);
+
+        $request->validate([
+            'file_id' => ['required', 'integer', 'exists:backup_logs,id'],
+            'password' => ['required', 'string', 'min:6'],
+        ]);
+
+        try {
+            $backup = BackupLog::find($request->file_id);
+
+            if (!$backup || $backup->status !== 'completed') {
+                return response()->json([
+                    'message' => 'Backup file not found or unavailable',
+                ], 404);
+            }
+
+            $filepath = $this->backupService->getDownloadPath($backup->id);
+
+            if (!$filepath || !file_exists($filepath)) {
+                return response()->json([
+                    'message' => 'Backup file not found on server',
+                ], 404);
+            }
+
+            $this->backupService->restoreFromFile($filepath, $request->password);
+
+            // Update backup log status
+            $backup->update([
+                'status' => 'restored',
+            ]);
+
+            return response()->json([
+                'message' => 'Backup restored successfully. Please refresh the page.',
+            ]);
+
+        } catch (\Exception $e) {
+            return response()->json([
+                'message' => 'Restore failed',
+                'error' => $e->getMessage(),
+            ], 422);
+        }
+    }
 }
 

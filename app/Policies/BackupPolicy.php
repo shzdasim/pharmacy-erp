@@ -49,5 +49,13 @@ class BackupPolicy
     {
         return $user->can('backup.delete');
     }
+
+    /**
+     * Determine whether the user can upload backups.
+     */
+    public function upload(User $user): bool
+    {
+        return $user->can('backup.upload');
+    }
 }
 

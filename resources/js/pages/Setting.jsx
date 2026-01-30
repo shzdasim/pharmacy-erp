@@ -7,6 +7,7 @@ import toast from "react-hot-toast";
 import { FilePond, registerPlugin } from "react-filepond";
 import FilePondPluginImagePreview from "filepond-plugin-image-preview";
 import FilePondPluginFileValidateType from "filepond-plugin-file-validate-type";
+import "filepond-plugin-file-validate-size";
 import "filepond/dist/filepond.min.css";
 import "filepond-plugin-image-preview/dist/filepond-plugin-image-preview.css";
 
@@ -144,6 +145,13 @@ export default function Setting() {
   const [restorePassword, setRestorePassword] = useState("");
   const [restoring, setRestoring] = useState(false);
   const [deletingBackupId, setDeletingBackupId] = useState(null);
+
+  // Upload backup state
+  const [uploadFiles, setUploadFiles] = useState([]);
+  const [uploading, setUploading] = useState(false);
+  const [uploadedBackup, setUploadedBackup] = useState(null);
+  const [showUploadModal, setShowUploadModal] = useState(false);
+  const [uploadValidationError, setUploadValidationError] = useState(null);
 
   // Backup types
   const backupTypes = [
@@ -519,6 +527,73 @@ export default function Setting() {
     }
   };
 
+  // ========== UPLOAD BACKUP FUNCTIONS ==========
+
+  // Upload backup file
+  const handleUploadBackup = async () => {
+    if (!canFor?.("backup")?.upload) {
+      toast.error("You don't have permission to upload backups.");
+      return;
+    }
+
+    if (uploadFiles.length === 0 || !uploadFiles[0].file) {
+      toast.error("Please select a backup file to upload.");
+      return;
+    }
+
+    try {
+      setUploading(true);
+      const formData = new FormData();
+      formData.append('file', uploadFiles[0].file);
+
+      const { data } = await axios.post('/api/backups/upload', formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      });
+
+      toast.success("Backup uploaded successfully!");
+      setUploadedBackup(data.backup);
+      
+      // Refresh backup list
+      await fetchBackups();
+      await fetchBackupStats();
+      
+      // Clear upload files but keep the uploaded backup info for restore
+      setUploadFiles([]);
+      
+      // Open the restore modal for the uploaded file
+      setShowUploadModal(false);
+      openRestoreModal(data.backup);
+      
+    } catch (error) {
+      // Show detailed error message
+      const errors = error.response?.data?.errors;
+      const msg = error.response?.data?.message || error.response?.data?.error || "Failed to upload backup";
+      
+      if (errors && Array.isArray(errors) && errors.length > 0) {
+        // Show all validation errors
+        errors.forEach((err) => toast.error(err));
+      } else {
+        toast.error(msg);
+      }
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  // Handle FilePond upload initialization
+  const handleUploadInit = () => {
+    // Reset state when FilePond is initialized
+    setUploadValidationError(null);
+  };
+
+  // Clear uploaded backup and reset
+  const clearUploadedBackup = () => {
+    setUploadedBackup(null);
+    setUploadFiles([]);
+  };
+
   // Get status icon for backup
   const getBackupStatusIcon = (status) => {
     switch (status) {
@@ -766,7 +841,7 @@ export default function Setting() {
                 setFiles(fl);
               }}
               allowMultiple={false}
-              acceptedFileTypes={["image/*"]}
+              acceptedFileTypes={['application/zip', 'application/x-zip-compressed', 'application/gzip', 'application/x-gzip', 'application/octet-stream']}
               disabled={disableInputs}
               labelIdle='Drag & Drop your logo or <span class="filepond--label-action">Browse</span>'
               credits={false}
@@ -1179,6 +1254,110 @@ export default function Setting() {
             </div>
           </GlassCard>
 
+          {/* ===== Upload Backup ===== */}
+          <GlassCard>
+            <GlassSectionHeader
+              title="Upload Backup"
+              subtitle="Upload a previously downloaded backup file to restore"
+            />
+            <GlassToolbar className="space-y-4">
+              {/* Upload Info */}
+              <div className="flex items-start gap-3 p-4 rounded-xl bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800">
+                <div className="p-2 rounded-lg bg-blue-100 dark:bg-blue-800">
+                  <CloudArrowDownIcon className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+                </div>
+                <div>
+                  <h4 className="font-medium text-blue-800 dark:text-blue-300">Restore from Backup File</h4>
+                  <p className="text-sm text-blue-700 dark:text-blue-400 mt-1">
+                    Upload a backup file (.zip, .sql.gz) that was previously downloaded from this system.
+                  </p>
+                </div>
+              </div>
+
+              {/* FilePond Upload Area */}
+              <div className="rounded-2xl bg-white/60 backdrop-blur-sm ring-1 ring-gray-200/60 p-4 shadow-sm dark:bg-slate-700/60 dark:ring-slate-600/60">
+                <FilePond
+                  files={uploadFiles}
+                  onupdatefiles={(fl) => {
+                    if (!canFor?.("backup")?.upload) { 
+                      toast.error("No permission to upload backups."); 
+                      setUploadFiles([]);
+                      return; 
+                    }
+                    setUploadFiles(fl);
+                    setUploadValidationError(null);
+                  }}
+                  allowMultiple={false}
+                  acceptedFileTypes={['application/zip', 'application/x-zip-compressed', 'application/gzip', 'application/x-gzip', 'application/octet-stream']}
+                  allowFileTypeValidation={false}
+                  disabled={!canFor?.("backup")?.upload || uploading}
+                  labelIdle='Drag & Drop backup file or <span class="filepond--label-action">Browse</span>'
+                  labelFileTypeNotAllowed='Only .zip, .sql.gz, .gz files are allowed'
+                  credits={false}
+                  maxFileSize="500MB"
+                  oninit={handleUploadInit}
+                />
+                {uploadValidationError && (
+                  <p className="text-sm text-red-500 mt-2">{uploadValidationError}</p>
+                )}
+                <p className="text-xs text-gray-500 mt-2 dark:text-gray-400">
+                  Supported formats: .zip (full backup), .sql.gz, .gz (database backup). Max size: 500MB
+                </p>
+              </div>
+
+              {/* Upload Actions */}
+              {uploadFiles.length > 0 && uploadFiles[0] && (
+                <div className="flex items-center justify-between p-4 rounded-xl bg-gray-50 dark:bg-slate-700/50 border border-gray-200 dark:border-slate-600">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-lg bg-blue-100 dark:bg-blue-900/50 flex items-center justify-center">
+                      <DocumentIcon className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium text-gray-700 dark:text-gray-200 truncate max-w-xs">
+                        {uploadFiles[0].file?.name || uploadFiles[0].filename}
+                      </p>
+                      <p className="text-xs text-gray-500 dark:text-gray-400">
+                        {(uploadFiles[0].file?.size / 1024 / 1024).toFixed(2)} MB
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setUploadFiles([])}
+                      disabled={uploading}
+                      className="p-2 rounded-lg hover:bg-gray-200 dark:hover:bg-slate-600 transition-colors"
+                      title="Remove file"
+                    >
+                      <XCircleIcon className="w-5 h-5 text-gray-500" />
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Upload Button */}
+              <div className="flex justify-end">
+                <GlassBtn
+                  onClick={() => setShowUploadModal(true)}
+                  disabled={uploadFiles.length === 0 || uploading || !canFor?.("backup")?.upload}
+                  className={`h-10 px-6 ${
+                    !canFor?.("backup")?.upload || uploadFiles.length === 0 || uploading
+                      ? tintGlass + " opacity-60 cursor-not-allowed"
+                      : tintBlue
+                  }`}
+                >
+                  <span className="inline-flex items-center gap-2">
+                    {uploading ? (
+                      <ArrowPathIcon className="w-5 h-5 animate-spin" />
+                    ) : (
+                      <CloudArrowUpIcon className="w-5 h-5" />
+                    )}
+                    {uploading ? "Uploading..." : "Upload & Preview"}
+                  </span>
+                </GlassBtn>
+              </div>
+            </GlassToolbar>
+          </GlassCard>
+
           {/* ===== Backup List ===== */}
           <GlassCard>
             <GlassSectionHeader
@@ -1540,6 +1719,92 @@ export default function Setting() {
                   </button>
                 </div>
               </form>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ===== Upload Confirmation Modal ===== */}
+      {showUploadModal && uploadFiles.length > 0 && uploadFiles[0] && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl w-full max-w-md mx-4 border border-gray-200 dark:border-slate-600">
+            {/* Header */}
+            <div className="p-6 border-b border-gray-200 dark:border-slate-600">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full bg-blue-100 dark:bg-blue-900/50 flex items-center justify-center">
+                  <CloudArrowUpIcon className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+                </div>
+                <div>
+                  <h3 className="font-semibold text-gray-800 dark:text-gray-100">Upload Backup</h3>
+                  <p className="text-sm text-gray-500 dark:text-gray-400">Review and confirm upload</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Content */}
+            <div className="p-6">
+              {/* File Info */}
+              <div className="bg-gray-50 dark:bg-slate-700/50 rounded-xl p-4 mb-4 border border-gray-200 dark:border-slate-600">
+                <div className="flex items-center gap-3 mb-3">
+                  <div className="w-12 h-12 rounded-lg bg-blue-100 dark:bg-blue-900/50 flex items-center justify-center">
+                    <DocumentIcon className="w-6 h-6 text-blue-600 dark:text-blue-400" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-gray-800 dark:text-gray-100 truncate">
+                      {uploadFiles[0].file?.name || uploadFiles[0].filename}
+                    </p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">
+                      {(uploadFiles[0].file?.size / 1024 / 1024).toFixed(2)} MB
+                    </p>
+                  </div>
+                </div>
+                <div className="text-xs text-gray-500 dark:text-gray-400">
+                  <p className="font-medium text-gray-700 dark:text-gray-300 mb-1">File Type:</p>
+                  <p className="capitalize">
+                    {uploadFiles[0].file?.type?.includes('zip') 
+                      ? 'Full Backup (ZIP)' 
+                      : uploadFiles[0].file?.name?.endsWith('.sql.gz')
+                        ? 'Database Backup (SQL.GZ)'
+                        : 'Database Backup (GZ)'}
+                  </p>
+                </div>
+              </div>
+
+              {/* Warning */}
+              <div className="bg-amber-50 dark:bg-amber-900/30 rounded-xl p-4 mb-4 border border-amber-200 dark:border-amber-800">
+                <div className="flex items-start gap-3">
+                  <ExclamationTriangleIcon className="w-5 h-5 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
+                  <div>
+                    <p className="text-sm font-medium text-amber-800 dark:text-amber-300">Important</p>
+                    <ul className="mt-1 text-xs text-amber-700 dark:text-amber-400 space-y-1">
+                      <li>• Uploaded backup will be stored on the server</li>
+                      <li>• You can preview before restoring</li>
+                      <li>• Password will be required for restore</li>
+                    </ul>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-2 mt-6">
+                <button
+                  onClick={() => {
+                    setShowUploadModal(false);
+                    setUploadFiles([]);
+                  }}
+                  className="px-4 py-2 rounded-lg text-gray-600 hover:bg-gray-100 transition-colors dark:text-gray-300 dark:hover:bg-slate-600"
+                  disabled={uploading}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleUploadBackup}
+                  disabled={uploading}
+                  className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white transition-colors disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-2"
+                >
+                  {uploading && <ArrowPathIcon className="w-4 h-4 animate-spin" />}
+                  {uploading ? "Uploading..." : "Upload Backup"}
+                </button>
+              </div>
             </div>
           </div>
         </div>

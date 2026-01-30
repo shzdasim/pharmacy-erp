@@ -35,6 +35,7 @@ export function usePermissions() {
       export: has(`${mod}.export`),
       import: has(`${mod}.import`),
       restore: has(`${mod}.restore`),
+      upload: has(`${mod}.upload`),
     }),
     [has]
   );

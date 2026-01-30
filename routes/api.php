@@ -169,6 +169,9 @@ Route::middleware(['auth:sanctum', 'licensed'])->group(function () {
     Route::get('/backups/{id}/download',          [BackupController::class, 'download']);
     Route::post('/backups/{id}/restore',          [BackupController::class, 'restore']);
     Route::delete('/backups/{id}',                [BackupController::class, 'destroy']);
+    Route::post('/backups/upload/validate',       [BackupController::class, 'validateUpload']);
+    Route::post('/backups/upload',                [BackupController::class, 'upload']);
+    Route::post('/backups/upload/restore',        [BackupController::class, 'restoreFromUpload']);
 
     // Supplier Import
     Route::get('/suppliers/import/template',      [SupplierImportController::class, 'template'])->middleware('permission:supplier.import');

@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\BackupLog;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\File;
@@ -728,6 +729,225 @@ class BackupService
             }
             $backup->delete();
         }
+    }
+
+    /**
+     * Validate uploaded backup file
+     */
+    public function validateUploadedBackup(UploadedFile $file): array
+    {
+        $maxSize = 500 * 1024 * 1024; // 500MB
+        $allowedExtensions = ['zip', 'sql.gz', 'gz', 'json'];
+
+        $errors = [];
+
+        // Check file size
+        if ($file->getSize() > $maxSize) {
+            $errors[] = 'File size exceeds maximum limit of 500MB';
+        }
+
+        // Check extension
+        $extension = strtolower($file->getClientOriginalExtension());
+        if (!in_array($extension, $allowedExtensions)) {
+            $errors[] = 'Invalid file extension. Allowed: .zip, .sql.gz, .gz, .json';
+        }
+
+        // For ZIP files, try to validate structure
+        if ($extension === 'zip') {
+            $zip = new ZipArchive();
+            if ($zip->open($file->getPathname()) === true) {
+                // Check for required files
+                $hasManifest = false;
+                $hasDatabase = false;
+                $hasSettings = false;
+
+                for ($i = 0; $i < $zip->numFiles; $i++) {
+                    $name = $zip->getNameIndex($i);
+                    if (str_ends_with($name, 'manifest.json')) {
+                        $hasManifest = true;
+                    }
+                    if (str_contains($name, 'database/')) {
+                        $hasDatabase = true;
+                    }
+                    if (str_ends_with($name, 'settings.json')) {
+                        $hasSettings = true;
+                    }
+                }
+
+                if (!$hasManifest && !$hasDatabase && !$hasSettings) {
+                    $errors[] = 'Invalid ZIP structure. Missing required backup files.';
+                }
+
+                $zip->close();
+            } else {
+                $errors[] = 'Cannot open ZIP file. File may be corrupted.';
+            }
+        }
+
+        // For gz files, try to decompress
+        if (in_array($extension, ['gz', 'sql.gz'])) {
+            $content = file_get_contents($file->getPathname(), false, null, 0, 100);
+            if (substr($content, 0, 2) !== "\x1f\x8b") {
+                $errors[] = 'Invalid GZIP format. File may be corrupted.';
+            }
+        }
+
+        // For json files, validate JSON structure
+        if ($extension === 'json') {
+            $content = file_get_contents($file->getPathname());
+            $data = json_decode($content, true);
+            if ($data === null || !isset($data['data'])) {
+                $errors[] = 'Invalid JSON settings backup format.';
+            }
+        }
+
+        return [
+            'valid' => empty($errors),
+            'errors' => $errors,
+        ];
+    }
+
+    /**
+     * Upload and process backup file
+     */
+    public function uploadBackup(UploadedFile $file, ?int $userId = null): BackupLog
+    {
+        $extension = strtolower($file->getClientOriginalExtension());
+        $timestamp = now()->format('Y-m-d_His');
+        $filename = "backup_uploaded_{$timestamp}";
+
+        // Determine backup type from file
+        $type = 'database';
+        if ($extension === 'zip') {
+            $type = 'full';
+        } elseif ($extension === 'json') {
+            $type = 'settings';
+        }
+
+        // Create backup log entry
+        $backupLog = BackupLog::create([
+            'filename' => $filename,
+            'type' => $type,
+            'size' => $file->getSize(),
+            'path' => '',
+            'created_by' => $userId,
+            'status' => 'pending',
+            'metadata' => [
+                'uploaded' => true,
+                'original_name' => $file->getClientOriginalName(),
+            ],
+        ]);
+
+        try {
+            $filepath = $this->getBackupFilePath($filename, $type);
+
+            // Move uploaded file to backup directory
+            $file->move(dirname($filepath), basename($filepath));
+
+            // For ZIP files, verify structure
+            if ($type === 'full') {
+                $zip = new ZipArchive();
+                if ($zip->open($filepath) !== true) {
+                    throw new \Exception('Cannot open uploaded ZIP file');
+                }
+
+                // Extract manifest to get metadata
+                $manifestContent = $zip->getFromName('manifest.json');
+                if ($manifestContent) {
+                    $manifest = json_decode($manifestContent, true);
+                    if ($manifest) {
+                        $backupLog->update([
+                            'metadata' => array_merge(
+                                $backupLog->metadata ?? [],
+                                ['manifest' => $manifest]
+                            ),
+                        ]);
+                    }
+                }
+                $zip->close();
+            }
+
+            // For .gz or .sql.gz files, verify it's valid gzip
+            if (in_array($extension, ['gz', 'sql.gz'])) {
+                $compressed = file_get_contents($filepath);
+                $testDecompress = gzdecode($compressed);
+                if ($testDecompress === false) {
+                    throw new \Exception('Invalid gzip file format. The file may be corrupted or not a valid gzip archive.');
+                }
+            }
+
+            $backupLog->update([
+                'path' => 'backups/' . basename($filepath),
+                'status' => 'completed',
+            ]);
+
+            return $backupLog;
+
+        } catch (\Exception $e) {
+            $backupLog->update([
+                'status' => 'failed',
+                'error_message' => $e->getMessage(),
+            ]);
+
+            // Clean up uploaded file
+            $filepath = $this->getBackupFilePath($filename, $type);
+            if (file_exists($filepath)) {
+                unlink($filepath);
+            }
+
+            throw $e;
+        }
+    }
+
+    /**
+     * Restore from a file path
+     */
+    public function restoreFromFile(string $filepath, string $password): bool
+    {
+        // Verify password
+        $user = Auth::user();
+        if (!$user || !\Illuminate\Support\Facades\Hash::check($password, $user->password)) {
+            throw new \Exception('Invalid password');
+        }
+
+        if (!file_exists($filepath)) {
+            throw new \Exception('Backup file not found');
+        }
+
+        $extension = strtolower(pathinfo($filepath, PATHINFO_EXTENSION));
+
+        try {
+            // Determine backup type from file extension
+            if ($extension === 'zip') {
+                $this->restoreFullBackup($filepath);
+            } elseif ($extension === 'json') {
+                $this->restoreSettingsBackup($filepath);
+            } else {
+                // Assume gzip SQL backup
+                $this->restoreDatabaseBackup($filepath);
+            }
+
+            return true;
+
+        } catch (\Exception $e) {
+            throw new \Exception('Restore failed: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Get backup type from file
+     */
+    public function getBackupTypeFromFile(string $filepath): string
+    {
+        $extension = strtolower(pathinfo($filepath, PATHINFO_EXTENSION));
+
+        if ($extension === 'zip') {
+            return 'full';
+        } elseif ($extension === 'json') {
+            return 'settings';
+        }
+
+        return 'database';
     }
 }
 

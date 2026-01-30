@@ -67,7 +67,7 @@ class RolesAndPermissionsSeeder extends Seeder
 
         // Backup System
         $backupModules = ['backup'];
-        $backupActions = ['view','create','restore','delete'];
+        $backupActions = ['view','create','restore','delete','upload'];
 
         // Build final list
         $perms = [];
