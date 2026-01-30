@@ -110,7 +110,9 @@ export default function SaleInvoicesIndex() {
   const invRemaining = Math.max(invTotal - invReceived, 0);
 
   const [deleteMode, setDeleteMode] = useState("none"); // 'credit' | 'refund' | 'none'
-  const needsChoice = !!selectedInvoice && invReceived > 0;
+  // Only show Credit/Refund dialog for credit invoices with received amount > 0
+  // Debit invoices skip this step and go directly to password confirmation
+  const needsChoice = !!selectedInvoice && selectedInvoice.invoice_type === 'credit' && invReceived > 0;
 
   const openDeleteModal = (id) => {
     if (!can.delete) return toast.error("You don't have permission to delete sale invoices.");
