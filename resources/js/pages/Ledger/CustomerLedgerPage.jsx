@@ -2,6 +2,7 @@
 import React, { useEffect, useMemo, useState, useRef } from "react";
 import axios from "axios";
 import toast from "react-hot-toast";
+import { createPortal } from "react-dom";
 import { usePermissions, Guard } from "@/api/usePermissions.js";
 import { useTheme } from "@/context/ThemeContext.jsx";
 
@@ -35,17 +36,57 @@ function CustomerSearchInput({ value, onChange, autoFocus }) {
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [position, setPosition] = useState({ top: 0, left: 0, width: 0 });
   const boxRef = useRef(null);
   const inputRef = useRef(null);
   const debounceRef = useRef(null);
 
+  const updatePosition = () => {
+    if (!boxRef.current) return;
+    const rect = boxRef.current.getBoundingClientRect();
+    setPosition({
+      top: rect.bottom + window.scrollY,
+      left: rect.left + window.scrollX,
+      width: rect.width,
+    });
+  };
+
+  const onFocus = () => {
+    setOpen(true);
+    updatePosition();
+    if (items.length === 0) fetchPage(1, "");
+  };
+
+  const onType = (val) => {
+    setTerm(val);
+    clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      fetchPage(1, val.trim());
+    }, 250);
+  };
+
+  // Update position on scroll/resize when dropdown is open
   useEffect(() => {
-    const onDoc = (e) => {
-      if (!boxRef.current) return;
-      if (!boxRef.current.contains(e.target)) setOpen(false);
+    if (open) {
+      updatePosition();
+      window.addEventListener("scroll", updatePosition, true);
+      window.addEventListener("resize", updatePosition);
+    }
+    return () => {
+      window.removeEventListener("scroll", updatePosition, true);
+      window.removeEventListener("resize", updatePosition);
     };
-    document.addEventListener("mousedown", onDoc);
-    return () => document.removeEventListener("mousedown", onDoc);
+  }, [open]);
+
+  // Close dropdown on click outside
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (boxRef.current && !boxRef.current.contains(e.target)) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
   useEffect(() => {
@@ -78,19 +119,6 @@ function CustomerSearchInput({ value, onChange, autoFocus }) {
     } finally {
       setLoading(false);
     }
-  };
-
-  const onFocus = () => {
-    setOpen(true);
-    if (items.length === 0) fetchPage(1, "");
-  };
-
-  const onType = (val) => {
-    setTerm(val);
-    clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => {
-      fetchPage(1, val.trim());
-    }, 250);
   };
 
   const pick = (c) => {
@@ -133,12 +161,19 @@ function CustomerSearchInput({ value, onChange, autoFocus }) {
         )}
       </div>
 
-      {open && (
-        <div className={`absolute z-20 mt-1 w-full backdrop-blur-sm border rounded-xl shadow-xl max-h-80 overflow-auto ring-1 ${
-          isDark 
-            ? "bg-slate-800/90 border-slate-600 ring-slate-700" 
-            : "bg-white/90 border-gray-200 ring-gray-200/60"
-        }`}>
+      {open && createPortal(
+        <div
+          className={`fixed backdrop-blur-sm border rounded-xl shadow-xl max-h-80 overflow-auto ring-1 z-[9999] ${
+            isDark 
+              ? "bg-slate-800/90 border-slate-600 ring-slate-700" 
+              : "bg-white/90 border-gray-200 ring-gray-200/60"
+          }`}
+          style={{
+            top: position.top,
+            left: position.left,
+            width: position.width,
+          }}
+        >
           {loading && items.length === 0 && (
             <div className={`px-3 py-2 text-xs ${isDark ? "text-slate-400" : "text-gray-600"}`}>Loading…</div>
           )}
@@ -172,7 +207,8 @@ function CustomerSearchInput({ value, onChange, autoFocus }) {
               </GlassBtn>
             </div>
           )}
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );
