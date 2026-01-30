@@ -454,32 +454,30 @@ class SaleInvoiceController extends Controller
 
         $customerId = (int) $invoice->customer_id;
 
-        $allInv = \App\Models\SaleInvoice::where('customer_id', $customerId)->get([
-            'invoice_total','total','grand_total','net_total','gross_amount','sub_total',
-            'total_receive','total_recieve','received','amount_received'
-        ]);
+        // Calculate customer's Total Due from sale_invoices (like CustomerLedgerController does)
+        // Formula: net_balance = (total_invoiced - received_on_invoice) - payments_credited
+        $allInvoices = \App\Models\SaleInvoice::where('customer_id', $customerId)
+            ->where('invoice_type', 'credit')
+            ->get([
+                'invoice_total','total','grand_total','net_total','gross_amount','sub_total',
+                'total_receive','total_recieve','received','amount_received',
+            ]);
 
-        $allTotals   = 0.0;
-        $allReceived = 0.0;
-        foreach ($allInv as $inv) {
-            $t = (float) ($inv->invoice_total ?? $inv->total ?? $inv->grand_total ?? $inv->net_total ?? $inv->gross_amount ?? $inv->sub_total ?? 0);
-            $r = (float) ($inv->total_receive ?? $inv->total_recieve ?? $inv->received ?? $inv->amount_received ?? 0);
-            $allTotals   += $t;
-            $allReceived += $r;
+        $totalInvoiced = 0.0;
+        $receivedOnInv = 0.0;
+        foreach ($allInvoices as $inv) {
+            $totalInvoiced += (float) ($inv->invoice_total ?? $inv->total ?? $inv->grand_total ?? $inv->net_total ?? $inv->gross_amount ?? $inv->sub_total ?? 0);
+            $receivedOnInv += (float) ($inv->total_receive ?? $inv->total_recieve ?? $inv->received ?? $inv->amount_received ?? 0);
         }
 
-        $paymentsCred = (float) \App\Models\CustomerLedger::where('customer_id', $customerId)
-            ->where(function ($q) {
-                $q->whereRaw("LOWER(entry_type) = 'payment'")
-                  ->orWhere(function ($q2) {
-                      $q2->whereRaw("LOWER(entry_type) = 'manual'")
-                         ->whereRaw('COALESCE(credited_amount,0) <> 0');
-                  });
-            })
+        // Get payments from customer_ledgers
+        $paymentsCred = \App\Models\CustomerLedger::where('customer_id', $customerId)
+            ->where('entry_type', 'payment')
             ->sum(DB::raw('COALESCE(credited_amount,0)'));
 
-        $globalNet = ($allTotals - $allReceived) - $paymentsCred;
-        if ($globalNet < 0) $globalNet = 0.0;
+        // Calculate Total Due
+        $customerTotalDue = ($totalInvoiced - $receivedOnInv) - $paymentsCred;
+        if ($customerTotalDue < 0) $customerTotalDue = 0.0;
 
         $gross  = (float) ($invoice->items?->sum('sub_total') ?? 0);
         $disc   = (float) ($invoice->discount_amount ?? 0);
@@ -488,9 +486,6 @@ class SaleInvoiceController extends Controller
 
         $receivedOnInvoice = (float) ($invoice->total_receive ?? 0);
         $remainThis        = max($total - $receivedOnInvoice, 0);
-
-        $oldRemainingNet = $globalNet - $remainThis;
-        if ($oldRemainingNet < 0) $oldRemainingNet = 0.0;
 
         // Determine which template to use
         if ($type === 'thermal') {
@@ -503,13 +498,12 @@ class SaleInvoiceController extends Controller
         }
 
         return view("printer.{$templateName}", [
-            'invoice'          => $invoice,
-            'setting'          => $setting,
-            'printTotal'       => $total,
-            'printReceive'     => $receivedOnInvoice,
-            'printRemainThis'  => $remainThis,
-            'printOldRemain'   => $oldRemainingNet,
-            'printGrandRemain' => $globalNet,
+            'invoice'            => $invoice,
+            'setting'            => $setting,
+            'printTotal'         => $total,
+            'printReceive'       => $receivedOnInvoice,
+            'printRemainThis'    => $remainThis,
+            'printCustomerTotalDue' => $customerTotalDue,
         ]);
     }
 

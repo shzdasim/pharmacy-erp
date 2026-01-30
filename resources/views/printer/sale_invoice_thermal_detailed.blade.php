@@ -1,6 +1,4 @@
 @php
-    use Illuminate\Support\Facades\DB;
-
     $logo   = $setting->logo_url ?? null;
     $store  = $setting->store_name ?? 'Store Name';
     $phone  = $setting->phone_number ?? '';
@@ -17,20 +15,14 @@
     $tax    = (float)($invoice->tax_amount ?? 0);
     $total  = isset($printTotal) ? (float)$printTotal : (float)($invoice->total ?? ($gross - $disc + $tax));
     $totalReceive = isset($printReceive) ? (float)$printReceive : (float)($invoice->total_receive ?? 0);
-    $remainThis = isset($printRemainThis) ? (float)$printRemainThis : max($total - $totalReceive, 0);
+    $remainThis = max($total - $totalReceive, 0);
 
-    if (isset($printOldRemain)) {
-        $oldRemaining = (float)$printOldRemain;
-    } else {
-        $oldRemaining = 0.0;
-        if ($invoice->customer_id) {
-            $oldRemaining = \App\Models\SaleInvoice::where('customer_id', $invoice->customer_id)
-                ->where('id', '<', $invoice->id)
-                ->sum(DB::raw("CASE WHEN COALESCE(total,0) - COALESCE(total_receive,0) > 0 THEN COALESCE(total,0) - COALESCE(total_receive,0) ELSE 0 END"));
-        }
-    }
+    // Get customer's total due from ledger
+    $customerTotalDue = isset($printCustomerTotalDue) ? (float)$printCustomerTotalDue : null;
 
-    $grandRemaining = isset($printGrandRemain) ? (float)$printGrandRemain : ($remainThis + (float)$oldRemaining);
+    // Show section if this invoice has balance OR customer has total due
+    $showBalance = $remainThis > 0 || ($customerTotalDue !== null && $customerTotalDue > 0);
+
     $footerNote = trim(($invoice->footer_note ?? '') !== '' ? $invoice->footer_note : ($setting->note ?? ''));
 @endphp
 <!DOCTYPE html>
@@ -128,12 +120,15 @@
     <div class="pair total"><span>TOTAL</span><span>{{ number_format((float)$total, 2) }}</span></div>
   </div>
   
-  @if($remainThis > 0 || $oldRemaining > 0)
+  {{-- Show Balance section --}}
+  @if($showBalance)
     <div class="balance-section">
       <div class="pair"><span>Payment</span><span>{{ number_format($totalReceive, 2) }}</span></div>
-      <div class="pair total"><span>Balance Due</span><span>{{ number_format($grandRemaining, 2) }}</span></div>
-      @if($oldRemaining > 0)
-        <div class="pair small-text"><span>(Prev. Due: {{ number_format($oldRemaining, 2) }})</span></div>
+      @if($remainThis > 0)
+        <div class="pair"><span>Balance</span><span>{{ number_format($remainThis, 2) }}</span></div>
+      @endif
+      @if($customerTotalDue !== null && $customerTotalDue > 0)
+        <div class="pair total"><span>Total Due</span><span>{{ number_format($customerTotalDue, 2) }}</span></div>
       @endif
     </div>
   @endif
@@ -146,3 +141,4 @@
 </div>
 </body>
 </html>
+

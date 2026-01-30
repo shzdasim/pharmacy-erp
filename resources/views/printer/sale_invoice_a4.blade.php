@@ -1,6 +1,4 @@
 @php
-    use Illuminate\Support\Facades\DB;
-
     $logo   = $setting->logo_url ?? null;
     $store  = $setting->store_name ?? 'Store Name';
     $phone  = $setting->phone_number ?? '';
@@ -29,32 +27,13 @@
         ? (float)$printReceive
         : (float)($invoice->total_receive ?? 0);
 
-    $remainThis = isset($printRemainThis)
-        ? (float)$printRemainThis
-        : max($total - $totalReceive, 0);
+    $remainThis = max($total - $totalReceive, 0);
 
-    // --- Old remaining & Grand remaining ---
-    if (isset($printOldRemain)) {
-        $oldRemaining = (float)$printOldRemain;
-    } else {
-        // Fallback: simple sum of older invoices' positive dues
-        $oldRemaining = 0.0;
-        if ($invoice->customer_id) {
-            $oldRemaining = \App\Models\SaleInvoice::where('customer_id', $invoice->customer_id)
-                ->where('id', '<', $invoice->id)
-                ->sum(DB::raw("
-                    CASE
-                        WHEN COALESCE(total,0) - COALESCE(total_receive,0) > 0
-                        THEN COALESCE(total,0) - COALESCE(total_receive,0)
-                        ELSE 0
-                    END
-                "));
-        }
-    }
+    // Get customer's total due from ledger
+    $customerTotalDue = isset($printCustomerTotalDue) ? (float)$printCustomerTotalDue : null;
 
-    $grandRemaining = isset($printGrandRemain)
-        ? (float)$printGrandRemain
-        : ($remainThis + (float)$oldRemaining);
+    // Show section if this invoice has balance OR customer has total due
+    $showBalance = $remainThis > 0 || ($customerTotalDue !== null && $customerTotalDue > 0);
 
     // Footer note: prefer invoice.footer_note, else setting.note
     $footerNote = trim(($invoice->footer_note ?? '') !== '' ? $invoice->footer_note : ($setting->note ?? ''));
@@ -174,20 +153,23 @@
     </tbody>
   </table>
 
-  {{-- Totals & Remaining --}}
+  {{-- Totals & Balance --}}
   <div class="footer-total">
     <div class="row"><div>Gross</div><div>{{ number_format($gross, 2) }}</div></div>
     <div class="row"><div>Discount</div><div>{{ number_format($disc, 2) }}</div></div>
     <div class="row"><div>Tax</div><div>{{ number_format($tax, 2) }}</div></div>
     <div class="row total"><div>Total</div><div>{{ number_format($total, 2) }}</div></div>
 
-    {{-- Same summary as thermal --}}
-    <div class="row"><div>Total Receive</div><div>{{ number_format($totalReceive, 2) }}</div></div>
-    <div class="row"><div>Remaining (This)</div><div>{{ number_format($remainThis, 2) }}</div></div>
-    @if($oldRemaining > 0)
-      <div class="row"><div>Old Remaining</div><div>{{ number_format($oldRemaining, 2) }}</div></div>
+    {{-- Show Balance section --}}
+    @if($showBalance)
+      <div class="row"><div>Total Receive</div><div>{{ number_format($totalReceive, 2) }}</div></div>
+      @if($remainThis > 0)
+        <div class="row"><div>Balance</div><div>{{ number_format($remainThis, 2) }}</div></div>
+      @endif
+      @if($customerTotalDue !== null && $customerTotalDue > 0)
+        <div class="row grand"><div>Total Due</div><div>{{ number_format($customerTotalDue, 2) }}</div></div>
+      @endif
     @endif
-    <div class="row grand"><div>Total Remaining</div><div>{{ number_format($grandRemaining, 2) }}</div></div>
   </div>
 
   {{-- Bottom --}}
@@ -200,3 +182,4 @@
 </div>
 </body>
 </html>
+
