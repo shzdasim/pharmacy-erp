@@ -130,7 +130,7 @@ Before installing Karobar-App, ensure your system meets these requirements:
 
 ```bash
 # Navigate to your projects directory
-cd /Users/malikasim/Downloads/MacFiles/React/ERP
+cd /Users/yourdirectory/
 
 # Clone the repository
 git clone https://github.com/shzdasim/pharmacy-erp.git karobar-app
@@ -235,7 +235,7 @@ npm run dev
 
 Open your browser and navigate to:
 - **URL**: http://127.0.0.1:8000
-- **Email**: admin@karobar.app
+- **Email**: admin@example.com
 - **Password**: password
 
 ---
