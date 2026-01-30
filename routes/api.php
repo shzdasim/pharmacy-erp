@@ -29,6 +29,7 @@ use App\Http\Controllers\StockAdjustmentController;
 use App\Http\Controllers\SupplierController;
 use App\Http\Controllers\SupplierImportController;
 use App\Http\Controllers\SupplierLedgerController;
+use App\Http\Controllers\UpdateController;
 use App\Http\Controllers\UserController;
 
 /*
@@ -172,6 +173,14 @@ Route::middleware(['auth:sanctum', 'licensed'])->group(function () {
     Route::post('/backups/upload/validate',       [BackupController::class, 'validateUpload']);
     Route::post('/backups/upload',                [BackupController::class, 'upload']);
     Route::post('/backups/upload/restore',        [BackupController::class, 'restoreFromUpload']);
+
+    // Updates
+    Route::get('/updates/status',                 [UpdateController::class, 'status']);
+    Route::get('/updates/check',                  [UpdateController::class, 'check']);
+    Route::get('/updates/latest',                 [UpdateController::class, 'latestRelease']);
+    Route::post('/updates/install',               [UpdateController::class, 'install']);
+    Route::put('/updates/settings',               [UpdateController::class, 'updateSettings']);
+    Route::get('/updates/logs',                   [UpdateController::class, 'logs']);
 
     // Supplier Import
     Route::get('/suppliers/import/template',      [SupplierImportController::class, 'template'])->middleware('permission:supplier.import');

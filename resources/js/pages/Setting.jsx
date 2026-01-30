@@ -153,6 +153,29 @@ export default function Setting() {
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [uploadValidationError, setUploadValidationError] = useState(null);
 
+  // Update management state
+  const [updateStatus, setUpdateStatus] = useState({
+    current_version: null,
+    latest_version: null,
+    is_new_version: false,
+    release_info: null,
+    last_checked_at: null,
+    repository: {
+      owner: 'shzdasim',
+      repo: 'pharmacy-erp',
+      branch: 'Sale-Invoice',
+      url: 'https://github.com/shzdasim/pharmacy-erp',
+    },
+  });
+  const [updateSettings, setUpdateSettings] = useState({
+    auto_check_enabled: false,
+    require_confirmation: true,
+  });
+  const [updateLogs, setUpdateLogs] = useState([]);
+  const [checkingUpdate, setCheckingUpdate] = useState(false);
+  const [installingUpdate, setInstallingUpdate] = useState(false);
+  const [loadingLogs, setLoadingLogs] = useState(false);
+
   // Backup types
   const backupTypes = [
     { id: 'full', name: 'Full Backup', description: 'Complete backup including database, settings, and files', icon: ServerIcon },
@@ -608,11 +631,143 @@ export default function Setting() {
     }
   };
 
+  // ========== UPDATE MANAGEMENT FUNCTIONS ==========
+
+  // Fetch update status
+  const fetchUpdateStatus = async () => {
+    try {
+      const { data } = await axios.get('/api/updates/status');
+      if (data.success && data.data) {
+        setUpdateStatus(prev => ({
+          ...prev,
+          current_version: data.data.current_version || prev.current_version,
+          latest_version: data.data.latest_check?.latest_version || prev.latest_version,
+          is_new_version: data.data.latest_check?.is_new_version || false,
+          release_info: data.data.latest_check?.release_info || prev.release_info,
+          last_checked_at: data.data.latest_check?.checked_at || prev.last_checked_at,
+          repository: data.data.repository || prev.repository,
+        }));
+        setUpdateSettings(data.data.settings || updateSettings);
+      }
+    } catch (err) {
+      console.error('Failed to fetch update status:', err);
+    }
+  };
+
+  // Fetch update logs
+  const fetchUpdateLogs = async () => {
+    try {
+      setLoadingLogs(true);
+      const { data } = await axios.get('/api/updates/logs', {
+        params: { limit: 50 }
+      });
+      if (data.success && data.data) {
+        setUpdateLogs(data.data);
+      }
+    } catch (err) {
+      console.error('Failed to fetch update logs:', err);
+    } finally {
+      setLoadingLogs(false);
+    }
+  };
+
+  // Check for updates manually
+  const handleCheckUpdate = async () => {
+    try {
+      setCheckingUpdate(true);
+      const { data } = await axios.get('/api/updates/check');
+      
+      if (data.success) {
+        setUpdateStatus(prev => ({
+          ...prev,
+          current_version: data.current_version || prev.current_version,
+          latest_version: data.latest_version || prev.latest_version,
+          is_new_version: data.is_new_version || false,
+          release_info: data.release_info || prev.release_info,
+          last_checked_at: data.checked_at || new Date().toISOString(),
+        }));
+        
+        if (data.is_new_version) {
+          toast.success(`New version available: ${data.latest_version}`);
+        } else {
+          toast.success('You are running the latest version');
+        }
+        
+        // Refresh logs after check
+        await fetchUpdateLogs();
+      } else {
+        toast.error(data.error || 'Failed to check for updates');
+      }
+    } catch (error) {
+      const msg = error.response?.data?.error || 'Failed to check for updates';
+      toast.error(msg);
+    } finally {
+      setCheckingUpdate(false);
+    }
+  };
+
+  // Install update
+  const handleInstallUpdate = async () => {
+    // Require confirmation if setting is enabled
+    if (updateSettings.require_confirmation) {
+      if (!confirm(`Are you sure you want to update from version ${updateStatus.current_version} to ${updateStatus.latest_version}? This will download and apply the latest update from GitHub.`)) {
+        return;
+      }
+    }
+
+    try {
+      setInstallingUpdate(true);
+      const { data } = await axios.post('/api/updates/install');
+      
+      if (data.success) {
+        toast.success(data.message || 'Update installed successfully!');
+        // Refresh status and logs
+        await fetchUpdateStatus();
+        await fetchUpdateLogs();
+        
+        // Show reload message
+        setTimeout(() => {
+          toast.success('Please refresh the page to see the new version.');
+        }, 1000);
+      } else {
+        toast.error(data.error || 'Failed to install update');
+      }
+    } catch (error) {
+      const msg = error.response?.data?.error || 'Failed to install update';
+      toast.error(msg);
+    } finally {
+      setInstallingUpdate(false);
+    }
+  };
+
+  // Update settings
+  const handleUpdateSettingsChange = async (key, value) => {
+    try {
+      const newSettings = { ...updateSettings, [key]: value };
+      setUpdateSettings(newSettings);
+      
+      await axios.put('/api/updates/settings', newSettings);
+      toast.success('Update settings saved');
+    } catch (error) {
+      toast.error('Failed to save update settings');
+      // Revert state on failure
+      setUpdateSettings(updateSettings);
+    }
+  };
+
   // Load backup data when switching to backup tab
   useEffect(() => {
     if (activeTab === "backup") {
       fetchBackups();
       fetchBackupStats();
+    }
+  }, [activeTab]);
+
+  // Load update data when switching to update tab
+  useEffect(() => {
+    if (activeTab === "update") {
+      fetchUpdateStatus();
+      fetchUpdateLogs();
     }
   }, [activeTab]);
 
@@ -722,6 +877,19 @@ export default function Setting() {
           >
             <ServerIcon className="w-5 h-5" />
             <span>Backup & Restore</span>
+          </button>
+
+          {/* Updates Tab */}
+          <button
+            onClick={() => setActiveTab("update")}
+            className={`flex items-center gap-2 px-5 py-3 text-sm font-medium transition-all duration-200 border-b-2 ${
+              activeTab === "update"
+                ? "border-blue-600 text-blue-700 bg-white/70 dark:bg-slate-800/70 dark:text-blue-400 dark:border-blue-400"
+                : "border-transparent text-gray-600 hover:text-gray-800 hover:bg-white/50 dark:text-gray-300 dark:hover:text-gray-100 dark:hover:bg-slate-700/50"
+            }`}
+          >
+            <ArrowPathIcon className="w-5 h-5" />
+            <span>Updates</span>
           </button>
         </div>
       </GlassCard>
@@ -1457,7 +1625,7 @@ export default function Setting() {
             )}
           </GlassCard>
 
-          {/* ===== Important Notice ===== */}
+        {/* ===== Important Notice ===== */}
           <div className="bg-amber-50 dark:bg-amber-900/20 rounded-xl p-4 border border-amber-200 dark:border-amber-800">
             <div className="flex items-start gap-3">
               <ExclamationTriangleIcon className="w-5 h-5 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
@@ -1469,6 +1637,272 @@ export default function Setting() {
                   <li>• Database backups are compressed with gzip to save space.</li>
                   <li>• Old backups are automatically cleaned up (max 10 backups, 30 days retention).</li>
                 </ul>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* ===== Update Tab ===== */}
+      {activeTab === "update" && (
+        <>
+          {/* ===== Update Overview ===== */}
+          <GlassCard>
+            <GlassSectionHeader
+              title={<span className="inline-flex items-center gap-2">
+                <ArrowPathIcon className="w-5 h-5 text-blue-600" />
+                <span>Application Updates</span>
+              </span>}
+              right={
+                <GlassBtn
+                  onClick={handleCheckUpdate}
+                  disabled={checkingUpdate}
+                  className={`h-8 px-3 ${checkingUpdate ? tintGlass + " opacity-60" : tintBlue}`}
+                  title="Check for updates"
+                >
+                  <span className="inline-flex items-center gap-1 text-xs">
+                    {checkingUpdate ? (
+                      <ArrowPathIcon className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <ArrowPathIcon className="w-4 h-4" />
+                    )}
+                    {checkingUpdate ? "Checking..." : "Check Now"}
+                  </span>
+                </GlassBtn>
+              }
+            />
+            <GlassToolbar className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {/* Current Version */}
+              <div className="p-4 rounded-xl bg-white/60 dark:bg-slate-700/60 text-center">
+                <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">Current Version</div>
+                <div className="text-xl font-bold text-gray-800 dark:text-gray-100">
+                  {updateStatus.current_version || 'Unknown'}
+                </div>
+              </div>
+
+              {/* Latest Version */}
+              <div className="p-4 rounded-xl bg-white/60 dark:bg-slate-700/60 text-center">
+                <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">Latest Version</div>
+                <div className="text-xl font-bold text-emerald-600 dark:text-emerald-400">
+                  {updateStatus.latest_version || 'Unknown'}
+                </div>
+                {updateStatus.is_new_version && (
+                  <span className="inline-flex items-center gap-1 mt-2 px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-300">
+                    Update Available
+                  </span>
+                )}
+              </div>
+
+              {/* Last Check */}
+              <div className="p-4 rounded-xl bg-white/60 dark:bg-slate-700/60 text-center">
+                <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">Last Checked</div>
+                <div className="text-sm font-medium text-gray-800 dark:text-gray-100">
+                  {updateStatus.last_checked_at 
+                    ? new Date(updateStatus.last_checked_at).toLocaleString()
+                    : 'Never'
+                  }
+                </div>
+              </div>
+            </GlassToolbar>
+          </GlassCard>
+
+          {/* ===== Update Settings ===== */}
+          <GlassCard>
+            <GlassSectionHeader
+              title="Update Settings"
+              subtitle="Configure how updates are handled"
+            />
+            <GlassToolbar className="space-y-4">
+              {/* Auto-check setting */}
+              <label className="flex items-center justify-between p-4 rounded-xl bg-white/60 dark:bg-slate-700/60 cursor-pointer">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 rounded-lg bg-blue-100 dark:bg-blue-900/50">
+                    <ArrowPathIcon className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+                  </div>
+                  <div>
+                    <div className="font-medium text-gray-800 dark:text-gray-100">Check for updates on login</div>
+                    <div className="text-xs text-gray-500 dark:text-gray-400">
+                      Automatically check for updates when you access settings
+                    </div>
+                  </div>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={updateSettings.auto_check_enabled}
+                  onChange={(e) => handleUpdateSettingsChange('auto_check_enabled', e.target.checked)}
+                  className="w-5 h-5 rounded text-blue-600 focus:ring-blue-500"
+                />
+              </label>
+
+              {/* Require confirmation */}
+              <label className="flex items-center justify-between p-4 rounded-xl bg-white/60 dark:bg-slate-700/60 cursor-pointer">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 rounded-lg bg-amber-100 dark:bg-amber-900/50">
+                    <ExclamationTriangleIcon className="w-5 h-5 text-amber-600 dark:text-amber-400" />
+                  </div>
+                  <div>
+                    <div className="font-medium text-gray-800 dark:text-gray-100">Require confirmation before updating</div>
+                    <div className="text-xs text-gray-500 dark:text-gray-400">
+                      Always ask for confirmation before installing updates
+                    </div>
+                  </div>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={updateSettings.require_confirmation}
+                  onChange={(e) => handleUpdateSettingsChange('require_confirmation', e.target.checked)}
+                  className="w-5 h-5 rounded text-blue-600 focus:ring-blue-500"
+                />
+              </label>
+            </GlassToolbar>
+          </GlassCard>
+
+          {/* ===== Update Actions ===== */}
+          {updateStatus.is_new_version && (
+            <GlassCard>
+              <GlassSectionHeader
+                title={<span className="inline-flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                  <span>Update Available</span>
+                </span>}
+                subtitle={`Version ${updateStatus.latest_version} is ready to install`}
+              />
+              
+              {/* Release Notes */}
+              {updateStatus.release_info?.body && (
+                <div className="mb-4 p-4 rounded-xl bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800">
+                  <h4 className="font-medium text-blue-800 dark:text-blue-300 mb-2">Release Notes</h4>
+                  <div className="text-sm text-blue-700 dark:text-blue-400 max-h-48 overflow-y-auto">
+                    {updateStatus.release_info.body}
+                  </div>
+                </div>
+              )}
+
+              {/* Action Buttons */}
+              <div className="flex flex-wrap gap-3">
+                <GlassBtn
+                  onClick={handleInstallUpdate}
+                  disabled={installingUpdate}
+                  className={`h-10 px-6 ${tintGreen}`}
+                >
+                  <span className="inline-flex items-center gap-2">
+                    {installingUpdate ? (
+                      <ArrowPathIcon className="w-5 h-5 animate-spin" />
+                    ) : (
+                      <ArrowPathIcon className="w-5 h-5" />
+                    )}
+                    {installingUpdate ? "Installing..." : "Install Update"}
+                  </span>
+                </GlassBtn>
+                
+                <a
+                  href={updateStatus.release_info?.html_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-blue-600 hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-900/30 transition-colors"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                  </svg>
+                  View on GitHub
+                </a>
+              </div>
+            </GlassCard>
+          )}
+
+          {/* ===== Update Logs ===== */}
+          <GlassCard>
+            <GlassSectionHeader
+              title="Update History"
+              subtitle="View past update operations and their status"
+            />
+            {loadingLogs ? (
+              <div className="p-8 text-center">
+                <ArrowPathIcon className="w-8 h-8 text-gray-400 animate-spin mx-auto" />
+                <p className="text-gray-500 mt-2">Loading update logs...</p>
+              </div>
+            ) : updateLogs.length === 0 ? (
+              <div className="p-8 text-center">
+                <ArrowPathIcon className="w-12 h-12 text-gray-300 mx-auto" />
+                <p className="text-gray-500 mt-2">No update history yet</p>
+                <p className="text-xs text-gray-400">Check for updates to see history</p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="border-b border-gray-200 dark:border-slate-600">
+                      <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Time</th>
+                      <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Type</th>
+                      <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Message</th>
+                      <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100 dark:divide-slate-700">
+                    {updateLogs.map((log, index) => (
+                      <tr key={index} className="hover:bg-gray-50 dark:hover:bg-slate-700/30">
+                        <td className="py-3 px-4 text-sm text-gray-600 dark:text-gray-300">
+                          {new Date(log.created_at).toLocaleString()}
+                        </td>
+                        <td className="py-3 px-4">
+                          <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium capitalize bg-gray-100 text-gray-700 dark:bg-slate-600 dark:text-gray-300">
+                            {log.type}
+                          </span>
+                        </td>
+                        <td className="py-3 px-4 text-sm text-gray-600 dark:text-gray-300">
+                          {log.message}
+                        </td>
+                        <td className="py-3 px-4">
+                          {log.level === 'success' && (
+                            <span className="inline-flex items-center gap-1 text-xs text-emerald-600 dark:text-emerald-400">
+                              <CheckCircleIcon className="w-4 h-4" /> Success
+                            </span>
+                          )}
+                          {log.level === 'info' && (
+                            <span className="inline-flex items-center gap-1 text-xs text-blue-600 dark:text-blue-400">
+                              <ArrowPathIcon className="w-4 h-4" /> Info
+                            </span>
+                          )}
+                          {log.level === 'warning' && (
+                            <span className="inline-flex items-center gap-1 text-xs text-amber-600 dark:text-amber-400">
+                              <ExclamationTriangleIcon className="w-4 h-4" /> Warning
+                            </span>
+                          )}
+                          {log.level === 'error' && (
+                            <span className="inline-flex items-center gap-1 text-xs text-red-600 dark:text-red-400">
+                              <XCircleIcon className="w-4 h-4" /> Error
+                            </span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </GlassCard>
+
+          {/* ===== Repository Info ===== */}
+          <div className="bg-slate-50 dark:bg-slate-800/50 rounded-xl p-4 border border-slate-200 dark:border-slate-700">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <svg className="w-6 h-6 text-gray-600 dark:text-gray-400" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/>
+                </svg>
+                <div>
+                  <div className="font-medium text-gray-800 dark:text-gray-100">Repository</div>
+                  <a 
+                    href={updateStatus.repository?.url} 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className="text-sm text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300"
+                  >
+                    {updateStatus.repository?.owner}/{updateStatus.repository?.repo}
+                  </a>
+                </div>
+              </div>
+              <div className="text-xs text-gray-500 dark:text-gray-400">
+                Branch: {updateStatus.repository?.branch || 'main'}
               </div>
             </div>
           </div>

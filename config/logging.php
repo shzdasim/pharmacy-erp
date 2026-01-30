@@ -127,6 +127,15 @@ return [
             'path' => storage_path('logs/laravel.log'),
         ],
 
+        // Separate channel for update operations
+        'updates' => [
+            'driver' => 'daily',
+            'path' => storage_path('logs/updates.log'),
+            'level' => 'info',
+            'days' => 30,
+            'replace_placeholders' => true,
+        ],
+
     ],
 
 ];

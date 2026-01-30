@@ -69,6 +69,10 @@ class RolesAndPermissionsSeeder extends Seeder
         $backupModules = ['backup'];
         $backupActions = ['view','create','restore','delete','upload'];
 
+        // Update System
+        $updateModules = ['update'];
+        $updateActions = ['view','check','install','logs','settings'];
+
         // Build final list
         $perms = [];
 
@@ -92,6 +96,10 @@ class RolesAndPermissionsSeeder extends Seeder
 
         foreach ($backupModules as $m) {
             foreach ($backupActions as $a) $perms[] = "{$m}.{$a}";
+        }
+
+        foreach ($updateModules as $m) {
+            foreach ($updateActions as $a) $perms[] = "{$m}.{$a}";
         }
 
         // Create if missing
