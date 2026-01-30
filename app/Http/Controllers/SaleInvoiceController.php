@@ -361,8 +361,12 @@ class SaleInvoiceController extends Controller
             $this->revertItems($invoice);
 
             $hasImpact = ($received > 0) || ($remaining > 0);
+            
+            // Only create customer ledger entries for credit invoices
+            // Debit invoices (cash sales) are not tracked in customer ledger
+            $isCreditInvoice = ($invoice->invoice_type ?? 'debit') === 'credit';
 
-            if ($hasImpact) {
+            if ($hasImpact && $isCreditInvoice) {
                 $customerId   = (int)$invoice->customer_id;
                 $postedNumber = $invoice->posted_number;
                 $entryDate    = $invoice->date ?? now()->toDateString();
