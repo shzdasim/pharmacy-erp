@@ -133,12 +133,17 @@ const SupplierSearchInput = forwardRef(
               left: position.left,
               width: position.width,
             }}
+            onMouseDown={(e) => e.preventDefault()}
           >
             <ul>
               {filtered.map((s, idx) => (
                 <li
                   key={s.id}
-                  onClick={() => handleSelect(s)}
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    handleSelect(s);
+                  }}
                   className={`px-2 py-1 cursor-pointer ${
                     idx === highlightIndex ? "bg-blue-100 dark:bg-slate-600" : "hover:bg-gray-100 dark:hover:bg-slate-700"
                   }`}

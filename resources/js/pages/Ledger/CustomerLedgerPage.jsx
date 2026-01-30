@@ -173,6 +173,7 @@ function CustomerSearchInput({ value, onChange, autoFocus }) {
             left: position.left,
             width: position.width,
           }}
+          onMouseDown={(e) => e.preventDefault()}
         >
           {loading && items.length === 0 && (
             <div className={`px-3 py-2 text-xs ${isDark ? "text-slate-400" : "text-gray-600"}`}>Loading…</div>
@@ -184,7 +185,11 @@ function CustomerSearchInput({ value, onChange, autoFocus }) {
             <button
               key={it.id}
               type="button"
-              onClick={() => pick(it)}
+              onMouseDown={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                pick(it);
+              }}
               className={`w-full text-left px-3 py-2 transition-colors ${
                 isDark 
                   ? "hover:bg-slate-700" 
@@ -200,6 +205,10 @@ function CustomerSearchInput({ value, onChange, autoFocus }) {
               <GlassBtn
                 type="button"
                 className="w-full"
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                }}
                 onClick={() => fetchPage(page + 1, term.trim())}
                 disabled={loading}
               >
