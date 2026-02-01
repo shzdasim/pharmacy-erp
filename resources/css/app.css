@@ -1,0 +1,222 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ---- Dark Mode Performance Optimizations ---- */
+
+/* CRITICAL: Remove global theme transitions that cause massive performance overhead */
+/* Only apply transitions to specific interactive elements when needed */
+html {
+  /* Remove the global transition that causes 300ms delay on ALL color changes */
+  /* Individual components will handle their own transitions if needed */
+  transition: none;
+}
+
+/* Optimize backdrop blur performance by using CSS containment */
+.g-card {
+  contain: paint layout style;
+  will-change: transform, background-color;
+  transform: translateZ(0); /* Force GPU acceleration */
+}
+
+/* Use more performant blur values and reduce blur complexity */
+.g-card {
+  @apply rounded-2xl bg-white/60 backdrop-blur-sm ring-1 ring-gray-200/60 shadow-xl;
+  @apply dark:bg-slate-800/60 dark:ring-gray-700/60 dark:text-gray-100;
+  /* Add GPU acceleration */
+  transform: translateZ(0);
+  backface-visibility: hidden;
+}
+
+/* ---- Glass UI primitives live here and won't be purged ---- */
+@layer components {
+  .g-card table {
+    @apply text-gray-900;
+    @apply dark:text-gray-100;
+  }
+  .g-card table thead {
+    @apply bg-white/85 text-gray-900;
+    @apply dark:bg-slate-700/85 dark:text-gray-100;
+  }
+  .g-card table tbody td {
+    @apply text-gray-900;
+    @apply dark:text-gray-100;
+  }
+  /* Table row backgrounds with dark mode support */
+  .g-card table tbody tr.odd {
+    @apply bg-white/60;
+    @apply dark:bg-slate-700/60;
+  }
+  .g-card table tbody tr.even {
+    @apply bg-white/40;
+    @apply dark:bg-slate-800/40;
+  }
+  .g-card table tbody tr:hover {
+    @apply bg-blue-50/70;
+    @apply dark:bg-slate-600/70;
+  }
+  /* Generic table styles for all tables (not just inside g-card) */
+  table {
+    @apply text-gray-900 dark:text-gray-100;
+  }
+  table thead {
+    @apply bg-white/85 text-gray-900 dark:bg-slate-700/85 dark:text-gray-100;
+  }
+  table tbody td {
+    @apply text-gray-900 dark:text-gray-100;
+  }
+  table tbody tr.odd {
+    @apply bg-white/60 dark:bg-slate-700/60;
+  }
+  table tbody tr.even {
+    @apply bg-white/40 dark:bg-slate-800/40;
+  }
+  table tbody tr:hover {
+    @apply bg-blue-50/70 dark:bg-slate-600/70;
+  }
+  /* Sticky table header with dark mode */
+  table thead.sticky,
+  table thead[class*="sticky"] {
+    @apply bg-white/85 dark:bg-slate-700/85;
+  }
+  /* Native select dark mode styles */
+  select {
+    @apply bg-white text-gray-900 border border-gray-200 rounded-xl;
+    @apply dark:bg-slate-700 dark:text-gray-100 dark:border-slate-600;
+    @apply focus:outline-none focus:ring-2 focus:ring-blue-400/40 dark:focus:ring-indigo-400/40;
+  }
+  /* React-Select dropdown portal fix for dark mode */
+  .react-select__menu-portal {
+    z-index: 9999;
+  }
+  /* React-Select dark mode styles */
+  .react-select__control {
+    @apply bg-white/70 border border-gray-200/70 rounded-xl min-h-[36px];
+    @apply dark:bg-slate-700/70 dark:border-slate-600/70;
+    @apply focus:outline-none focus:ring-2 focus:ring-blue-400/40 dark:focus:ring-indigo-400/40;
+  }
+  .react-select__control--is-focused {
+    @apply ring-2 ring-blue-400/40 dark:ring-indigo-400/40;
+  }
+  .react-select__value-container {
+    @apply text-gray-900 dark:text-gray-100;
+  }
+  .react-select__placeholder {
+    @apply text-gray-400 dark:text-gray-500;
+  }
+  .react-select__input {
+    @apply text-gray-900 dark:text-gray-100;
+  }
+  .react-select__single-value {
+    @apply text-gray-900 dark:text-gray-100;
+  }
+  .react-select__menu {
+    @apply bg-white/95 dark:bg-slate-800/95 backdrop-blur-sm border border-gray-200/70 dark:border-slate-600/70 rounded-xl shadow-lg;
+  }
+  .react-select__menu-list {
+    @apply text-gray-900 dark:text-gray-100;
+  }
+  .react-select__option {
+    @apply bg-white text-gray-900 dark:bg-slate-700 dark:text-gray-100;
+  }
+  .react-select__option--is-focused {
+    @apply bg-gray-100 dark:bg-slate-600;
+  }
+  .react-select__option--is-selected {
+    @apply bg-blue-100 dark:bg-indigo-600/50 text-gray-900 dark:text-gray-100;
+  }
+  .react-select__indicator-separator {
+    @apply bg-gray-200 dark:bg-slate-600;
+  }
+  .react-select__dropdown-indicator {
+    @apply text-gray-400 dark:text-slate-400;
+  }
+  .react-select__loading-indicator {
+    @apply text-gray-400 dark:text-slate-400;
+  }
+  .react-select__no-options-message {
+    @apply text-gray-500 dark:text-gray-400;
+  }
+  .g-section-header {
+    @apply sticky top-0 z-10 px-4 py-3 bg-white/70 backdrop-blur-sm border-b border-gray-200/60 rounded-t-2xl text-gray-900;
+    @apply dark:bg-slate-800/70 dark:border-slate-700/60 dark:text-gray-100;
+  }
+  .g-toolbar {
+    @apply flex flex-wrap items-end gap-2 px-4 pb-3 pt-2;
+  }
+  /* Form labels and general text in glass components */
+  .g-card label,
+  .g-card .g-label {
+    @apply text-gray-700;
+    @apply dark:text-gray-300;
+  }
+  /* Note: For muted text colors in dark mode, use inline classes or style directly */
+  .g-input {
+    @apply h-9 px-3 rounded-xl bg-white/70 backdrop-blur-sm border border-gray-200/70 ring-1 ring-transparent
+           focus:ring-blue-400/40 shadow-sm focus:outline-none;
+    @apply dark:bg-slate-700/70 dark:border-slate-600/70 dark:text-gray-100 dark:placeholder-gray-400
+           dark:focus:ring-indigo-400/40;
+  }
+  .g-btn-base {
+    @apply h-9 px-3 rounded-xl text-sm font-medium transition focus:outline-none
+           ring-1 ring-transparent focus:ring-blue-400/40;
+  }
+  .g-btn-ghost { 
+    @apply g-btn-base bg-white/70 backdrop-blur-sm border border-gray-200/70 hover:bg-white shadow-sm text-gray-900; 
+    @apply dark:bg-slate-700/70 dark:border-slate-600/70 dark:hover:bg-slate-600/70 dark:text-gray-100;
+  }
+  .g-btn-primary { 
+    @apply g-btn-base bg-blue-600 text-white hover:bg-blue-700 shadow; 
+    @apply dark:bg-indigo-600 dark:hover:bg-indigo-700;
+  }
+  .g-btn-chip { 
+    @apply px-2 bg-white/70 backdrop-blur-sm border border-gray-200/70 hover:bg-white shadow-sm rounded-xl text-sm text-gray-900; 
+    @apply dark:bg-slate-700/70 dark:border-slate-600/70 dark:hover:bg-slate-600/70 dark:text-gray-100;
+  }
+}
+
+/* Add this animation in your global CSS (Tailwind supports it) */
+@keyframes shake {
+  10%, 90% { transform: translateX(-2px); }
+  20%, 80% { transform: translateX(4px); }
+  30%, 50%, 70% { transform: translateX(-8px); }
+  40%, 60% { transform: translateX(8px); }
+}
+
+.animate-shake {
+  animation: shake 0.4s ease-in-out;
+}
+
+/* Theme transition styles */
+html {
+  @apply transition-colors duration-300;
+}
+
+body {
+  @apply bg-gray-100 text-gray-900;
+  @apply dark:bg-slate-900 dark:text-gray-100;
+  /* Optimize body for performance */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  transform: translateZ(0);
+  backface-visibility: hidden;
+}
+
+/* Dark mode scrollbar styles */
+.dark ::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.dark ::-webkit-scrollbar-track {
+  background: rgb(30, 41, 59);
+}
+
+.dark ::-webkit-scrollbar-thumb {
+  background: rgb(71, 85, 105);
+  border-radius: 4px;
+}
+
+.dark ::-webkit-scrollbar-thumb:hover {
+  background: rgb(100, 116, 139);
+}
